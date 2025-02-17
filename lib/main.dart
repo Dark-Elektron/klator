@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'buttons.dart';
 import 'package:math_expressions/math_expressions.dart';
 import 'parser.dart';
-import 'package:math_keyboard/math_keyboard.dart';
+import 'equation_field.dart';
 
 void main() {
   runApp(MyApp());
@@ -16,7 +16,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.yellow
+        primarySwatch: Colors.yellow,
+        fontFamily: 'Myraid-Regular',
       ),
       home: HomePage(),
     ); // MaterialApp
@@ -35,17 +36,27 @@ class _HomePageState extends State<HomePage> {
     "\u00B7": "*",
     "\u00F7": "/",
     "\u03C0": "*3.141592653589793238462643383279502884197",
+    "sin": "*sin",
+    "cos": "*cos",
+    "tan": "*tan",
+    "asin": "*asin",
+    "acos": "*acos",
+    "atan": "*atan",
+    "ln": "*ln",
+    "log": "*log",
+    "**": "*",
   };
 
   int count = 0;
   Map<int, TextEditingController> textEditingControllers = {};
   Map<int, TextEditingController> textDisplayControllers = {};
+  Map<int, TextEditingController> customTextEditingControllers = {};
   Map<int, Container> displays = {}; 
   Map<int, FocusNode> focusNodes = {};
   int activeIndex = 0; // Tracks the active container
   PageController pgViewController = PageController(initialPage: 1, viewportFraction: 1);
   bool isVisible = true;
-  
+
 
   final List<String> buttons = [
     '7',
@@ -145,6 +156,10 @@ class _HomePageState extends State<HomePage> {
     resController.addListener(evaluateExpression);
     textDisplayControllers[index] = resController; // add controller to list
 
+    TextEditingController customController = TextEditingController(); // create controller
+    customController.addListener(evaluateExpression);
+    customTextEditingControllers[index] = customController; // add controller to list
+
     focusNodes[index] = FocusNode();
 
     return Container(
@@ -219,6 +234,15 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
+              // Container(
+              //   width: double.infinity,
+              //   decoration: BoxDecoration(border: Border.all()),
+              //   child: CustomTextField(
+              //     text: "Initial text here",
+              //     cursorColor: Colors.yellow,
+              //     controller: customController,
+              //     ),
+              //   ),
             ]),
     );
   }
@@ -283,7 +307,8 @@ class _HomePageState extends State<HomePage> {
                       return MyButton(
                         buttontapped: () {
                           setState(() {
-                            textEditingControllers[activeIndex]!.text += '\u03C0';
+                            expressionInputManager(textEditingControllers[activeIndex], '\u03C0');
+                            expressionInputManager(customTextEditingControllers[activeIndex], '\u03C0');
                           });
                         },
                         buttonText: '\u03C0',
@@ -296,7 +321,8 @@ class _HomePageState extends State<HomePage> {
                       return MyButton(
                         buttontapped: () {
                           setState(() {
-                            textEditingControllers[activeIndex]!.text += '^2';
+                            expressionInputManager(textEditingControllers[activeIndex], '^2');
+                            expressionInputManager(customTextEditingControllers[activeIndex], '^2');
                           });
                         },
                         buttonText: 'x^2',
@@ -309,7 +335,8 @@ class _HomePageState extends State<HomePage> {
                       return MyButton(
                         buttontapped: () {
                           setState(() {
-                            textEditingControllers[activeIndex]!.text += '^';
+                            expressionInputManager(textEditingControllers[activeIndex], '^');
+                            expressionInputManager(customTextEditingControllers[activeIndex], '^');
                           });
                         },
                         buttonText: 'x^n',
@@ -322,7 +349,8 @@ class _HomePageState extends State<HomePage> {
                       return MyButton(
                         buttontapped: () {
                           setState(() {
-                            textEditingControllers[activeIndex]!.text += ' n\u221A7 ';
+                            expressionInputManager(textEditingControllers[activeIndex], 'n\u221A7');
+                            expressionInputManager(customTextEditingControllers[activeIndex], 'n\u221A7');
                           });
                         },
                         buttonText: 'n\u221A',
@@ -335,7 +363,8 @@ class _HomePageState extends State<HomePage> {
                       return MyButton(
                         buttontapped: () {
                           setState(() {
-                            textEditingControllers[activeIndex]!.text += 'ln';
+                            expressionInputManager(textEditingControllers[activeIndex], 'ln');
+                            expressionInputManager(customTextEditingControllers[activeIndex], 'ln');
                           });
                         },
                         buttonText: buttonsSci[index],
@@ -348,7 +377,8 @@ class _HomePageState extends State<HomePage> {
                       return MyButton(
                         buttontapped: () {
                           setState(() {
-                            textEditingControllers[activeIndex]!.text += 'log()';
+                            expressionInputManager(textEditingControllers[activeIndex], 'log()');
+                            expressionInputManager(customTextEditingControllers[activeIndex], 'log()');
                           });
                         },
                         buttonText: buttonsSci[index],
@@ -361,7 +391,8 @@ class _HomePageState extends State<HomePage> {
                       return MyButton(
                         buttontapped: () {
                           setState(() {
-                            textEditingControllers[activeIndex]!.text = 'logn()';
+                            expressionInputManager(textEditingControllers[activeIndex], 'logn()');
+                            expressionInputManager(customTextEditingControllers[activeIndex], 'logn()');
                           });
                         },
                         buttonText: buttonsSci[index],
@@ -374,7 +405,8 @@ class _HomePageState extends State<HomePage> {
                       return MyButton(
                         buttontapped: () {
                           setState(() {
-                            textEditingControllers[activeIndex]!.text += buttonsSci[index].toLowerCase();
+                            expressionInputManager(textEditingControllers[activeIndex], buttonsSci[index].toLowerCase());
+                            expressionInputManager(customTextEditingControllers[activeIndex], buttonsSci[index].toLowerCase());
                           });
                         },
                         buttonText: buttonsSci[index],
@@ -399,6 +431,7 @@ class _HomePageState extends State<HomePage> {
                         buttontapped: () {
                           setState(() {
                             expressionInputManager(textEditingControllers[activeIndex], '()');
+                            expressionInputManager(customTextEditingControllers[activeIndex], '()');
                             // textEditingControllers[activeIndex]!.text += '()';
                           });
                         },
@@ -419,6 +452,7 @@ class _HomePageState extends State<HomePage> {
                               }
                             } else {
                                 deleteTextAtCursor(textEditingControllers[activeIndex]!);
+                                deleteTextAtCursor(customTextEditingControllers[activeIndex]!);
                             }
                           });
                         },
@@ -433,6 +467,7 @@ class _HomePageState extends State<HomePage> {
                         buttontapped: () {
                           setState(() {
                             expressionInputManager(textEditingControllers[activeIndex], '\u00B7');
+                            expressionInputManager(customTextEditingControllers[activeIndex], '\u00B7');
                             // textEditingControllers[activeIndex]!.text += ' \u00B7 ';
                           });
                         },
@@ -447,6 +482,7 @@ class _HomePageState extends State<HomePage> {
                         buttontapped: () {
                           setState(() {
                             expressionInputManager(textEditingControllers[activeIndex], '\u00F7');
+                            expressionInputManager(customTextEditingControllers[activeIndex], '\u00F7');
                           });
                         },
                         buttonText: '\u00F7',
@@ -460,6 +496,7 @@ class _HomePageState extends State<HomePage> {
                         buttontapped: () {
                           setState(() {
                             textEditingControllers[activeIndex]!.text += buttons[index];
+                            customTextEditingControllers[activeIndex]!.text += buttons[index];
                           });
                         },
                         buttonText: buttons[index],
@@ -473,6 +510,7 @@ class _HomePageState extends State<HomePage> {
                         buttontapped: () {
                           setState(() {
                             textEditingControllers[activeIndex]!.text = '';
+                            customTextEditingControllers[activeIndex]!.text = '';
                           });
                         },
                         buttonText: buttons[index],
@@ -502,6 +540,7 @@ class _HomePageState extends State<HomePage> {
                           setState(() {
                             // textEditingControllers[activeIndex]!.text += buttons[index];
                             expressionInputManager(textEditingControllers[activeIndex], buttons[index]);
+                            expressionInputManager(customTextEditingControllers[activeIndex], buttons[index]);
                           });
                         },
                         buttonText: buttons[index],
@@ -531,23 +570,23 @@ class _HomePageState extends State<HomePage> {
 
   void expressionInputManager(controller, textToInsert) {
     final text = controller.text;
-        final cursorPos = controller.selection.baseOffset;
-
-        if (cursorPos < 0) {
-          // If no cursor is set, append at the end
-          controller.text = text + textToInsert;
-          controller.selection = TextSelection.fromPosition(
-            TextPosition(offset: controller.text.length),
-          );
-        } else {
-          // Insert text at cursor position
-          final newText = text.replaceRange(cursorPos, cursorPos, textToInsert);
-          controller.text = newText;
-          // Move cursor to the end of inserted text
-          controller.selection = TextSelection.fromPosition(
-            TextPosition(offset: cursorPos + textToInsert.length),
-          );
-        }
+    final cursorPos = controller.selection.baseOffset;
+    
+    if (cursorPos < 0) {
+      // If no cursor is set, append at the end
+      controller.text = text + textToInsert;
+      controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: controller.text.length),
+      );
+    } else {
+      // Insert text at cursor position
+      final newText = text.replaceRange(cursorPos, cursorPos, textToInsert);
+      controller.text = newText;
+      // Move cursor to the end of inserted text
+      controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: cursorPos + textToInsert.length),
+      );
+    }
   }
 
   void deleteTextAtCursor(TextEditingController controller, {bool deleteBefore = true}) {
@@ -578,9 +617,6 @@ class _HomePageState extends State<HomePage> {
   void evaluateExpression() {
     String finalUserInput = textEditingControllers[activeIndex]!.text;
     finalUserInput = replaceMultiple(finalUserInput, replacements);
-    // finaluserinput = finaluserinput.replaceAll('\u00B7', '*');
-    // finaluserinput = finaluserinput.replaceAll('\u03C0', '*3.14');
-    // finaluserinput = finaluserinput.replaceAll('\u00F7', '/');
     finalUserInput = parseExpression(finalUserInput);
 
     try{
