@@ -1,27 +1,27 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+// import 'package:flutter/services.dart';
 import 'dart:math';
 import 'constants.dart';
 
 class CustomTextField extends StatefulWidget {
 	final String text; // Initial text content
-	final int initialCursorPos; // Initial cursor position
+	final int initialcursorIndex; // Initial cursor position
 	final Color cursorColor; // Cursor color
 	final TextEditingController controller; // TextEditingController
-	final int cursorPos; // Tracks cursor location
+	final int cursorIndex; // Tracks cursor location
 
 	const CustomTextField({
 		super.key,
 		this.text = '',
-		this.initialCursorPos = 0,
+		this.initialcursorIndex = 0,
 		this.cursorColor = Colors.yellow,
 		required this.controller, // Required controller for text manipulation
-		this.cursorPos = 0,
+		this.cursorIndex = 0,
 	});
 
 	@override
-	_CustomTextFieldState createState() => _CustomTextFieldState();
+	State<CustomTextField> createState() => _CustomTextFieldState();
 }
 
 
@@ -29,26 +29,39 @@ class _CustomTextFieldState extends State<CustomTextField> {
 	late Offset tapPosition; // Tracks cursor location
 	bool showCursor = true; // Controls cursor blinking
 	final FocusNode focusNode = FocusNode();
-	late int cursorPos;
-	double textFieldHeight = 40; // Initial height
+	late int cursorIndex;
+	double textFieldHeight = 50; // Initial height
 
 	void updateHeight(double newHeight) {
 		if (newHeight != textFieldHeight) {
 			textFieldHeight = newHeight;
 		}
 	}
+	
+	void updateCursorIndex(int indexUpdate) {
+		cursorIndex = indexUpdate;
+		
+		// Explicitly update controller selection after cursor position is computed
+		WidgetsBinding.instance.addPostFrameCallback((_) {
+			widget.controller.selection = TextSelection.collapsed(offset: cursorIndex);
+		});
+	}
+	
+	void updateTapPosition(Offset tapPositionUpdate) {
+		tapPosition = tapPositionUpdate;
+	}
 
 	@override
 	void initState() {
 		super.initState();
-		cursorPos = widget.initialCursorPos; // Set the initial cursor position
+		cursorIndex = widget.initialcursorIndex; // Set the initial cursor position
 		tapPosition = Offset.zero; // Set the initial cursor position
 
 		// Listener for text changes in the controller
 		widget.controller.addListener(() {
 			setState(() {
 				// Update cursor position based on controller's selection
-				cursorPos = widget.controller.selection.baseOffset;
+				cursorIndex = widget.controller.selection.baseOffset;
 			});
 		});
 
@@ -62,64 +75,35 @@ class _CustomTextFieldState extends State<CustomTextField> {
 		});
 	}
 
-	/// Inserts a character at the cursor position
-	void insertText(String char) {
-		setState(() {
-			final text = widget.controller.text;
-			widget.controller.text = text.substring(0, cursorPos) + char + text.substring(cursorPos);
-			cursorPos++; // Move cursor forward
-		});
-	}
-
-	/// Deletes the character before the cursor
-	void deleteText() {
-		if (cursorPos > 0) {
-			setState(() {
-				final text = widget.controller.text;
-				widget.controller.text = text.substring(0, cursorPos - 1) + text.substring(cursorPos);
-				cursorPos--; // Move cursor back
-			});
-		}
-	}
-
-	/// Moves the cursor left
-	void moveCursorLeft() {
-		if (cursorPos > 0) {
-			setState(() => cursorPos--);
-		}
-	}
-
-	/// Moves the cursor right
-	void moveCursorRight() {
-		if (cursorPos < widget.controller.text.length) {
-			setState(() => cursorPos++);
-		}
-	}
-
 	@override
 	Widget build(BuildContext context) {
 		return Listener(
 			onPointerUp: (event) {
-			final RenderBox box = context.findRenderObject() as RenderBox;
-			final Offset localPosition = box.globalToLocal(event.position);
-			
-			tapPosition = localPosition; // Now tapPosition is relative to the widget
-				// print(cursorPos);
+				final RenderBox box = context.findRenderObject() as RenderBox;
+				final Offset localPosition = box.globalToLocal(event.position);
+				
+				tapPosition = localPosition;
+				// print('${event.position}, $tapPosition');
+				
 				FocusScope.of(context).requestFocus(focusNode); // Activate keyboard
 			},
+			child: AnimatedSize(
+				curve: Curves.linear,
+				duration: const Duration(milliseconds: 200),
 				child: CustomPaint(
 					painter: TextFieldPainter(
 						widget.controller.text,
-						cursorPos,
 						tapPosition,
 						showCursor,
 						widget.cursorColor,
-						widget.controller.selection.baseOffset,
+						updateCursorIndex,
 						updateHeight,
+						updateTapPosition,
 					),
 					size: Size(30, textFieldHeight), // Set the size of the area where the text is rendered
-				),
-			// ),
+					),
+			),
+		// ),
 		);
 	}
 }
@@ -127,17 +111,17 @@ class _CustomTextFieldState extends State<CustomTextField> {
 /// **CustomPainter for Rendering Text & Cursor**
 class TextFieldPainter extends CustomPainter {
 	final String text;
-	late int cursorPos;
-	final Offset tapPosition; // Tracks cursor location
+	late Offset tapPosition; // Tracks cursor location
 	final bool showCursor;
 	final Color cursorColor;
-	late int controllerSelectionBaseOffset;
-	final Function(double) onHeightChanged; // Callback to update height
+	final Function(int) updateCursorIndex; // Callback to update cursorIndex
+	final Function(double) updateHeight; // Callback to update height
+	final Function(Offset) updateTapPosition; // Callback to update height
 
 	// list for box objects
 	List<Box> boxList = [];
 
-	TextFieldPainter(this.text, this.cursorPos, this.tapPosition, this.showCursor, this.cursorColor, this.controllerSelectionBaseOffset, this.onHeightChanged);
+	TextFieldPainter(this.text, this.tapPosition, this.showCursor, this.cursorColor, this.updateCursorIndex, this.updateHeight, this.updateTapPosition);
 
 	@override
 	//     canvas.drawRect(Rect.fromLTWH(cursorX, offsetY, 2, 25), paint);
@@ -145,6 +129,8 @@ class TextFieldPainter extends CustomPainter {
 	// }
 	void paint(Canvas canvas, Size size) {
 		double maxHeight = 40;  // Store max height of text elements
+		int cursorIndex = 0;
+		// print('start $cursorIndex');
 
 		// get expression chunks
 		List<String> exprChunks = splitExpression(text);
@@ -196,7 +182,7 @@ class TextFieldPainter extends CustomPainter {
 
 				// Notify parent widget if height has changed before drawing the fraction
 				maxHeight = maxHeight < numeratorPainter.height + denominatorPainter.height ? numeratorPainter.height + denominatorPainter.height : maxHeight;
-				onHeightChanged(maxHeight+15); // Add some padding
+				updateHeight(maxHeight+15); // Add some padding
 				
 				// calculate numerator and denominator offsets
 				double numOffsetX;
@@ -211,12 +197,12 @@ class TextFieldPainter extends CustomPainter {
 				// Draw the numerator
 				numeratorPainter.paint(canvas, Offset(numOffsetX, offsetY-numeratorPainter.height/2));
 				// append to box
-				boxList.add(Box(numerator, numOffsetX, offsetY-numeratorPainter.height/2, numeratorPainter.width, numeratorPainter.height));
+				boxList.add(Box(numerator, numOffsetX, offsetY-numeratorPainter.height/2, numeratorPainter.width, numeratorPainter.height, cursorIndex));
 
 				// Draw the denominator
 				denominatorPainter.paint(canvas, Offset(denOffsetX, offsetY+denominatorPainter.height/2));
 				// append to box
-				boxList.add(Box(denominator, denOffsetX, offsetY+denominatorPainter.height/2, denominatorPainter.width, denominatorPainter.height));
+				boxList.add(Box(denominator, denOffsetX, offsetY+denominatorPainter.height/2, denominatorPainter.width, denominatorPainter.height, cursorIndex));
 
 				// Draw the fraction line
 				double lineWidth = max(numeratorPainter.width, denominatorPainter.width);
@@ -241,32 +227,54 @@ class TextFieldPainter extends CustomPainter {
 
 				// Notify parent widget if height has changed before proceeding
 				maxHeight = maxHeight < textPainter.height ? textPainter.height : maxHeight;
-				onHeightChanged(maxHeight+15); // Add some padding
+				updateHeight(maxHeight+15); // Add some padding
 
 				// Paint each character chunk at the computed position
 				textPainter.paint(canvas, Offset(currentX, offsetY));
 				// append to box
-				boxList.add(Box(chars, currentX, offsetY, textPainter.width, textPainter.height));
+				boxList.add(Box(chars, currentX, offsetY, textPainter.width, textPainter.height, cursorIndex));
 
 				// Move X position forward based on character width
 				currentX += textPainter.width;
 			}
+			cursorIndex += chars.length;
 		}
 
 		// Paint cursor if visible
 		if (showCursor) {
+			bool boxFound = false;
 			for (int ci=0; ci < boxList.length; ci++) {
-				
 				if (boxList[ci].inBox(tapPosition)) {
 					final paint = Paint()..color = cursorColor;
-					canvas.drawRect(Rect.fromLTWH(boxList[ci].trueX, boxList[ci].offsetY , 2, 25), paint);
-					// controllerSelectionBaseOffset = boxList[ci].trueX;
+					canvas.drawRect(Rect.fromLTWH(boxList[ci].trueX, boxList[ci].offsetY , 2, 30), paint);
+					// print('tp1 $tapPosition ${boxList[ci].trueCursorIndex}');
+					updateTapPosition(Offset(boxList[ci].trueX, boxList[ci].offsetY));
+					// print('tp2 $tapPosition ${boxList[ci].trueCursorIndex}');
+					
+					cursorIndex = boxList[ci].trueCursorIndex;
+					boxFound = true;
 					break;
 				} else {
 					
 				}
 			}
+			if (!boxFound) {
+				// print(' shoul not be  in here');
+				if (tapPosition.dx < offsetX) {
+					// print('reached here $tapPosition ($offsetX, $offsetY)');
+					cursorIndex = 0;
+					final paint = Paint()..color = cursorColor;
+					canvas.drawRect(Rect.fromLTWH(offsetX, offsetY , 2, 30), paint);
+					updateTapPosition(Offset(offsetX, offsetY));
+				} else {
+					cursorIndex = pseudoText.length;
+					final paint = Paint()..color = cursorColor;
+					canvas.drawRect(Rect.fromLTWH(offsetX+textPainterAll.width, offsetY , 2, 30), paint);
+					updateTapPosition(Offset(offsetX+textPainterAll.width, offsetY));
+				}
+			}
 		}
+		updateCursorIndex(cursorIndex);
 	}
 
 	@override
@@ -331,16 +339,18 @@ class Box {
 	final double offsetY;
 	final double dx;
 	final double dy;
+	final int cursorIndex;
 	late double trueX;
+	late int trueCursorIndex;
 
-	Box(this.chars, this.offsetX, this.offsetY, this.dx, this.dy);
+	Box(this.chars, this.offsetX, this.offsetY, this.dx, this.dy, this.cursorIndex);
 	
 	bool inBox(pos) {
 		trueX = offsetX;
 
-		bool leftRight = pos.dx >= offsetX && pos.dx <= offsetX + dx;
-		bool topBottom = pos.dy >= offsetY && pos.dy <= offsetY + dy;
-		// debugPrint('$offsetX, $offsetY, $dx, $dy, $leftRight, $topBottom');
+		bool leftRight = pos.dx > offsetX && pos.dx < offsetX + dx;
+		bool topBottom = pos.dy > offsetY && pos.dy < offsetY + dy;
+		
 		if (leftRight && topBottom){
 			trueX = setTrueX(chars, pos.dx);
 			return true;
@@ -358,12 +368,14 @@ class Box {
 					textDirection: TextDirection.ltr,
 				)..layout();
 
-			if (posX >= currentX && posX <= currentX + textPainter.width) {
+			if (posX > currentX && posX < currentX + textPainter.width) {
+				trueCursorIndex = cursorIndex + i + 1;
 				return (posX~/currentX) * textPainter.width + currentX;
 			} else {
 				currentX += textPainter.width;
 			}
 		}
+		trueCursorIndex = cursorIndex;
 		return offsetX;
 	}
 

@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 class MyButton extends StatelessWidget {
 
   // declaring variables
-  final color;
-  final textColor;
+  final dynamic color;
+  final dynamic textColor;
   final String buttonText;
-  final buttontapped;
+  final dynamic buttontapped;
 
   //Constructor
   const MyButton({super.key, this.color, this.textColor,required this.buttonText, this.buttontapped});
@@ -27,7 +27,7 @@ class MyButton extends StatelessWidget {
                 buttonText,
                 style: TextStyle(
                   color: textColor,
-                  fontSize: 20,
+                  fontSize: 22,
                 ),
               ),
             ),
