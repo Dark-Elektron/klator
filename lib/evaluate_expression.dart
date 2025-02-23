@@ -6,7 +6,7 @@ class EquationSolver {
 	static String? solveEquation(String equation) {
 	// Remove spaces for consistent matching
 		equation = equation.replaceAll(' ', '');
-
+    
 		// Detect the variable used in the equation
 		RegExp variableRegEx = RegExp(r'[a-zA-Z]');
 		String variable = equation.contains(variableRegEx) ? equation[variableRegEx.firstMatch(equation)!.start] : 'x';
@@ -23,14 +23,14 @@ class EquationSolver {
 		double a = coeffsLHS[0] - coeffsRHS[0];
 		double b = coeffsLHS[1] - coeffsRHS[1];
 		double c = coeffsLHS[2] - coeffsRHS[2];
-
+    
 		// check if a = 0
 		if (a == 0) {
-			return 'x = ${properFormat(-c/b)}';
+			return '$variable = ${properFormat(-c/b)}';
 		}
 		// check if c = 0
 		if (c == 0) {
-			return 'x = 0\nx = ${properFormat(-b/a)}';
+			return '$variable = 0\n$variable = ${properFormat(-b/a)}';
 		}
 
 		double discriminant = b * b - 4 * a * c;
@@ -38,13 +38,13 @@ class EquationSolver {
 			// No real solutions
 			double rootReal = -b/(2*a);
 			double rootImag = sqrt(-discriminant)/(2*a);
-			return 'x = ${properFormat(rootReal, 4)} \u00B1 ${properFormat(rootImag, 4)}i';
+			return '$variable = ${properFormat(rootReal, 4)} \u00B1 ${properFormat(rootImag, 4)}i';
 		}
 
 		double root1 = 2*c/(-b + sqrt(discriminant));
 		double root2 = 2*c/(-b - sqrt(discriminant));
 		
-		return 'x = ${properFormat(root1, 6)}\nx = ${properFormat(root2)}';
+		return '$variable = ${properFormat(root1, 6)}\n$variable = ${properFormat(root2)}';
 	}
 
 	static List<double> getCoeff(String expression, String variable) {
@@ -177,6 +177,32 @@ class EquationSolver {
 		return solution.trim();
 	}
 }
+
+class Complex {
+  final double real;
+  final double imag;
+
+  Complex(this.real, this.imag);
+
+  Complex operator +(Complex other) => Complex(real + other.real, imag + other.imag);
+  Complex operator -(Complex other) => Complex(real - other.real, imag - other.imag);
+  Complex operator *(Complex other) => Complex(
+    real * other.real - imag * other.imag,
+    real * other.imag + imag * other.real,
+  );
+  Complex operator /(Complex other) {
+    double denom = other.real * other.real + other.imag * other.imag;
+    return Complex(
+      (real * other.real + imag * other.imag) / denom,
+      (imag * other.real - real * other.imag) / denom,
+    );
+  }
+
+  @override
+  String toString() =>
+      "${real.toStringAsFixed(2)} + ${imag.toStringAsFixed(2)}i";
+}
+
 
 double properFormat(double num, [int dp = PRECISION]) {
 		String formatted = num.toStringAsFixed(dp);
@@ -349,7 +375,7 @@ String toSubscript(String number) {
 String formatExponents(String expression) {
   // Mapping numbers and signs to superscript characters
   const Map<String, String> superscriptMap = {
-    '-': '\u207B', '+': '\u207A', '0': '\u2070', '1': '\u00B9', '2': '\u00B2', '3': '\u00B3',
+    '−': '\u207B', '+': '\u207A', '0': '\u2070', '1': '\u00B9', '2': '\u00B2', '3': '\u00B3',
     '4': '\u2074', '5': '\u2075', '6': '\u2076', '7': '\u2077',
     '8': '\u2078', '9': '\u2079', '(': '\u207D', ')': '\u207E' // Superscript brackets
   };
@@ -358,9 +384,13 @@ String formatExponents(String expression) {
   RegExp exponentRegex = RegExp(r'\^\(([^)]+)\)');
 
   return expression.replaceAllMapped(exponentRegex, (match) {
-    String exponent = match.group(1)!;
+    String exponent = match.group(1)!.trim(); // Trim spaces to avoid issues
+
     // Convert each character inside to superscript if it exists in the map, otherwise keep it
-    String superscript = exponent.split('').map((char) => superscriptMap[char] ?? char).join('');
+    String superscript = exponent.split('').map((char) {
+      return superscriptMap[char] ?? char;
+    }).join('');
+
     return superscript;
   });
 }
@@ -384,9 +414,7 @@ String processExponents(String expression) {
 
   // Regex to match a base number (with optional space) followed by a superscript sequence
   final RegExp regex = RegExp(
-    r'(?<=[0-9)])\s*['
-    r'⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+(\s*['
-    r'⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+)*',
+    r'(?<=[0-9a-zA-Z)])\s*[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+(\s*[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+)*',
   );
 
   return expression.replaceAllMapped(regex, (match) {
@@ -404,6 +432,12 @@ String processExponents(String expression) {
   });
 }
 
+String wrapNumbers(String expression) {
+  return expression.replaceAllMapped(
+    RegExp(r'(?<!\()\b\d+\b(?!\))'), // Matches numbers not already wrapped
+    (match) => '(${match[0]})'
+  );
+}
 
 bool containsSuperscripts(String expression) {
   // Regular expression to match superscript numbers
@@ -412,36 +446,5 @@ bool containsSuperscripts(String expression) {
 }
 
 void main() {
-// 	// print(EquationSolver.solveEquation('0 = x^(2) + 5x+1'));
-// 	// print(EquationSolver.solveLinearSystem('2x=+3y+x-3\n-5y-3y+2x+3x-9=7x+32y'));
-	
-// 	// print('$a, $b, $c');
-// 			// solution += '${variables[i]} = ${pF(determinant(tempMatrix) / mainDet)}\n';
-	
-//   print(processPermutation("2+3 + 8P8")); // Output: "2+3-6 + 8"
-//   print(processCombination("4 - 5 - 9C6 - 3P2")); // Output: "4 - 5 + 20 - 6"
-//   print(formatPermutationCombination("2+3-3P2 + 8")); // Output: "2+3-³P₂ + 8"
-//   print(formatPermutationCombination("4 - 5 + 5P2 - 3C2")); // Output: "4 - 5 + ⁵P₂ - ³C₂"
-	// print(processNRoot('42\u221A(9)'));
-  // print(formatNRoot('4\u207F\u221A(9)'));
-  print(processNRoot('²√(4 + 3)'));
-  print(processNRoot('²√(4 + 3)'));
-  print(processNRoot('²√(4 +3)'));
-  print(processNRoot('²√(4 -3)'));
-  print(processNRoot('²√(4 - 3)'));
-  print(processNRoot('²√(4 -3)'));
-	// print(processExponents("2+ 5² + 3³-5÷ 3 "));  // Output: "5^(2) + 3^(3)"
-	// print(processExponents("x⁷ - y⁹"));  // Output: "x^(7) - y^(9)"
-	// print(processExponents("+² - ⁵"));   // Output: "+² - ⁵" (No replacement)
-	// print(processExponents("4+ (2+3)²"));   // Output: "(2+3)^(2)"
-	// print(processExponents("5⁻²⁺⁸"));   // Output: "(2+3)^(2)"
-  // print(processExponents("2 + 6 ⁴ ⁻ ¹")); // Output: "(2+3)^(2)"
-	// print(processExponents("3* 8² ⁺  ⁸+4"));   // Output: "(2+3)^(2)"
-	// print(formatExponents("5^(-2+8+9) + 3^(3)"));     // Output: "5² + 3³"
-	// print(formatExponents("x^(7) - y^(9)"));     // Output: "x⁷ - y⁹"
-	// print(formatExponents("(2+3)^(2)"));         // Output: "(2+3)²"
-	// print(formatExponents("[4+5]^(+3)"));         // Output: "[4+5]³"
-	// print(formatExponents("{7+8}^(6)"));         // Output: "{7+8}⁶"
-	// print(formatExponents("2+(3^(2))"));         // Output: "2+(3²)"
-	// print(formatExponents("(2+3)^(2) + [4]^(3)"));// Output: "(2+3)² + [4]³"
+  print(wrapNumbers('2+3-4/2*5-8^2^3'));  // Output: (2+3-((4/2)*5)-(8^(2^3)))
 }

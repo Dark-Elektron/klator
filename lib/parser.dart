@@ -8,7 +8,7 @@ String parseExpression(String expression) {
   // Handle scientific notation with 'E'
   expression = expression.replaceAllMapped(
     RegExp(r'(\d+(?:\.\d*)?|\.\d+)E([+-]?\d+)'),
-    (match) => '${match[1]}*10^(${match[2]})',
+    (match) => '(${match[1]}*10^(${match[2]}))',
   );
 
   return expression;
