@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:klator/help.dart';
+import 'package:klator/utils.dart';
 import 'buttons.dart';
 import 'parser.dart';
-// import 'equation_field.dart';
 import 'evaluate_expression.dart';
 import 'package:function_tree/function_tree.dart';
+import 'settings.dart';
+import 'package:provider/provider.dart';
+import 'settings_provider.dart';
 
 void main() {
-//   WidgetsFlutterBinding.ensureInitialized();
-	
 //   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
-  runApp(MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (context) => SettingsProvider(),
+      child: MyApp(),
+      ),
+    );
 }
 
 class MyApp extends StatelessWidget {
@@ -18,18 +24,22 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.yellow,
-        fontFamily: 'OpenSans',
-		textSelectionTheme: TextSelectionThemeData(
-			cursorColor: Colors.black, // Cursor color
-			selectionColor: Colors.red.withValues(alpha: 0.4), // Highlight color
-			selectionHandleColor: Colors.red, // Handle color
-        ),
-      ),
-      home: HomePage(),
+    return Consumer<SettingsProvider>(
+      builder: (context, settings, child) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            primarySwatch: Colors.yellow,
+            fontFamily: 'OpenSans',
+        		textSelectionTheme: TextSelectionThemeData(
+        			cursorColor: Colors.black, // Cursor color
+        			selectionColor: Colors.red.withValues(alpha: 0.4), // Highlight color
+        			selectionHandleColor: Colors.red, // Handle color
+            ),
+          ),
+          home: HomePage(),
+        );
+      }
     ); // MaterialApp
   }
 }
@@ -167,7 +177,7 @@ class _HomePageState extends State<HomePage> {
 		'',
 		'',
 		'',
-		'',
+		'\u24D8',
 		'',
 	];
 
@@ -208,15 +218,24 @@ class _HomePageState extends State<HomePage> {
 
 	Container _buildContainer(index) {
 		TextEditingController controller = TextEditingController(); // create controller
-		controller.addListener(evaluateExpression);
+		controller.addListener((){
+            evaluateExpression(context.read<SettingsProvider>().precision.toInt());
+            }
+        );
 		textEditingControllers[index] = controller; // add controller to list
 
 		TextEditingController resController = TextEditingController(); // create controller
-		resController.addListener(evaluateExpression);
+		resController.addListener(() {
+            evaluateExpression(context.read<SettingsProvider>().precision.toInt());
+            }
+        );
 		textDisplayControllers[index] = resController; // add controller to list
 
 		TextEditingController customController = TextEditingController(); // create controller
-		customController.addListener(evaluateExpression);
+		customController.addListener(() {
+                evaluateExpression(context.read<SettingsProvider>().precision.toInt());
+            }
+        );
 		customTextEditingControllers[index] = customController; // add controller to list
 
 		focusNodes[index] = FocusNode();
@@ -271,7 +290,7 @@ class _HomePageState extends State<HomePage> {
 							height: 6,
 							)),
 					),
-					Text("NUMERIC", style: TextStyle(
+					Text("DECIMAL", style: TextStyle(
 								fontSize: 8,
 								color: Colors.grey),),
 					Expanded(
@@ -562,7 +581,6 @@ class _HomePageState extends State<HomePage> {
 													expressionInputManager(textEditingControllers[activeIndex], buttonsBasic[index]);
 													// expressionInputManager(customTextEditingControllers[activeIndex], buttonsBasic[index]);
 												});
-														HapticFeedback.heavyImpact();
 												},
 												buttonText: buttonsBasic[index],
 												color: isOperator(buttonsBasic[index])
@@ -588,10 +606,10 @@ class _HomePageState extends State<HomePage> {
 									controller: PageController(initialPage: 1, viewportFraction: 1/pagesPerView), // pgViewController(pagesPerView),
 									children: [
 									GridView.builder(
-														padding: EdgeInsets.zero,
-														gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5),
-														itemCount: buttonsSci.length,
-														itemBuilder: (BuildContext context, int index) {
+                    padding: EdgeInsets.zero,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5),
+                    itemCount: buttonsSci.length,
+                    itemBuilder: (BuildContext context, int index) {
 										// = button
 										if (index == 0) {
 										return MyButton(
@@ -686,7 +704,7 @@ class _HomePageState extends State<HomePage> {
 												// expressionInputManager(customTextEditingControllers[activeIndex], 'sin()');
 											});
 											},
-											buttonText: 'sin',
+											buttonText: buttonsSci[index],
 											color: Colors.white,
 											textColor: Colors.black,
 										);
@@ -700,7 +718,7 @@ class _HomePageState extends State<HomePage> {
 												// expressionInputManager(customTextEditingControllers[activeIndex], 'cos()');
 											});
 											},
-											buttonText: 'cos',
+											buttonText: buttonsSci[index],
 											color: Colors.white,
 											textColor: Colors.black,
 										);
@@ -714,7 +732,7 @@ class _HomePageState extends State<HomePage> {
 												// expressionInputManager(customTextEditingControllers[activeIndex], 'tan()');
 											});
 											},
-											buttonText: 'tan',
+											buttonText: buttonsSci[index],
 											color: Colors.white,
 											textColor: Colors.black,
 										);
@@ -728,7 +746,7 @@ class _HomePageState extends State<HomePage> {
 												// expressionInputManager(customTextEditingControllers[activeIndex], 'asin()');
 											});
 											},
-											buttonText: 'asin',
+											buttonText: buttonsSci[index],
 											color: Colors.white,
 											textColor: Colors.black,
 										);
@@ -742,7 +760,7 @@ class _HomePageState extends State<HomePage> {
 												// expressionInputManager(customTextEditingControllers[activeIndex], 'acos()');
 											});
 											},
-											buttonText: 'acos',
+											buttonText: buttonsSci[index],
 											color: Colors.white,
 											textColor: Colors.black,
 										);
@@ -756,7 +774,7 @@ class _HomePageState extends State<HomePage> {
 												// expressionInputManager(customTextEditingControllers[activeIndex], 'atan()');
 											});
 											},
-											buttonText: 'atan',
+											buttonText: buttonsSci[index],
 											color: Colors.white,
 											textColor: Colors.black,
 										);
@@ -981,7 +999,6 @@ class _HomePageState extends State<HomePage> {
 												expressionInputManager(textEditingControllers[activeIndex], buttons[index]);
 												// expressionInputManager(customTextEditingControllers[activeIndex], buttons[index]);
 											});
-																	HapticFeedback.heavyImpact();
 											},
 											buttonText: buttons[index],
 											color: isOperator(buttons[index])
@@ -993,118 +1010,132 @@ class _HomePageState extends State<HomePage> {
 										);
 										}
 									}),
-													GridView.builder(
-													padding: EdgeInsets.zero,
-													itemCount: buttons.length,
-													gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-														crossAxisCount: 5),
-													itemBuilder: (BuildContext context, int index) {
-													// complex number button
-													if (index == 0) {
-														return MyButton(
-														buttontapped: () {
-															setState(() {
-															expressionInputManager(textEditingControllers[activeIndex], 'ans');
-															// expressionInputManager(customTextEditingControllers[activeIndex], 'ans');
-															});
-														},
-														buttonText: buttonsR[index],
-														color: Colors.white,
-														textColor: Colors.black,
-														);
-													}
-													// complex number button
-													if (index == 1) {
-														return MyButton(
-														buttontapped: () {
-															setState(() {
-															expressionInputManager(textEditingControllers[activeIndex], 'i');
-															// expressionInputManager(customTextEditingControllers[activeIndex], 'i');
-															});
-														},
-														buttonText: buttonsR[index],
-														color: Colors.white,
-														textColor: Colors.black,
-														);
-													}
-													// factorial Button
-													else if (index == 2) {
-														return MyButton(
-														buttontapped: () {
-															setState(() {
-															expressionInputManager(textEditingControllers[activeIndex], '!');
-															// expressionInputManager(customTextEditingControllers[activeIndex], '!');
-															});
-														},
-														buttonText: buttonsR[index],
-														color: Colors.white,
-														textColor: Colors.black,
-														);
-													}
-													// permutation Button
-													else if (index == 3) {
-														return MyButton(
-														buttontapped: () {
-															setState(() {
-															expressionInputManager(textEditingControllers[activeIndex], 'P');
-															// expressionInputManager(customTextEditingControllers[activeIndex], 'P');
-															// textEditingControllers[activeIndex]!.text += ' \u00B7 ';
-															});
-														},
-														buttonText: '\u207FP\u2098',
-														color: Colors.white,
-														textColor: Colors.black,
-														);
-													}
-													// Combination Button
-													else if (index == 4) {
-														return MyButton(
-														buttontapped: () {
-															setState(() {
-															expressionInputManager(textEditingControllers[activeIndex], 'C');
-															// expressionInputManager(customTextEditingControllers[activeIndex], 'C');
-															});
-														},
-														buttonText: '\u207FC\u2098',
-														color: Colors.white,
-														textColor: Colors.black,
-														);
-													}
-													// Settings Button
-													else if (index == 19) {
-														return MyButton(
-														buttontapped: () {
-															setState(() {
-															if (textEditingControllers[activeIndex]!.text != '') {
-															_addDisplay(count);
-															}
-															});
-														},
-														buttonText: '\u2699',
-														color: Colors.white,
-														textColor: Colors.black,
-														);
-													}
-													//  other buttons
-													else {
-														return MyButton(
-														buttontapped: () {
-															setState(() {
-															expressionInputManager(textEditingControllers[activeIndex], buttons[index]);
-															// expressionInputManager(customTextEditingControllers[activeIndex], buttonsR[index]);
-															});
-														},
-														buttonText: buttonsR[index],
-														color: isOperator(buttonsR[index])
-															? Colors.white
-															: Colors.white,
-														textColor: isOperator(buttonsR[index])
-															? Colors.black
-															: Colors.black,
-														);
-													}
-													}),
-												],
+                  GridView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: buttons.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 5),
+                  itemBuilder: (BuildContext context, int index) {
+                  // ans button
+                  if (index == 0) {
+                    return MyButton(
+                    buttontapped: () {
+                      setState(() {
+                      expressionInputManager(textEditingControllers[activeIndex], 'ans');
+                      // expressionInputManager(customTextEditingControllers[activeIndex], 'ans');
+                      });
+                    },
+                    buttonText: buttonsR[index],
+                    color: Colors.white,
+                    textColor: Colors.black,
+                    );
+                  }
+                  // complex number button
+                  if (index == 1) {
+                    return MyButton(
+                    buttontapped: () {
+                      setState(() {
+                      expressionInputManager(textEditingControllers[activeIndex], 'i');
+                      // expressionInputManager(customTextEditingControllers[activeIndex], 'i');
+                      });
+                    },
+                    buttonText: buttonsR[index],
+                    color: Colors.white,
+                    textColor: Colors.grey,
+                    );
+                  }
+                  // factorial Button
+                  else if (index == 2) {
+                    return MyButton(
+                    buttontapped: () {
+                      setState(() {
+                      expressionInputManager(textEditingControllers[activeIndex], '!');
+                      // expressionInputManager(customTextEditingControllers[activeIndex], '!');
+                      });
+                    },
+                    buttonText: buttonsR[index],
+                    color: Colors.white,
+                    textColor: Colors.black,
+                    );
+                  }
+                  // permutation Button
+                  else if (index == 3) {
+                    return MyButton(
+                    buttontapped: () {
+                      setState(() {
+                      expressionInputManager(textEditingControllers[activeIndex], 'P');
+                      // expressionInputManager(customTextEditingControllers[activeIndex], 'P');
+                      // textEditingControllers[activeIndex]!.text += ' \u00B7 ';
+                      });
+                    },
+                    buttonText: '\u207FP\u2098',
+                    color: Colors.white,
+                    textColor: Colors.black,
+                    );
+                  }
+                  // Combination Button
+                  else if (index == 4) {
+                    return MyButton(
+                    buttontapped: () {
+                      setState(() {
+                      expressionInputManager(textEditingControllers[activeIndex], 'C');
+                      // expressionInputManager(customTextEditingControllers[activeIndex], 'C');
+                      });
+                    },
+                    buttonText: '\u207FC\u2098',
+                    color: Colors.white,
+                    textColor: Colors.black,
+                    );
+                  }
+                  // help Button
+                  else if (index == 18) {
+                    return MyButton(
+                    buttontapped: () {
+                      Navigator.push(
+                        context,
+                        SlidePageRoute(page: HelpPage()),
+                      );
+                    },
+                    buttonText: buttonsR[index],
+                    fontSize: 28,
+                    color: Colors.white,
+                    textColor: Colors.black,
+                    );
+                  }
+                    // Settings Button
+                    else if (index == 19) {
+                        return MyButton(
+                        buttontapped: () {
+                            Navigator.push(
+                            context,
+                            SlidePageRoute(page: SettingsScreen()),
+                            );
+                        },
+                        buttonText: '\u2699',
+                        color: Colors.white,
+                        textColor: Colors.black,
+                        );
+                    }
+                  //  other buttons
+                  else {
+                    return MyButton(
+                    buttontapped: () {
+                      setState(() {
+                      expressionInputManager(textEditingControllers[activeIndex], buttons[index]);
+                      // expressionInputManager(customTextEditingControllers[activeIndex], buttonsR[index]);
+                      });
+                    },
+                    buttonText: buttonsR[index],
+                    color: isOperator(buttonsR[index])
+                      ? Colors.white
+                      : Colors.white,
+                    textColor: isOperator(buttonsR[index])
+                      ? Colors.black
+                      : Colors.black,
+                    );
+                  }
+                  }),
+                ],
 								)
 							)
 						]
@@ -1271,13 +1302,11 @@ class _HomePageState extends State<HomePage> {
 		});
 	}
 	// function to calculate the input operation
-	void evaluateExpression() {
+	void evaluateExpression(int precision) {
 		String finalUserInput = textEditingControllers[activeIndex]!.text;
 
 		// decode input text
-    	print('textBeforeDecode $finalUserInput');
 		finalUserInput = decodeFromDisplay(finalUserInput);
-		print('textAfterDecode $finalUserInput');
 
 		// // update rawText
 		// rawText = finalUserInput;
@@ -1324,7 +1353,7 @@ class _HomePageState extends State<HomePage> {
 			} else {
 				final expression = finalUserInput;
 				dynamic eval = expression.interpret();
-				_updateAnswer(properFormat(eval).toString());
+				_updateAnswer(properFormat(eval, precision).toString());
 			}
 		
 		// answer = eval.toString();
