@@ -8,78 +8,83 @@ import 'package:function_tree/function_tree.dart';
 import 'settings.dart';
 import 'package:provider/provider.dart';
 import 'settings_provider.dart';
+// import 'plot.dart';
+import 'equation_field.dart';
+import 'abstract_syntax_tree.dart';
 
 void main() {
 //   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
-  runApp(
-    ChangeNotifierProvider(
-      create: (context) => SettingsProvider(),
-      child: MyApp(),
-      ),
-    );
+	runApp(
+		ChangeNotifierProvider(
+			create: (context) => SettingsProvider(),
+			child: MyApp(),
+			),
+		);
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+	const MyApp({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<SettingsProvider>(
-      builder: (context, settings, child) {
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            primarySwatch: Colors.yellow,
-            fontFamily: 'OpenSans',
-        		textSelectionTheme: TextSelectionThemeData(
-        			cursorColor: Colors.black, // Cursor color
-        			selectionColor: Colors.red.withValues(alpha: 0.4), // Highlight color
-        			selectionHandleColor: Colors.red, // Handle color
-            ),
-          ),
-          home: HomePage(),
-        );
-      }
-    ); // MaterialApp
-  }
+	@override
+	Widget build(BuildContext context) {
+		return Consumer<SettingsProvider>(
+			builder: (context, settings, child) {
+				return MaterialApp(
+					debugShowCheckedModeBanner: false,
+					theme: ThemeData(
+						primarySwatch: Colors.yellow,
+						fontFamily: 'Cambria',
+						textSelectionTheme: TextSelectionThemeData(
+							cursorColor: Colors.black, // Cursor color
+							selectionColor: Colors.red.withValues(alpha: 0.4), // Highlight color
+							selectionHandleColor: Colors.red, // Handle color
+						),
+					),
+					home: HomePage(),
+				);
+			}
+		); // MaterialApp
+	}
 }
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+	const HomePage({super.key});
 
-  @override
-  State<HomePage> createState() => _HomePageState();
+	@override
+	State<HomePage> createState() => _HomePageState();
 }
 
+
 class _HomePageState extends State<HomePage> {
-  Map<String, String> replacements = {
-	" \u2212 ": "-",
-	" \u002B ": "+",
-    " \u00B7 ": "*",
-    " \u00F7 ": "/",
-    "\u03C0": "*pi",
-	// "\u00B2": "^(2)",
-	// "\u221A": "sqrt",
-    "sin": "*sin",
-    "cos": "*cos",
-    "tan": "*tan",
-    "asin": "*asin",
-    "acos": "*acos",
-    "atan": "*atan",
-    "a*sin": "*asin",
-    "a*cos": "*acos",
-    "a*tan": "*atan",
-    "ln": "*ln",
-    "log": "*log",
-    "e": "*e",
-    "**": "*",
-    "* *": "*",
-    "* +": "*",
-    "- *": "- 1*",
-    "+ *": "+ 1*",
-    "/ *": "/",
-    "(*": "(",
-  };
+		Map<String, String> replacements = {
+				"\u2212": "-",
+				"\u002B": "+",
+				"\u00B7": "*",
+				"\u00F7": "/",
+				"\u03C0": "*pi",
+				// "\u00B2": "^(2)",
+				// "\u221A": "sqrt",
+				"\u00B0": '*(pi/180)',
+				"rad": '*(1/pi)*180',
+				"sin": "*sin",
+				"cos": "*cos",
+				"tan": "*tan",
+				"asin": "*asin",
+				"acos": "*acos",
+				"atan": "*atan",
+				"a*sin": "*asin",
+				"a*cos": "*acos",
+				"a*tan": "*atan",
+				"ln": "*ln",
+				"log": "*log",
+				"e": "*e",
+				"**": "*",
+				"*+": "*",
+				"-*": "- 1*",
+				"+*": "+ 1*",
+				"/*": "/",
+				"(*": "(",
+		};
 
 	int count = 0;
 	Map<int, TextEditingController> textEditingControllers = {};
@@ -91,6 +96,9 @@ class _HomePageState extends State<HomePage> {
 	PageController pgViewController = PageController(initialPage: 1, viewportFraction: 1);
 	bool isVisible = true;
 	bool isTypingExponent = false;
+		double plotMaxHeight = 300; // Initial height
+		double plotMinHeight = 21; // Initial height
+		// double _plotHeight = 100.0; // Initial height when collapsed
 
 	final List<String> buttonsBasic = [
 		'5',
@@ -148,7 +156,7 @@ class _HomePageState extends State<HomePage> {
 		'COS',
 		'TAN',
 		'y',
-		'RAD',
+		'\u00B0',
 		'ASIN',
 		'ACOS',
 		'ATAN',
@@ -203,7 +211,6 @@ class _HomePageState extends State<HomePage> {
 	void initState() {
 		super.initState();
 	}
-
 	
 	// double _opacity = 1.0; // Controls fade animation
 	void _updateAnswer(String newAnswer) {
@@ -216,26 +223,34 @@ class _HomePageState extends State<HomePage> {
 		activeIndex = index;
 	}
 
+//   void _updatePlotHeight(DragUpdateDetails details, double maxHeight) {
+//     setState(() {
+//         _plotHeight -= details.primaryDelta!; // Adjust height based on drag
+//         _plotHeight = _plotHeight.clamp(plotMinHeight, maxHeight + plotMinHeight,
+//       ); // Keep within bounds
+//     });
+//     // print(_plotHeight);
+//   }
 	Container _buildContainer(index) {
 		TextEditingController controller = TextEditingController(); // create controller
 		controller.addListener((){
-            evaluateExpression(context.read<SettingsProvider>().precision.toInt());
-            }
-        );
+						evaluateExpression(context.read<SettingsProvider>().precision.toInt());
+						}
+				);
 		textEditingControllers[index] = controller; // add controller to list
 
 		TextEditingController resController = TextEditingController(); // create controller
 		resController.addListener(() {
-            evaluateExpression(context.read<SettingsProvider>().precision.toInt());
-            }
-        );
+						evaluateExpression(context.read<SettingsProvider>().precision.toInt());
+						}
+				);
 		textDisplayControllers[index] = resController; // add controller to list
 
 		TextEditingController customController = TextEditingController(); // create controller
 		customController.addListener(() {
-                evaluateExpression(context.read<SettingsProvider>().precision.toInt());
-            }
-        );
+								evaluateExpression(context.read<SettingsProvider>().precision.toInt());
+						}
+				);
 		customTextEditingControllers[index] = customController; // add controller to list
 
 		focusNodes[index] = FocusNode();
@@ -245,7 +260,42 @@ class _HomePageState extends State<HomePage> {
 		child: Column(
 				mainAxisAlignment: MainAxisAlignment.end,
 				children: <Widget>[
-				Container(
+								// Insert SinChart as the first widget
+								// GestureDetector(
+								//     onVerticalDragUpdate: (details) => _updatePlotHeight(details, plotMaxHeight), // Handles dragging
+								//     child: AnimatedContainer(
+								//     duration: Duration(milliseconds: 200),
+								//     height: _plotHeight,
+								//     width: double.infinity,
+								//     decoration: BoxDecoration(
+								//         // color: Colors.blueGrey,
+								//     ),
+								//     child: Column(
+								//   children: [
+								//     // Drag Handle
+								//     Container(
+								//         width: 40,
+								//         height: 5,
+								//         margin: EdgeInsets.symmetric(vertical: 8),
+								//         decoration: BoxDecoration(
+								//             color: Colors.white,
+								//             borderRadius: BorderRadius.circular(10),
+								//         ),
+								//     ),
+								//     Expanded(
+								//         // height: 250, // Adjust height as needed
+								//         // color: Colors.white,
+								//         // padding: EdgeInsets.all(8.0),
+								//         child: AspectRatio(
+								//             aspectRatio: 2, // Maintains a 2:1 width-to-height ratio
+								//             child: SinChart(),
+								//         ),
+								//     ),
+								//   ],
+								// ),
+				//     )
+								// ),
+								Container(
 					color: Colors.blueGrey,
 					padding: EdgeInsets.all(0),
 					alignment: Alignment.centerRight,
@@ -254,30 +304,30 @@ class _HomePageState extends State<HomePage> {
 						duration: Duration(milliseconds: 500), // Smooth fade effect
 						opacity: isVisible ? 1.0 : 0.0,
 						child: TextField(
-						controller: controller,
-						maxLines: null, // Allows multiple lines
-						keyboardType: TextInputType.multiline, // Enables multi-line input
-						cursorColor: Colors.yellowAccent,
-						textAlign: TextAlign.center,
-						focusNode: focusNodes[index],
-						autofocus: false,
-						readOnly: true,
-						showCursor: true,
-						style: TextStyle(fontSize: 22.0, color: Colors.white),
-						decoration: InputDecoration(
-						border: InputBorder.none,  // This removes the underline or outline
-						),
-						onTap: () {focusManager(index);
-									if (isTypingExponent){
+							controller: controller,
+							maxLines: null, // Allows multiple lines
+							keyboardType: TextInputType.multiline, // Enables multi-line input
+							cursorColor: Colors.yellowAccent,
+							textAlign: TextAlign.center,
+							focusNode: focusNodes[index],
+							autofocus: false,
+							readOnly: true,
+							showCursor: true,
+							style: TextStyle(fontSize: 22.0, color: Colors.white),
+							decoration: InputDecoration(
+							border: InputBorder.none,  // This removes the underline or outline
+							),
+							onTap: () {focusManager(index);
+								if (isTypingExponent){
 										if (isTypingExponent && controller.selection.baseOffset == controller.text.length){
-											isTypingExponent = false;
-											String text = formatExponents(controller.text);
-											// adjust offset
-											controller.selection = TextSelection.fromPosition(TextPosition(offset: text.length));
-											controller.text = text;
-										}
-									}},
-					),
+												isTypingExponent = false;
+												String text = formatExponents(controller.text);
+												// adjust offset
+												controller.selection = TextSelection.fromPosition(TextPosition(offset: text.length));
+												controller.text = text;
+									}
+								}},
+						),
 					),
 				),
 		
@@ -327,23 +377,23 @@ class _HomePageState extends State<HomePage> {
 					),
 					),
 				),
-				//   Container(
-				//     // color: Colors.blueGrey,
-				//     width: double.infinity,
-				//     // decoration: BoxDecoration(border: Border.all()),
-				//     padding: EdgeInsets.all(0),
-				//     // alignment: Alignment.centerRight,
-				//     child: AnimatedOpacity(
-				// 		curve: Curves.easeIn,
-				// 		duration: Duration(milliseconds: 500), // Smooth fade effect
-				// 		opacity: isVisible ? 1.0 : 0.0,
-				// 		child: CustomTextField(
-				// 			text: "Initial text here",
-				// 			cursorColor: Colors.yellow,
-				// 			controller: customController,
-				// 			),
-				// 	),
-				//     ),
+					Container(
+						// color: Colors.blueGrey,
+						width: double.infinity,
+						// decoration: BoxDecoration(border: Border.all()),
+						padding: EdgeInsets.all(0),
+						// alignment: Alignment.centerRight,
+						child: AnimatedOpacity(
+						curve: Curves.easeIn,
+						duration: Duration(milliseconds: 500), // Smooth fade effect
+						opacity: isVisible ? 1.0 : 0.0,
+						child: CustomTextField(
+							// text: "Initial text here",
+							// cursorColor: Colors.yellow,
+							controller: customController,
+							),
+					),
+						),
 				]),
 		);
 	}
@@ -365,8 +415,8 @@ class _HomePageState extends State<HomePage> {
 
 	void _updateHeight(DragUpdateDetails details, double maxHeight) {
 		setState(() {
-		_boxHeight -= details.primaryDelta!; // Adjust height based on drag
-		_boxHeight = _boxHeight.clamp(_minHeight, maxHeight + _minHeight); // Keep within bounds
+						_boxHeight -= details.primaryDelta!; // Adjust height based on drag
+						_boxHeight = _boxHeight.clamp(_minHeight, maxHeight + _minHeight); // Keep within bounds
 		});
 	}
 
@@ -606,10 +656,10 @@ class _HomePageState extends State<HomePage> {
 									controller: PageController(initialPage: 1, viewportFraction: 1/pagesPerView), // pgViewController(pagesPerView),
 									children: [
 									GridView.builder(
-                    padding: EdgeInsets.zero,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5),
-                    itemCount: buttonsSci.length,
-                    itemBuilder: (BuildContext context, int index) {
+										padding: EdgeInsets.zero,
+										gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5),
+										itemCount: buttonsSci.length,
+										itemBuilder: (BuildContext context, int index) {
 										// = button
 										if (index == 0) {
 										return MyButton(
@@ -816,10 +866,28 @@ class _HomePageState extends State<HomePage> {
 												// expressionInputManager(customTextEditingControllers[activeIndex], 'logn()');
 											});
 											},
-											buttonText: 'LOG\u2099',
+											buttonText: 'LOG\u1D63',
 											color: Colors.white,
 											textColor: Colors.black,
 										);
+										}
+										else if (index == 11) {
+										return MyButton(
+											buttontapped: () {
+											setState(() {
+												expressionInputManager(textEditingControllers[activeIndex], buttonsSci[index].toLowerCase());
+												// expressionInputManager(customTextEditingControllers[activeIndex], buttonsSci[index].toLowerCase());
+											});
+											},
+											buttonText: '\u00B0',
+											color: isOperator(buttonsSci[index])
+												? Colors.white
+												: Colors.white,
+											textColor: isOperator(buttonsSci[index])
+												? Colors.black
+												: Colors.black,
+										);
+
 										}
 										//  other buttons
 										else {
@@ -889,7 +957,7 @@ class _HomePageState extends State<HomePage> {
 											buttontapped: () {
 											setState(() {
 												expressionInputManager(textEditingControllers[activeIndex], ' \u002B ');
-												// expressionInputManager(customTextEditingControllers[activeIndex], ' \u002B ');
+												// expressionInputManager(customTextEditingControllers[activeIndex], '\u002B');
 												// textEditingControllers[activeIndex]!.text += ' \u00B7 ';
 											});
 											},
@@ -904,7 +972,7 @@ class _HomePageState extends State<HomePage> {
 											buttontapped: () {
 											setState(() {
 												expressionInputManager(textEditingControllers[activeIndex], ' \u2212 ');
-												// expressionInputManager(customTextEditingControllers[activeIndex], ' \u2212 ');
+												// expressionInputManager(customTextEditingControllers[activeIndex], '\u2212');
 												// textEditingControllers[activeIndex]!.text += ' \u00B7 ';
 											});
 											},
@@ -919,7 +987,7 @@ class _HomePageState extends State<HomePage> {
 											buttontapped: () {
 											setState(() {
 												expressionInputManager(textEditingControllers[activeIndex], ' \u00B7 ');
-												// expressionInputManager(customTextEditingControllers[activeIndex], ' \u00B7 ');
+												// expressionInputManager(customTextEditingControllers[activeIndex], '\u00B7');
 												// textEditingControllers[activeIndex]!.text += ' \u00B7 ';
 											});
 											},
@@ -934,7 +1002,7 @@ class _HomePageState extends State<HomePage> {
 											buttontapped: () {
 											setState(() {
 												expressionInputManager(textEditingControllers[activeIndex], ' \u00F7 ');
-												// expressionInputManager(customTextEditingControllers[activeIndex], ' \u00F7 ');
+												// expressionInputManager(customTextEditingControllers[activeIndex], '\u00F7');
 											});
 											},
 											buttonText: '\u00F7',
@@ -975,15 +1043,15 @@ class _HomePageState extends State<HomePage> {
 										return MyButton(
 											buttontapped: () {
 											setState(() {
-																if (textEditingControllers[activeIndex]!.text != '') {
-																	// check if more than one variable in expression
-																	String text = textEditingControllers[activeIndex]!.text;
-																	if (countVariablesInExpressions(text) > text.split('\n').length){
-																		textEditingControllers[activeIndex]!.text += '\n';
-																	} else {
-																		_addDisplay(count);
-																	}
-																}
+												if (textEditingControllers[activeIndex]!.text != '') {
+														// check if more than one variable in expression
+														String text = textEditingControllers[activeIndex]!.text;
+														if (countVariablesInExpressions(text) > text.split('\n').length){
+																textEditingControllers[activeIndex]!.text += '\n';
+														} else {
+																_addDisplay(count);
+														}
+												}
 											});
 											},
 											buttonText: '\u2318',
@@ -1010,132 +1078,132 @@ class _HomePageState extends State<HomePage> {
 										);
 										}
 									}),
-                  GridView.builder(
-                  padding: EdgeInsets.zero,
-                  itemCount: buttons.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 5),
-                  itemBuilder: (BuildContext context, int index) {
-                  // ans button
-                  if (index == 0) {
-                    return MyButton(
-                    buttontapped: () {
-                      setState(() {
-                      expressionInputManager(textEditingControllers[activeIndex], 'ans');
-                      // expressionInputManager(customTextEditingControllers[activeIndex], 'ans');
-                      });
-                    },
-                    buttonText: buttonsR[index],
-                    color: Colors.white,
-                    textColor: Colors.black,
-                    );
-                  }
-                  // complex number button
-                  if (index == 1) {
-                    return MyButton(
-                    buttontapped: () {
-                      setState(() {
-                      expressionInputManager(textEditingControllers[activeIndex], 'i');
-                      // expressionInputManager(customTextEditingControllers[activeIndex], 'i');
-                      });
-                    },
-                    buttonText: buttonsR[index],
-                    color: Colors.white,
-                    textColor: Colors.grey,
-                    );
-                  }
-                  // factorial Button
-                  else if (index == 2) {
-                    return MyButton(
-                    buttontapped: () {
-                      setState(() {
-                      expressionInputManager(textEditingControllers[activeIndex], '!');
-                      // expressionInputManager(customTextEditingControllers[activeIndex], '!');
-                      });
-                    },
-                    buttonText: buttonsR[index],
-                    color: Colors.white,
-                    textColor: Colors.black,
-                    );
-                  }
-                  // permutation Button
-                  else if (index == 3) {
-                    return MyButton(
-                    buttontapped: () {
-                      setState(() {
-                      expressionInputManager(textEditingControllers[activeIndex], 'P');
-                      // expressionInputManager(customTextEditingControllers[activeIndex], 'P');
-                      // textEditingControllers[activeIndex]!.text += ' \u00B7 ';
-                      });
-                    },
-                    buttonText: '\u207FP\u2098',
-                    color: Colors.white,
-                    textColor: Colors.black,
-                    );
-                  }
-                  // Combination Button
-                  else if (index == 4) {
-                    return MyButton(
-                    buttontapped: () {
-                      setState(() {
-                      expressionInputManager(textEditingControllers[activeIndex], 'C');
-                      // expressionInputManager(customTextEditingControllers[activeIndex], 'C');
-                      });
-                    },
-                    buttonText: '\u207FC\u2098',
-                    color: Colors.white,
-                    textColor: Colors.black,
-                    );
-                  }
-                  // help Button
-                  else if (index == 18) {
-                    return MyButton(
-                    buttontapped: () {
-                      Navigator.push(
-                        context,
-                        SlidePageRoute(page: HelpPage()),
-                      );
-                    },
-                    buttonText: buttonsR[index],
-                    fontSize: 28,
-                    color: Colors.white,
-                    textColor: Colors.black,
-                    );
-                  }
-                    // Settings Button
-                    else if (index == 19) {
-                        return MyButton(
-                        buttontapped: () {
-                            Navigator.push(
-                            context,
-                            SlidePageRoute(page: SettingsScreen()),
-                            );
-                        },
-                        buttonText: '\u2699',
-                        color: Colors.white,
-                        textColor: Colors.black,
-                        );
-                    }
-                  //  other buttons
-                  else {
-                    return MyButton(
-                    buttontapped: () {
-                      setState(() {
-                      expressionInputManager(textEditingControllers[activeIndex], buttons[index]);
-                      // expressionInputManager(customTextEditingControllers[activeIndex], buttonsR[index]);
-                      });
-                    },
-                    buttonText: buttonsR[index],
-                    color: isOperator(buttonsR[index])
-                      ? Colors.white
-                      : Colors.white,
-                    textColor: isOperator(buttonsR[index])
-                      ? Colors.black
-                      : Colors.black,
-                    );
-                  }
-                  }),
-                ],
+																		GridView.builder(
+																		padding: EdgeInsets.zero,
+																		itemCount: buttons.length,
+																		gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+																				crossAxisCount: 5),
+																		itemBuilder: (BuildContext context, int index) {
+																		// ans button
+																		if (index == 0) {
+																				return MyButton(
+																				buttontapped: () {
+																				setState(() {
+																				expressionInputManager(textEditingControllers[activeIndex], 'ans');
+																				// expressionInputManager(customTextEditingControllers[activeIndex], 'ans');
+																				});
+																				},
+																				buttonText: buttonsR[index],
+																				color: Colors.white,
+																				textColor: Colors.black,
+																				);
+																		}
+																		// complex number button
+																		if (index == 1) {
+																				return MyButton(
+																				buttontapped: () {
+																				setState(() {
+																				expressionInputManager(textEditingControllers[activeIndex], 'i');
+																				// expressionInputManager(customTextEditingControllers[activeIndex], 'i');
+																				});
+																				},
+																				buttonText: buttonsR[index],
+																				color: Colors.white,
+																				textColor: Colors.grey,
+																				);
+																		}
+																		// factorial Button
+																		else if (index == 2) {
+																				return MyButton(
+																				buttontapped: () {
+																				setState(() {
+																				expressionInputManager(textEditingControllers[activeIndex], '!');
+																				// expressionInputManager(customTextEditingControllers[activeIndex], '!');
+																				});
+																				},
+																				buttonText: buttonsR[index],
+																				color: Colors.white,
+																				textColor: Colors.black,
+																				);
+																		}
+																		// permutation Button
+																		else if (index == 3) {
+																				return MyButton(
+																				buttontapped: () {
+																				setState(() {
+																				expressionInputManager(textEditingControllers[activeIndex], 'P');
+																				// expressionInputManager(customTextEditingControllers[activeIndex], 'P');
+																				// textEditingControllers[activeIndex]!.text += ' \u00B7 ';
+																				});
+																				},
+																				buttonText: '\u207FP\u1D63',
+																				color: Colors.white,
+																				textColor: Colors.black,
+																				);
+																		}
+																		// Combination Button
+																		else if (index == 4) {
+																				return MyButton(
+																				buttontapped: () {
+																				setState(() {
+																				expressionInputManager(textEditingControllers[activeIndex], 'C');
+																				// expressionInputManager(customTextEditingControllers[activeIndex], 'C');
+																				});
+																				},
+																				buttonText: '\u207FC\u1D63',
+																				color: Colors.white,
+																				textColor: Colors.black,
+																				);
+																		}
+																		// help Button
+																		else if (index == 18) {
+																				return MyButton(
+																				buttontapped: () {
+																				Navigator.push(
+																						context,
+																						SlidePageRoute(page: HelpPage()),
+																				);
+																				},
+																				buttonText: buttonsR[index],
+																				fontSize: 28,
+																				color: Colors.white,
+																				textColor: Colors.black,
+																				);
+																		}
+																				// Settings Button
+																				else if (index == 19) {
+																						return MyButton(
+																						buttontapped: () {
+																								Navigator.push(
+																								context,
+																								SlidePageRoute(page: SettingsScreen()),
+																								);
+																						},
+																						buttonText: '\u2699',
+																						color: Colors.white,
+																						textColor: Colors.black,
+																						);
+																				}
+																		//  other buttons
+																		else {
+																				return MyButton(
+																				buttontapped: () {
+																					setState(() {
+																					expressionInputManager(textEditingControllers[activeIndex], buttons[index]);
+																					// expressionInputManager(customTextEditingControllers[activeIndex], buttonsR[index]);
+																				});
+																				},
+																				buttonText: buttonsR[index],
+																				color: isOperator(buttonsR[index])
+																				? Colors.white
+																				: Colors.white,
+																				textColor: isOperator(buttonsR[index])
+																				? Colors.black
+																				: Colors.black,
+																				);
+																		}
+																		}),
+																		],
 								)
 							)
 						]
@@ -1161,6 +1229,15 @@ class _HomePageState extends State<HomePage> {
 	void expressionInputManager(controller, textToInsert) {
 		dynamic text = controller.text;
 		dynamic cursorPos = controller.selection.baseOffset;
+		// print(text);
+		
+		// print(cursorPos);
+
+		int selectionStart = controller.selection.start;
+		int selectionEnd = controller.selection.end;
+
+		// List of functions that require parentheses
+		List<String> functions = ['log()', 'ln()', 'sin()', 'cos()', 'tan()', 'asin()', 'acos()', 'atan()', '^()', '^(2)', '\u207F\u221A()', '2\u207F\u221A()', '\u00B2', 'abs'];
 
 		if (cursorPos < 0) {
 			// If no cursor is set, append at the end
@@ -1177,39 +1254,151 @@ class _HomePageState extends State<HomePage> {
 					);
 			}
 		} else {
-			// Insert text at cursor position
-			String newText = text.replaceRange(cursorPos, cursorPos, textToInsert);
-			// format text
-			if (newText.contains('P') || newText.contains('C')){
-				newText = formatPermutationCombination(newText);
-			}
-			if (newText.contains('\u207F\u221A')){
-				newText = formatNRoot(newText);
-			}
-			if (newText.contains('^')) {
-				if (isTypingExponent) {
+			// If text is selected, wrap it in parentheses
+			if (selectionStart != selectionEnd) {
+				String selectedText = text.substring(selectionStart, selectionEnd);
+				String newText;
 
+				if (functions.contains(textToInsert)) {
+					// If inserting a function, wrap the selection in function parentheses
+					newText = text.replaceRange(selectionStart, selectionEnd, "${textToInsert.replaceAll('()', '')}($selectedText)");
+				} else if (textToInsert == "()") {
+					// If inserting parentheses, wrap the selected text
+					newText = text.replaceRange(selectionStart, selectionEnd, "($selectedText)");
 				} else {
-					newText = formatExponents(newText);
+					// Default insertion
+					newText = text.replaceRange(cursorPos, cursorPos, textToInsert);
+				}
+
+				controller.text = newText;
+				int textLength = textToInsert.length;
+				controller.selection = TextSelection.collapsed(offset: selectionEnd + textLength);
+			} else {
+				// Insert text at cursor position
+				String newText = text.replaceRange(cursorPos, cursorPos, textToInsert);
+				
+				// format text
+				if (newText.contains('P') || newText.contains('C')){
+					newText = formatPermutationCombination(newText);
+				}
+				if (newText.contains('\u207F\u221A')){
+					newText = formatNRoot(newText);
+				}
+				if (newText.contains('^')) {
+					if (isTypingExponent) {
+
+					} else {
+						newText = formatExponents(newText);
+					}
+				}
+				
+				controller.text = newText;
+
+				// Move cursor to the end of inserted text
+				if (textToInsert.contains('()')) {
+					controller.selection = TextSelection.collapsed(offset: cursorPos + textToInsert.length - 1);
+				} else {
+					controller.selection = TextSelection.fromPosition(
+					TextPosition(offset: cursorPos + textToInsert.length),
+					);
 				}
 			}
+		}
+	}
 
-			controller.text = newText;
+	void expressionInputManager_(controller, textToInsert) {
+		dynamic text = controller.text;
+		dynamic cursorPos = controller.selection.baseOffset;
+		// print(text);
+		
+		// print(cursorPos);
 
+		int selectionStart = controller.selection.start;
+		int selectionEnd = controller.selection.end;
+
+		// List of functions that require parentheses
+		List<String> functions = ['log()', 'ln()', 'sin()', 'cos()', 'tan()', 'asin()', 'acos()', 'atan()', '^()', '^(2)', '\u207F\u221A()', '2\u207F\u221A()', '\u00B2', 'abs'];
+
+		if (cursorPos < 0) {
+			// If no cursor is set, append at the end
+			controller.text = text + textToInsert;
+		
 			// Move cursor to the end of inserted text
 			if (textToInsert.contains('()')) {
-				controller.selection = TextSelection.collapsed(offset: cursorPos + textToInsert.length - 1);
+				controller.selection = TextSelection.fromPosition(
+					TextPosition(offset: controller.text.length - 1),
+					);
 			} else {
 				controller.selection = TextSelection.fromPosition(
-				TextPosition(offset: cursorPos + textToInsert.length),
-				);
+					TextPosition(offset: controller.text.length),
+					);
+			}
+		} else {
+			// If text is selected, wrap it in parentheses
+			if (selectionStart != selectionEnd) {
+				String selectedText = text.substring(selectionStart, selectionEnd);
+				String newText;
+
+				if (functions.contains(textToInsert)) {
+					// If inserting a function, wrap the selection in function parentheses
+					newText = text.replaceRange(selectionStart, selectionEnd, "${textToInsert.replaceAll('()', '')}($selectedText)");
+				} else if (textToInsert == "()") {
+					// If inserting parentheses, wrap the selected text
+					newText = text.replaceRange(selectionStart, selectionEnd, "($selectedText)");
+				} else {
+					// Default insertion
+					newText = text.replaceRange(cursorPos, cursorPos, textToInsert);
+				}
+
+				controller.text = newText;
+				int textLength = textToInsert.length;
+				controller.selection = TextSelection.collapsed(offset: selectionEnd + textLength);
+			} else {
+				// Insert text at cursor position
+				String newText = text.replaceRange(cursorPos, cursorPos, textToInsert);
+				
+				// format text
+				if (newText.contains('P') || newText.contains('C')){
+					newText = formatPermutationCombination(newText);
+				}
+				if (newText.contains('\u207F\u221A')){
+					newText = formatNRoot(newText);
+				}
+				if (newText.contains('^')) {
+					if (isTypingExponent) {
+
+					} else {
+						newText = formatExponents(newText);
+					}
+				}
+				
+				// // wrap expression
+				// print('newText $newText');
+				//  try {
+				// 	controller.text = Parser(tokenize(newText)).parseExpression().toString();
+				// 	print('parser text ${Parser(tokenize(newText)).parseExpression().toString()}');
+				// } catch (e) {
+				// 	controller.text = IncompleteNode(newText).toString();
+				// 	print('parser text incin ${IncompleteNode(newText).toString()}');
+				// }
+				controller.text = wrapNumbers(newText);
+				// controller.text = newText;
+
+				// Move cursor to the end of inserted text
+				if (textToInsert.contains('()')) {
+					controller.selection = TextSelection.collapsed(offset: cursorPos + textToInsert.length - 1);
+				} else {
+					controller.selection = TextSelection.fromPosition(
+					TextPosition(offset: cursorPos + textToInsert.length),
+					);
+				}
 			}
 		}
 	}
 
 	int countVariablesInExpressions(String expressions) {
 		// Regular expression to match variables (single letters a-z, A-Z)
-		RegExp variableRegex = RegExp(r'(?<!\w)([a-zA-Z])(?!\s*\()');
+		RegExp variableRegex = RegExp(r'(?<!\w)([a-bd-hj-oq-zA-BD-HJ-OQ-Z])(?!\s*\()');
 		
 		// Extract unique variable names from all lines
 		Set<String> variables = {};
@@ -1229,6 +1418,7 @@ class _HomePageState extends State<HomePage> {
 		if (!selection.isValid) return; // Ensure the selection is valid
 
 		int cursorPos = selection.baseOffset;
+				// print(cursorPos);
 
 		if (cursorPos == -1) return; // No cursor position available
 
@@ -1290,27 +1480,29 @@ class _HomePageState extends State<HomePage> {
 			// // Delete character after cursor
 			// if (cursorPos < text.length) {
 			//   controller.text = text.substring(0, cursorPos) + text.substring(cursorPos + 1);
-			//   controller.selection = TextSelection.collapsed(offset: cursorPos);
+			//   controller.selection = TextSelection.collapsed(offset: cursorPos-1);
 			// }
 			}
 		}
+		
+		// print(controller.text);
 	}
 
 	void updateAnswer(TextEditingController controller, double ans) {
 		setState(() {
-		  
+			
 		});
 	}
 	// function to calculate the input operation
 	void evaluateExpression(int precision) {
 		String finalUserInput = textEditingControllers[activeIndex]!.text;
-
+				finalUserInput = finalUserInput.replaceAll(' ', '');
 		// decode input text
 		finalUserInput = decodeFromDisplay(finalUserInput);
 
 		// // update rawText
 		// rawText = finalUserInput;
-
+		
 		finalUserInput = replaceMultiple(finalUserInput, replacements).replaceFirst(RegExp(r'^\*+\s*'), '');
 
 		// replace answer it if exists
@@ -1339,7 +1531,7 @@ class _HomePageState extends State<HomePage> {
 			if (finalUserInput.contains('\u221A')) {
 				finalUserInput = processNRoot(finalUserInput);
 			}
-
+						
 			// check if expression is regular, singleVariable or multiVariable
 			if (['x', 'y', 'z', '='].every((parameter) => finalUserInput.contains(parameter))){
 				dynamic eval = EquationSolver.solveLinearSystem(finalUserInput);
@@ -1347,7 +1539,7 @@ class _HomePageState extends State<HomePage> {
 			} else if (['x', 'y', '='].every((parameter) => finalUserInput.contains(parameter))){
 				dynamic eval = EquationSolver.solveLinearSystem(finalUserInput);
 				_updateAnswer(eval.toString());
-			} else if (['x', '='].every((parameter) => finalUserInput.contains(parameter))) {
+			} else if (['x', 'y', 'z', '='].any((parameter) => finalUserInput.contains(parameter))) {
 				dynamic eval = EquationSolver.solveEquation(finalUserInput);
 				_updateAnswer(eval.toString());
 			} else {

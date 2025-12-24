@@ -41,13 +41,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: settings.isDarkTheme,
             onChanged: settings.toggleDarkTheme,
           ),
-          SwitchListTile(
-            title: Text('Angle Mode (Radians)'),
-            activeColor: Colors.white,
-            activeTrackColor: Colors.blueGrey,
-            value: settings.isRadians,
-            onChanged: settings.toggleRadians,
-          ),
+          // SwitchListTile(
+          //   title: Text('Angle Mode (Radians)'),
+          //   activeColor: Colors.white,
+          //   activeTrackColor: Colors.blueGrey,
+          //   value: settings.isRadians,
+          //   onChanged: settings.toggleRadians,
+          // ),
           SwitchListTile(
             title: Text('Haptic Feedback'),
             activeColor: Colors.white,

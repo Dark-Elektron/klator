@@ -1,0 +1,133 @@
+// {
+//     "workbench.colorCustomizations": {
+
+//         "editor.foreground": "#FFFFFF",
+//         "editor.background": "#607080",
+//         "editor.selectionBackground": "#FFA07A",
+//         "editor.selectionHighlightBackground": "#F4997564",
+//         "editor.wordHighlightBackground": "#E48E6C81",
+//         "editor.wordHighlightStrongBackground": "#9B4F31AA",
+//         "editorCursor.foreground": "#FFFF00",
+//         "terminalCursor.foreground": "#FFFF00",
+//         "editorLineNumber.foreground": "#B0C4DE",
+//         "editorGutter.background": "#49D7DE36",
+//         "editorGutter.modifiedBackground": "#FFD700",
+//         "editorGutter.addedBackground": "#32CD32",
+//         "editorGutter.deletedBackground": "#FF4500",
+//         "tab.activeBackground": "#8E9292",
+//         "tab.activeForeground": "#FFFFFF",
+//         "editorFoldingControlForeground": "#FF8C00",
+//         "editorBracketMatch.background": "#ffffff",
+//         "editorBracketHighlight.foreground1": "#FF4500",
+//         "editorBracketHighlight.foreground2": "#32CD32",
+//         "editorBracketHighlight.foreground3": "#00e1ff",
+//         "activityBar.background": "#607080",
+//         "activityBar.foreground": "#ffffff",
+//         "activityBar.border": "#238ca1",
+//         "sideBar.background": "#607080",
+//         "sideBar.foreground": "#FFFFFF",
+//         "sideBarSectionHeader.background": "#8E9292",
+//         "sideBarTitle.foreground": "#FFD700",
+//         "statusBar.background": "#607080",
+//         "statusBar.foreground": "#FFFFFF",
+//         "statusBar.border": "#00bfff",
+//         "editorGroupHeader.tabsBackground": "#607080",
+//         "editorGroupHeader.border": "#00fff7",
+//         "button.background": "#32CD32",
+//         "button.foreground": "#FFFFFF",
+//         "button.hoverBackground": "#228B22",
+//         "panel.background": "#607080",
+//         "panel.border": "#00e1ff"
+//     },
+//     "editor.tokenColorCustomizations": {
+//         "textMateRules": [
+//             {
+//                 "scope": [
+// 					"comment",
+//                     "comment.line",
+//                     "comment.block.documentation",
+//                     "comment.block"
+//                 ],
+//                 "settings": {
+//                     "foreground": "#00ffff72"
+//                 }
+//             },
+//             {
+//                 "scope": "keyword",
+//                 "settings": {
+//                     "foreground": "#FF8C00"
+//                 }
+//             },
+//             {
+//                 "scope": "string",
+//                 "settings": {
+//                     "foreground": "#32CD32"
+//                 }
+//             },
+//             {
+//                 "scope": [
+//                     "variable",
+//                     "variable.other",
+// 					"variable.other.object",
+//                     "variable.other.local",
+//                     "variable.other.instance",
+//                     "support.class"
+//                 ],
+//                 "settings": {
+//                     "foreground": "#ffbb00"
+//                 }
+//             },
+//             {
+//                 "scope": [
+// 					"function",
+// 					"meta.function-call"
+// 				],
+//                 "settings": {
+//                     "foreground": "#ff6a00"
+//                 }
+//             },
+//             {
+//                 "scope": "number",
+//                 "settings": {
+//                     "foreground": "#DC143C"
+//                 }
+//             },
+//             {
+//                 "scope": "type",
+//                 "settings": {
+//                     "foreground": "#9370DB"
+//                 }
+//             },
+//             {
+//                 "scope": "punctuation",
+//                 "settings": {
+//                     "foreground": "#FFFFFF"
+//                 }
+//             },
+// 			{
+//                 "scope": [
+//                     "variable.unused",
+//                     "variable.other.unused"
+//                 ],
+//                 "settings": {
+//                     "foreground": "#d75555"  // Light gray for unused variables
+//                 }
+//             },
+// 			{
+//                 "scope": [
+//                     "variable.parameter",
+//                     "meta.function.parameter"
+//                 ],
+//                 "settings": {
+//                     "foreground": "#ff00c3"  // Change to white
+//                 }
+//             },
+//             {
+//                 "scope": "entity.name.type.class",
+//                 "settings": {
+//                     "foreground": "#00e5ff"  // Replace with your desired hex colour
+//                 }
+//             }
+//         ]
+//     }
+// }

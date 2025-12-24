@@ -1,382 +1,262 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-// import 'package:flutter/services.dart';
+import 'package:klator/constants.dart';
 import 'dart:math';
-import 'constants.dart';
+import 'ast.dart';
 
 class CustomTextField extends StatefulWidget {
-	final String text; // Initial text content
-	final int initialcursorIndex; // Initial cursor position
-	final Color cursorColor; // Cursor color
-	final TextEditingController controller; // TextEditingController
-	final int cursorIndex; // Tracks cursor location
+  final TextEditingController controller;
 
-	const CustomTextField({
-		super.key,
-		this.text = '',
-		this.initialcursorIndex = 0,
-		this.cursorColor = Colors.yellow,
-		required this.controller, // Required controller for text manipulation
-		this.cursorIndex = 0,
-	});
+  const CustomTextField({super.key, required this.controller});
 
-	@override
-	State<CustomTextField> createState() => _CustomTextFieldState();
+  @override
+  State<CustomTextField> createState() => _CustomTextFieldState();
 }
 
+class _CustomTextFieldState extends State<CustomTextField> with SingleTickerProviderStateMixin {
 
-class _CustomTextFieldState extends State<CustomTextField> {
-	late Offset tapPosition; // Tracks cursor location
-	bool showCursor = true; // Controls cursor blinking
-	final FocusNode focusNode = FocusNode();
-	late int cursorIndex;
-	double textFieldHeight = 50; // Initial height
-
-	void updateHeight(double newHeight) {
-		if (newHeight != textFieldHeight) {
-			textFieldHeight = newHeight;
-		}
-	}
-	
-	void updateCursorIndex(int indexUpdate) {
-		cursorIndex = indexUpdate;
-		
-		// Explicitly update controller selection after cursor position is computed
-		WidgetsBinding.instance.addPostFrameCallback((_) {
-			widget.controller.selection = TextSelection.collapsed(offset: cursorIndex);
-		});
-	}
-	
-	void updateTapPosition(Offset tapPositionUpdate) {
-		tapPosition = tapPositionUpdate;
-	}
+	late Box cursor = Box(0, 0, 0, 0);
+	late final AnimationController _cursorBlinkController;
+	late final Animation<double> _cursorBlinkAnimation;
+	late final Map<String, dynamic> rootNode;
+	late double mathTextEditorWidth;
+	late double mathTextEditorHeight;
 
 	@override
 	void initState() {
+		
+		// List<String> tokens = tokenize('7/3487 + 90+7865 + 56^98');
+		// List<String> tokens = tokenize('2+7\u00B7 4');
+		List<String> tokens = tokenize('2 + 7/48');
+		Parser parser = Parser(tokens);
+		ExpressionNode ast = parser.parseExpression();
+		print("AST: ${ast.toString()}\n");
+		rootNode = ast.tree;
+		mathTextEditorWidth = rootNode['width'];
+		mathTextEditorHeight = rootNode['height'];
+		printMap(rootNode);
+
 		super.initState();
-		cursorIndex = widget.initialcursorIndex; // Set the initial cursor position
-		tapPosition = Offset.zero; // Set the initial cursor position
+		_cursorBlinkController = AnimationController(
+		vsync: this,
+		duration: const Duration(milliseconds: 500),
+		)..repeat(reverse: true);
+		_cursorBlinkAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(_cursorBlinkController);
+	}
 
-		// Listener for text changes in the controller
-		widget.controller.addListener(() {
-			setState(() {
-				// Update cursor position based on controller's selection
-				cursorIndex = widget.controller.selection.baseOffset;
-			});
-		});
-
-		// Blinking cursor
-		Timer.periodic(const Duration(milliseconds: 500), (timer) {
-			if (focusNode.hasFocus) {
-				setState(() => showCursor = !showCursor);
-			} else {
-				setState(() => showCursor = false);
-			}
-		});
+	@override
+	void dispose() {
+		_cursorBlinkController.dispose();
+		super.dispose();
 	}
 
 	@override
 	Widget build(BuildContext context) {
-		return Listener(
-			onPointerUp: (event) {
-				final RenderBox box = context.findRenderObject() as RenderBox;
-				final Offset localPosition = box.globalToLocal(event.position);
+		return GestureDetector(
+		onTapDown: (TapDownDetails details) {
+			setState(() {
+				Offset position = details.localPosition; // Relative to the widget
+				print('\n tapposition (${position.dx}, ${position.dy}) \n');
+				Box? box = findSmallestContainingBox(rootNode, position.dx, position.dy);
+				print('found $box');
+				box ??= rootNode['box'][0];// If a best box is found, decide which edge (left or right) is closer to the given x-coordinate.
 				
-				tapPosition = localPosition;
-				// print('${event.position}, $tapPosition');
-				
-				FocusScope.of(context).requestFocus(focusNode); // Activate keyboard
+				box = getCorrectEdge(box!, position.dx, position.dy);
+				cursor = box;
+			});
+		},
+		child: AnimatedBuilder(
+			animation: _cursorBlinkController,
+			builder: (context, child) {
+			return CustomPaint(
+				painter: MathExpressionPainter(rootNode, cursor, _cursorBlinkAnimation.value > 0.5),
+				foregroundPainter: BorderPainter(
+					borderColor: Colors.grey,
+					borderWidth: 2.0,
+				),
+				size: Size(400, mathTextEditorHeight),
+			);
 			},
-			child: AnimatedSize(
-				curve: Curves.linear,
-				duration: const Duration(milliseconds: 200),
-				child: CustomPaint(
-					painter: TextFieldPainter(
-						widget.controller.text,
-						tapPosition,
-						showCursor,
-						widget.cursorColor,
-						updateCursorIndex,
-						updateHeight,
-						updateTapPosition,
-					),
-					size: Size(30, textFieldHeight), // Set the size of the area where the text is rendered
-					),
-			),
-		// ),
+		),
 		);
 	}
 }
 
-/// **CustomPainter for Rendering Text & Cursor**
-class TextFieldPainter extends CustomPainter {
-	final String text;
-	late Offset tapPosition; // Tracks cursor location
+class MathExpressionPainter extends CustomPainter {
+	final Map<String, dynamic> rootNode;
+	final Box cursor;
 	final bool showCursor;
-	final Color cursorColor;
-	final Function(int) updateCursorIndex; // Callback to update cursorIndex
-	final Function(double) updateHeight; // Callback to update height
-	final Function(Offset) updateTapPosition; // Callback to update height
+	static const double boxWidth = 20;
+	static const double boxHeight = 40;
+	static const double boxPadding = 5;
+	static const double parenthesisPadding = 2;
 
-	// list for box objects
-	List<Box> boxList = [];
-
-	TextFieldPainter(this.text, this.tapPosition, this.showCursor, this.cursorColor, this.updateCursorIndex, this.updateHeight, this.updateTapPosition);
+	MathExpressionPainter(this.rootNode, this.cursor, this.showCursor);
 
 	@override
-	//     canvas.drawRect(Rect.fromLTWH(cursorX, offsetY, 2, 25), paint);
-	//   }
-	// }
 	void paint(Canvas canvas, Size size) {
-		double maxHeight = 40;  // Store max height of text elements
-		int cursorIndex = 0;
-		// print('start $cursorIndex');
+		double totalExpressionWidth = rootNode['width'];
+		double totalExpressionHeight = rootNode['height'];
+		// print('expression width $totalExpressionWidth');
+		// double startX = (size.width - totalExpressionWidth) / 2;
+		double startX = 0;
 
-		// get expression chunks
-		List<String> exprChunks = splitExpression(text);
+		// _drawNode(canvas, rootNode, startX, size.height / 2);
+		_drawNode(canvas, rootNode, startX, 17.5);
 
-		// Get pseudo text which should be the same width as fraction formatted text
-		String pseudoText = getPseudoText(exprChunks);
+		if (showCursor) {
+			final cursorPaint = Paint()
+				..color = Colors.yellow
+				..strokeWidth = 2.0;
+				
+			canvas.drawLine(
+				Offset(startX + cursor.offsetX, 17.5+cursor.offsetY-cursor.height/2),
+				Offset(startX + cursor.offsetX, 17.5+cursor.offsetY+cursor.height/2),
+				cursorPaint,
+			);
+		}
+	}
 
-		final textPainterAll = TextPainter(
-				text: TextSpan(text: pseudoText, style: TextStyle(color: Colors.white, fontSize: FONTSIZE)),
+	double _drawNode(Canvas canvas, dynamic tree, double x, double y) {
+
+		double startX = x;
+
+		if (tree['kind'] == 'FunctionNode') {
+			_drawText(canvas, tree["left"]['value'], startX, y);
+			startX += boxWidth + boxPadding;
+			_drawText(canvas, "(", startX, y);
+			startX += parenthesisPadding;
+			double enclosedWidth = _drawNode(canvas, tree["left"], startX, y);
+			startX += enclosedWidth + parenthesisPadding;
+			_drawText(canvas, ")", startX, y);
+			startX += boxWidth / 2;
+
+			return boxWidth + enclosedWidth + 2 * parenthesisPadding;
+		}
+
+		if (tree['kind'] == 'BinaryNode'){
+			if (tree['value']['op']['value'] == '/') {
+				dynamic left = tree['value']["left"];
+				// dynamic op = tree['value']["op"];
+				dynamic right = tree['value']["right"];
+
+				double numeratorWidth = left['width'];
+				double denominatorWidth = right['width'];
+				double fractionWidth = max(numeratorWidth, denominatorWidth);
+				
+				_drawNode(canvas, tree['value']['left'], startX + (fractionWidth - numeratorWidth) / 2, y + left['box'][0].offsetY);
+				_drawNode(canvas, tree['value']['right'], startX + (fractionWidth - denominatorWidth) / 2, y + right['box'][0].offsetY);
+
+				final linePaint = Paint()..color = Colors.white..strokeWidth = 1.50;
+				double divLineOffsetY = 17.5+right['box'][0].offsetY - right['box'][0].height/2;
+				canvas.drawLine(Offset(startX, divLineOffsetY), Offset(startX + fractionWidth, divLineOffsetY), linePaint);
+
+				return fractionWidth;
+			} else if (tree['value']['op']['value'] == '^') {
+				dynamic left = tree['value']["left"];
+				// dynamic op = tree['value']["op"];
+				dynamic right = tree['value']["right"];
+
+				double numeratorWidth = left['width'];
+				double denominatorWidth = right['width'];
+				double fractionWidth = max(numeratorWidth, denominatorWidth);
+				
+				_drawNode(canvas, tree['value']['left'], startX, y + left['box'][0].offsetY);
+				startX += left['width'];
+
+				_drawNode(canvas, tree['value']['right'], startX, y + right['box'][0].offsetY);
+
+				return fractionWidth;
+			} else {
+				dynamic left = tree['value']["left"];
+				dynamic op = tree['value']["op"];
+				dynamic right = tree['value']["right"];
+				
+				_drawNode(canvas, left, startX, y);
+				startX += left['width'];
+
+				_drawText(canvas, op['value'], startX, y);
+				startX += op['width'];
+
+				_drawNode(canvas, right, startX, y);
+				startX += right['width'];
+			}
+		}
+
+		if (tree['kind'] == 'NumberNode') {
+      		double fontSize = tree['fontscale'] * FONTSIZE;
+
+			final textPainter = TextPainter(
+				text: TextSpan(text: tree['value'], style: TextStyle(color: Colors.white, fontSize: fontSize)),
 				textAlign: TextAlign.center,
 				textDirection: TextDirection.ltr,
-			)..layout(maxWidth: size.width); // Ensure text doesn't overflow the container's widt
-
-		// Calculate horizontal and vertical alignment offsets
-		double offsetX = (size.width - textPainterAll.width) / 2;
-		double offsetY = (size.height - textPainterAll.height) / 2;
-
-		double currentX = offsetX; // set current cursor to offset
-
-		for (int i = 0; i < exprChunks.length; i++) {
-			String chars = exprChunks[i];
-
-			// Iterate over each character and paint separately
-			if (chars.contains('\u00F7')) {
-				// get index of division symbol
-				int index = chars.indexOf('\u00F7');
-				String numerator;
-				String denominator;
-
-				if (index != -1 && index != 0) {
-					numerator = chars.substring(0, index);
-					denominator = chars.substring(index + 1);
-				} else {
-					// Configure fraction text painter
-					numerator = '[  ]';
-					denominator = '[  ]';
-				}
-
-				final numeratorPainter = TextPainter(
-					text: TextSpan(text: numerator, style: const TextStyle(color: Colors.white, fontSize: FONTSIZE)),
-					textDirection: TextDirection.ltr,
-				)..layout();
-
-				// Draw the denominator
-				final denominatorPainter = TextPainter(
-					text: TextSpan(text: denominator, style: const TextStyle(color: Colors.white, fontSize: FONTSIZE)),
-					textDirection: TextDirection.ltr,
-				)..layout();
-
-				// Notify parent widget if height has changed before drawing the fraction
-				maxHeight = maxHeight < numeratorPainter.height + denominatorPainter.height ? numeratorPainter.height + denominatorPainter.height : maxHeight;
-				updateHeight(maxHeight+15); // Add some padding
-				
-				// calculate numerator and denominator offsets
-				double numOffsetX;
-				double denOffsetX;
-				if (numeratorPainter.width >= denominatorPainter.width) {
-					numOffsetX = currentX;
-					denOffsetX = currentX + numeratorPainter.width/2 - denominatorPainter.width/2;
-				} else {
-					numOffsetX = currentX - numeratorPainter.width/2 + denominatorPainter.width/2;
-					denOffsetX = currentX;
-				}
-				// Draw the numerator
-				numeratorPainter.paint(canvas, Offset(numOffsetX, offsetY-numeratorPainter.height/2));
-				// append to box
-				boxList.add(Box(numerator, numOffsetX, offsetY-numeratorPainter.height/2, numeratorPainter.width, numeratorPainter.height, cursorIndex));
-
-				// Draw the denominator
-				denominatorPainter.paint(canvas, Offset(denOffsetX, offsetY+denominatorPainter.height/2));
-				// append to box
-				boxList.add(Box(denominator, denOffsetX, offsetY+denominatorPainter.height/2, denominatorPainter.width, denominatorPainter.height, cursorIndex));
-
-				// Draw the fraction line
-				double lineWidth = max(numeratorPainter.width, denominatorPainter.width);
-				final linePaint = Paint()..color = Colors.white;
-				linePaint.strokeWidth = 2.0;
-
-				double startX = min(numOffsetX, denOffsetX);
-				double endX = startX + lineWidth;
-
-				canvas.drawLine(Offset(startX, offsetY+numeratorPainter.height/2), Offset(endX, offsetY+numeratorPainter.height/2), linePaint);
-				
-				// Move X position forward based on character width
-				currentX += lineWidth;
-				
-			} else {
-				// Configure text painter
-				final textPainter = TextPainter(
-					text: TextSpan(text: chars, style: TextStyle(color: Colors.white, fontSize: FONTSIZE)),
-					textAlign: TextAlign.center,
-					textDirection: TextDirection.ltr,
-				)..layout();
-
-				// Notify parent widget if height has changed before proceeding
-				maxHeight = maxHeight < textPainter.height ? textPainter.height : maxHeight;
-				updateHeight(maxHeight+15); // Add some padding
-
-				// Paint each character chunk at the computed position
-				textPainter.paint(canvas, Offset(currentX, offsetY));
-				// append to box
-				boxList.add(Box(chars, currentX, offsetY, textPainter.width, textPainter.height, cursorIndex));
-
-				// Move X position forward based on character width
-				currentX += textPainter.width;
-			}
-			cursorIndex += chars.length;
+			)..layout();
+			// textPainter.paint(canvas, Offset(startX, y - textPainter.height / 2));
+			textPainter.paint(canvas, Offset(startX, y - tree['height'] / 2));
 		}
 
-		// Paint cursor if visible
-		if (showCursor) {
-			bool boxFound = false;
-			for (int ci=0; ci < boxList.length; ci++) {
-				if (boxList[ci].inBox(tapPosition)) {
-					final paint = Paint()..color = cursorColor;
-					canvas.drawRect(Rect.fromLTWH(boxList[ci].trueX, boxList[ci].offsetY , 2, 30), paint);
-					// print('tp1 $tapPosition ${boxList[ci].trueCursorIndex}');
-					updateTapPosition(Offset(boxList[ci].trueX, boxList[ci].offsetY));
-					// print('tp2 $tapPosition ${boxList[ci].trueCursorIndex}');
-					
-					cursorIndex = boxList[ci].trueCursorIndex;
-					boxFound = true;
-					break;
-				} else {
-					
-				}
-			}
-			if (!boxFound) {
-				// print(' shoul not be  in here');
-				if (tapPosition.dx < offsetX) {
-					// print('reached here $tapPosition ($offsetX, $offsetY)');
-					cursorIndex = 0;
-					final paint = Paint()..color = cursorColor;
-					canvas.drawRect(Rect.fromLTWH(offsetX, offsetY , 2, 30), paint);
-					updateTapPosition(Offset(offsetX, offsetY));
-				} else {
-					cursorIndex = pseudoText.length;
-					final paint = Paint()..color = cursorColor;
-					canvas.drawRect(Rect.fromLTWH(offsetX+textPainterAll.width, offsetY , 2, 30), paint);
-					updateTapPosition(Offset(offsetX+textPainterAll.width, offsetY));
-				}
-			}
-		}
-		updateCursorIndex(cursorIndex);
+		return  0;
 	}
 
-	@override
-	bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  void _drawText(Canvas canvas, String text, double x, double y, {fontScale = 1}) {
+    final textPainter = TextPainter(
+      text: TextSpan(text: text, style: const TextStyle(color: Colors.white, fontSize: FONTSIZE)),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    )..layout();
 
-	List<String> splitExpression(String expression) {
-		// Regular expression to match +, -, (, and ) while keeping them in the result
-		final RegExp regex = RegExp(r'(\+|-|\(|\))');
-		
-		// Split the expression but keep the delimiters in the result using capturing groups
-		List<String> parts = expression.splitMapJoin(
-			regex,
-			onMatch: (match) => match.group(0)!, // Keep the match in the result
-			onNonMatch: (nonMatch) => nonMatch, // Keep non-matching parts as well
-		).split(''); // Split into individual characters
+    textPainter.paint(canvas, Offset(x, y - textPainter.height / 2));
+  }
 
-		List<String> result = [];
-		String currentPart = '';
-		
-		// Loop through the characters and build the expression parts
-		for (var char in parts) {
-			if (char == '+' || char == '-' || char == '(' || char == ')') {
-			if (currentPart.isNotEmpty) {
-				result.add(currentPart); // Add the previous part (number or operator before)
-				currentPart = '';
-			}
-			result.add(char); // Add the operator or parenthesis
-			} else {
-			currentPart += char; // Add to the current part (number or other)
-			}
-		}
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) {
+    return true;
+  }
 
-		if (currentPart.isNotEmpty) {
-			result.add(currentPart); // Add the final part if exists
-		}
-		// print(result);
-		return result;
-	}
-
-	String getPseudoText(List<String> chunks) {
-		String pseudoText = '';
-
-		for (int i=0; i < chunks.length; i++) {
-			if (chunks[i].contains('\u00F7')) {
-				// Split the string at the separator
-				List<String> parts = chunks[i].split('\u00F7');
-				if (parts.length == 2) {
-					// Get the lengths of both parts
-					pseudoText += parts[0].length > parts[1].length ? parts[0] : parts[1];
-				}
-			} else {
-				pseudoText += chunks[i];
-			}
-		}
-		return pseudoText;
-	}
+  bool _isFunction(String value) {
+    return value == 'sqrt' || value == 'log' || value == 'sin' || value == 'cos';
+  }
 }
 
-class Box {
-	final String chars;
-	final double offsetX;
-	final double offsetY;
-	final double dx;
-	final double dy;
-	final int cursorIndex;
-	late double trueX;
-	late int trueCursorIndex;
+// class ExpressionNode {
+//   String value;
+//   ExpressionNode? left, right;
+//   ExpressionNode(this.value, {this.left, this.right});
+// }
 
-	Box(this.chars, this.offsetX, this.offsetY, this.dx, this.dy, this.cursorIndex);
-	
-	bool inBox(pos) {
-		trueX = offsetX;
+// ExpressionNode buildExpressionTree() {
+//   return ExpressionNode(
+//     "+",
+//     left: ExpressionNode(
+//       "sqrt",
+//       left: ExpressionNode(
+//         "+",
+//         left: ExpressionNode("16"),
+//         right: ExpressionNode(
+//           "/",
+//           left: ExpressionNode("89"),
+//           right: ExpressionNode("7"),
+//         ),
+//       ),
+//     ),
+//     right: ExpressionNode("65"),
+//   );
+// }
+class BorderPainter extends CustomPainter {
+  final Color borderColor;
+  final double borderWidth;
 
-		bool leftRight = pos.dx > offsetX && pos.dx < offsetX + dx;
-		bool topBottom = pos.dy > offsetY && pos.dy < offsetY + dy;
-		
-		if (leftRight && topBottom){
-			trueX = setTrueX(chars, pos.dx);
-			return true;
-		} else {
-			return false;
-		}
-	}
+  BorderPainter({this.borderColor = Colors.black, this.borderWidth = 2.0});
 
-	double setTrueX(chars, posX) {
-		double currentX = offsetX;
-		for (int i=0; i < chars.length; i++) {
-			final textPainter = TextPainter(
-					text: TextSpan(text: chars[i], style: TextStyle(color: Colors.white, fontSize: FONTSIZE)),
-					textAlign: TextAlign.center,
-					textDirection: TextDirection.ltr,
-				)..layout();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final paint = Paint()
+      ..color = borderColor
+      ..strokeWidth = borderWidth
+      ..style = PaintingStyle.stroke;
+    canvas.drawRect(rect, paint);
+  }
 
-			if (posX > currentX && posX < currentX + textPainter.width) {
-				trueCursorIndex = cursorIndex + i + 1;
-				return (posX~/currentX) * textPainter.width + currentX;
-			} else {
-				currentX += textPainter.width;
-			}
-		}
-		trueCursorIndex = cursorIndex;
-		return offsetX;
-	}
-
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
