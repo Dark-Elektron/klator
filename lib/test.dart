@@ -1,281 +1,502 @@
-import 'dart:math';
+import 'package:flutter/material.dart';
 
-class Offset {
-  double x, y;
-  Offset(this.x, this.y);
+void main() => runApp(const MyApp());
+
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'App Tutorial Demo',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const HomeScreen(),
+    );
+  }
 }
 
-class ExpressionNode {
-  dynamic value; // A number, operator, or nested map (e.g. fraction)
-  Offset left, right;
-  String kind;
-  List<int> index; // The index path in the tree
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({Key? key}) : super(key: key);
 
-  ExpressionNode({
-    required this.value,
-    required this.left,
-    required this.right,
-    required this.kind,
-    required this.index,
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final GlobalKey _fabKey = GlobalKey();
+  final GlobalKey _menuKey = GlobalKey();
+  final GlobalKey _searchKey = GlobalKey();
+  bool _showTutorial = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Show tutorial after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_showTutorial) {
+        _startTutorial();
+      }
+    });
+  }
+
+  void _startTutorial() {
+    showTutorial(
+      context: context,
+      steps: [
+        TutorialStep(
+          targetKey: _searchKey,
+          title: 'Search',
+          description: 'Tap here to search for items',
+          shape: BoxShape.circle,
+        ),
+        TutorialStep(
+          targetKey: _menuKey,
+          title: 'Menu',
+          description: 'Access your profile and settings here',
+          shape: BoxShape.circle,
+        ),
+        TutorialStep(
+          targetKey: _fabKey,
+          title: 'Add New',
+          description: 'Tap this button to create something new',
+          shape: BoxShape.circle,
+          pulseAnimation: true,
+        ),
+      ],
+      onComplete: () {
+        setState(() => _showTutorial = false);
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My App'),
+        actions: [
+          IconButton(
+            key: _searchKey,
+            icon: const Icon(Icons.search),
+            onPressed: () {},
+          ),
+          IconButton(
+            key: _menuKey,
+            icon: const Icon(Icons.menu),
+            onPressed: () {},
+          ),
+        ],
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('Welcome to the App!'),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _startTutorial,
+              child: const Text('Restart Tutorial'),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        key: _fabKey,
+        onPressed: () {},
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class TutorialStep {
+  final GlobalKey targetKey;
+  final String title;
+  final String description;
+  final BoxShape shape;
+  final bool pulseAnimation;
+
+  TutorialStep({
+    required this.targetKey,
+    required this.title,
+    required this.description,
+    this.shape = BoxShape.rectangle,
+    this.pulseAnimation = false,
   });
 }
 
-class ExpressionTree {
-  // Top-level tree stored as a map with string keys.
-  Map<String, ExpressionNode> tree = {};
-  int currentIndex = 0;
-  List<int> selectedNodeIndex = []; // E.g. [2,1] means inside node at key "2", child "1"
-  String selectedPosition = "";     // E.g. "left" or "right"
+void showTutorial({
+  required BuildContext context,
+  required List<TutorialStep> steps,
+  required VoidCallback onComplete,
+}) {
+  Navigator.of(context).push(
+    PageRouteBuilder(
+      opaque: false,
+      pageBuilder: (context, _, __) => TutorialOverlay(
+        steps: steps,
+        onComplete: onComplete,
+      ),
+    ),
+  );
+}
 
-  /// Insert a new node. If a number is inserted immediately after a number,
-  /// the new number is appended to the previous node’s value.
-  void insert(dynamic value, String kind) {
-    // If tree is empty, create the root node.
-    if (tree.isEmpty) {
-      tree['0'] = ExpressionNode(
-        value: value,
-        left: Offset(0, 0),
-        right: Offset(0, 0),
-        kind: kind,
-        index: [0],
-      );
-      currentIndex++;
-      return;
-    }
+class TutorialOverlay extends StatefulWidget {
+  final List<TutorialStep> steps;
+  final VoidCallback onComplete;
 
-    // Special case: if we are inserting a number and there's an active fraction node
-    // with an empty denominator, insert into the denominator.
-    if (kind == "numberNode" &&
-        tree.containsKey("2") &&
-        tree["2"]!.kind == "fractionNode") {
-      ExpressionNode fraction = tree["2"]!;
-      Map<String, ExpressionNode> fracChildren = fraction.value as Map<String, ExpressionNode>;
-      if (fracChildren["2"]!.value == "") {
-        // Place the new number in the denominator slot.
-        fracChildren["2"] = ExpressionNode(
-          value: value,
-          left: Offset(0, 0),
-          right: Offset(0, 0),
-          kind: kind,
-          // We want the denominator to keep its designated index.
-          index: [fraction.index.first, 2],
-        );
-        return;
-      }
-    }
+  const TutorialOverlay({
+    Key? key,
+    required this.steps,
+    required this.onComplete,
+  }) : super(key: key);
 
-    // If inserting an operator that creates a fraction node.
-    if (kind == "symbol" && (value == "*" || value == "/" || value == "^")) {
-      String lastKey = (currentIndex - 1).toString();
-      if (!tree.containsKey(lastKey)) return; // Ensure previous node exists
+  @override
+  State<TutorialOverlay> createState() => _TutorialOverlayState();
+}
 
-      ExpressionNode lastNode = tree.remove(lastKey)!;
+class _TutorialOverlayState extends State<TutorialOverlay>
+    with SingleTickerProviderStateMixin {
+  int _currentStep = 0;
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
 
-      // Create a fraction node using the same index as the removed node.
-      int fractionIndex = int.parse(lastKey);
-      ExpressionNode fractionNode = ExpressionNode(
-        value: {
-          "0": lastNode, // Numerator: we want its index to be just [fractionIndex]
-          "1": ExpressionNode(
-            value: value,
-            left: Offset(0, 0),
-            right: Offset(0, 0),
-            kind: "symbol",
-            index: [fractionIndex, 1],
-          ), // Operator gets a sub-index.
-          "2": ExpressionNode(
-            value: "", // Denominator placeholder.
-            left: Offset(0, 0),
-            right: Offset(0, 0),
-            kind: "numberNode",
-            index: [fractionIndex, 2],
-          ),
-        },
-        left: Offset(0, 0),
-        right: Offset(0, 0),
-        kind: "fractionNode",
-        index: [fractionIndex],
-      );
-
-      tree[lastKey] = fractionNode;
-      return;
-    }
-
-    // Otherwise, if we're inserting a number node, check the last node.
-    String lastKey = (currentIndex - 1).toString();
-    if (kind == "numberNode" && tree.containsKey(lastKey)) {
-      ExpressionNode lastNode = tree[lastKey]!;
-      if (lastNode.kind == "numberNode") {
-        // Append the new number to the existing number.
-        lastNode.value = lastNode.value.toString() + value.toString();
-        return;
-      }
-    }
-
-    // Normal insertion: create a new node.
-    tree[currentIndex.toString()] = ExpressionNode(
-      value: value,
-      left: Offset(0, 0),
-      right: Offset(0, 0),
-      kind: kind,
-      index: [currentIndex],
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
     );
-    currentIndex++;
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    );
+    _controller.forward();
   }
 
-  /// Delete the node at the current selection.
-  /// For example, if a fraction's operator ("/") is selected, remove it and merge
-  /// the fraction node accordingly.
-  void deleteAtSelection() {
-    if (selectedNodeIndex.isEmpty) return;
-    // For simplicity, assume the first element of selectedNodeIndex is a key in the main tree.
-    String key = selectedNodeIndex.first.toString();
-    if (!tree.containsKey(key)) return;
-    ExpressionNode node = tree[key]!;
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
-    // Handle deletion inside a fraction node.
-    if (node.kind == "fractionNode" && selectedNodeIndex.length > 1) {
-      Map<String, ExpressionNode> fracChildren = node.value as Map<String, ExpressionNode>;
-      // If selecting the operator (assumed at index [*,1]) for deletion.
-      if (selectedPosition == "right") {
-        fracChildren.remove("1");
-        // If the denominator is empty, flatten the fraction (promote the numerator).
-        if (fracChildren["2"]!.value == "") {
-          tree[key] = fracChildren["0"]!;
-        } else {
-          // Otherwise, merge numerator and denominator into one number.
-          String merged = "${fracChildren["0"]!.value}${fracChildren["2"]!.value}";
-          tree[key] = ExpressionNode(
-            value: merged,
-            left: fracChildren["0"]!.left,
-            right: fracChildren["2"]!.right,
-            kind: "numberNode",
-            index: node.index,
-          );
-        }
-      }
+  void _nextStep() {
+    if (_currentStep < widget.steps.length - 1) {
+      setState(() => _currentStep++);
     } else {
-      // Otherwise, perform a normal deletion.
-      tree.remove(key);
+      _controller.reverse().then((_) {
+        Navigator.of(context).pop();
+        widget.onComplete();
+      });
     }
-    _reindexTree();
   }
 
-  /// Insert text at the currently selected node.
-  /// If the selected node is a number node, the text is appended.
-  void insertAtSelection(String text, String kind) {
-    if (selectedNodeIndex.isEmpty) return;
-    String key = selectedNodeIndex.first.toString();
-    if (!tree.containsKey(key)) return;
-    ExpressionNode node = tree[key]!;
-    if (node.kind == "numberNode") {
-      node.value = node.value.toString() + text;
-    }
-    _reindexTree();
-  }
-
-  /// Re-index the top-level nodes so that the indices remain sequential.
-  void _reindexTree() {
-    int newIndex = 0;
-    Map<String, ExpressionNode> newTree = {};
-    tree.forEach((key, node) {
-      node.index = [newIndex];
-      newTree[newIndex.toString()] = node;
-      newIndex++;
+  void _skipTutorial() {
+    _controller.reverse().then((_) {
+      Navigator.of(context).pop();
+      widget.onComplete();
     });
-    tree = newTree;
-    currentIndex = newIndex;
   }
 
-  /// Simulated selection: store the index path and a position (e.g. "left", "right")
-  void selectNode(List<int> index, String position) {
-    selectedNodeIndex = index;
-    selectedPosition = position;
-    print("Selected Node: ${index.join(",")} ($position)");
-  }
+  @override
+  Widget build(BuildContext context) {
+    final step = widget.steps[_currentStep];
+    final RenderBox? renderBox =
+        step.targetKey.currentContext?.findRenderObject() as RenderBox?;
 
-  /// Print the tree in a readable format.
-  void printTree({String indent = ""}) {
-    void printNode(ExpressionNode node, String levelIndent) {
-      print("$levelIndent- Kind: ${node.kind}, Value: ${node.value is Map ? '{Nested Expression}' : node.value}, Index: ${node.index}");
-      if (node.value is Map) {
-        (node.value as Map<String, ExpressionNode>).forEach((key, child) {
-          print("$levelIndent  [$key]:");
-          printNode(child, "$levelIndent    ");
-        });
-      }
+    if (renderBox == null) {
+      return const SizedBox.shrink();
     }
 
-    print("Expression Tree:");
-    tree.forEach((key, node) {
-      print("[$key]:");
-      printNode(node, "  ");
-    });
+    final targetPosition = renderBox.localToGlobal(Offset.zero);
+    final targetSize = renderBox.size;
+
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Material(
+        color: Colors.black54,
+        child: GestureDetector(
+          onTap: _nextStep,
+          child: Stack(
+            children: [
+              // Highlight area
+              CustomPaint(
+                painter: HolePainter(
+                  holeRect: Rect.fromLTWH(
+                    targetPosition.dx,
+                    targetPosition.dy,
+                    targetSize.width,
+                    targetSize.height,
+                  ),
+                  shape: step.shape,
+                ),
+                child: Container(),
+              ),
+              // Pulse animation for highlighted area
+              if (step.pulseAnimation)
+                Positioned(
+                  left: targetPosition.dx,
+                  top: targetPosition.dy,
+                  child: PulseAnimation(
+                    size: targetSize,
+                    shape: step.shape,
+                  ),
+                ),
+              // Description card
+              Positioned(
+                left: 20,
+                right: 20,
+                top: targetPosition.dy + targetSize.height + 20,
+                child: TutorialCard(
+                  title: step.title,
+                  description: step.description,
+                  currentStep: _currentStep + 1,
+                  totalSteps: widget.steps.length,
+                  onNext: _nextStep,
+                  onSkip: _skipTutorial,
+                ),
+              ),
+              // Animated pointer
+              Positioned(
+                left: targetPosition.dx + targetSize.width / 2 - 15,
+                top: targetPosition.dy + targetSize.height + 5,
+                child: const AnimatedPointer(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
-void main() {
-  var exprTree = ExpressionTree();
+class HolePainter extends CustomPainter {
+  final Rect holeRect;
+  final BoxShape shape;
 
-  // Build "2 + 3 / 5"
-  exprTree.insert(2, "numberNode");     // Node at [0]
-  exprTree.insert(9, "numberNode");     // Node at [0]
-  exprTree.insert("+", "symbol");         // Node at [1]
-  exprTree.insert(3, "numberNode");       // Node at [2] (will be numerator of fraction)
-  exprTree.insert("/", "symbol");         // Converts previous node into a fraction node at [2]
-  exprTree.insert(5, "numberNode");       // Fills the denominator of the fraction at [2]
+  HolePainter({required this.holeRect, required this.shape});
 
-  print("\nExpression Tree after insertion:");
-  exprTree.printTree();
-  /* Expected Output:
-  Expression Tree after insertion:
-  Expression Tree:
-  [0]:
-    - Kind: numberNode, Value: 2, Index: [0]
-  [1]:
-    - Kind: symbol, Value: +, Index: [1]
-  [2]:
-    - Kind: fractionNode, Value: {Nested Expression}, Index: [2]
-      [0]:
-        - Kind: numberNode, Value: 3, Index: [2]
-      [1]:
-        - Kind: symbol, Value: /, Index: [2, 1]
-      [2]:
-        - Kind: numberNode, Value: 5, Index: [2, 2]
-  */
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.black54;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
 
-  // Simulate selecting the division operator ("/") within the fraction.
-  exprTree.selectNode([2, 1], "right");
-  exprTree.deleteAtSelection();
+    final holePaint = Paint()
+      ..color = Colors.transparent
+      ..blendMode = BlendMode.clear;
 
-  print("\nExpression Tree after deletion:");
-  exprTree.printTree();
-  /* Expected Output after deletion:
-  Expression Tree after deletion:
-  Expression Tree:
-  [0]:
-    - Kind: numberNode, Value: 2, Index: [0]
-  [1]:
-    - Kind: symbol, Value: +, Index: [1]
-  [2]:
-    - Kind: numberNode, Value: 35, Index: [2]
-  */
+    final padding = 8.0;
+    final expandedRect = holeRect.inflate(padding);
 
-  // Now, simulate inserting a digit after a number.
-  // Since the merged node [2] is a number node, the inserted text should be appended.
-  exprTree.selectNode([2], "");
-  exprTree.insertAtSelection("3", "numberNode");
+    if (shape == BoxShape.circle) {
+      canvas.drawCircle(
+        expandedRect.center,
+        expandedRect.width / 2,
+        holePaint,
+      );
+    } else {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(expandedRect, const Radius.circular(8)),
+        holePaint,
+      );
+    }
+  }
 
-  print("\nExpression Tree after insertion at selection:");
-  exprTree.printTree();
-  /* Expected Output after insertion at selection:
-  Expression Tree after insertion at selection:
-  Expression Tree:
-  [0]:
-    - Kind: numberNode, Value: 2, Index: [0]
-  [1]:
-    - Kind: symbol, Value: +, Index: [1]
-  [2]:
-    - Kind: numberNode, Value: 353, Index: [2]
-  */
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class TutorialCard extends StatelessWidget {
+  final String title;
+  final String description;
+  final int currentStep;
+  final int totalSteps;
+  final VoidCallback onNext;
+  final VoidCallback onSkip;
+
+  const TutorialCard({
+    Key? key,
+    required this.title,
+    required this.description,
+    required this.currentStep,
+    required this.totalSteps,
+    required this.onNext,
+    required this.onSkip,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  '$currentStep/$totalSteps',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton(
+                  onPressed: onSkip,
+                  child: const Text('Skip'),
+                ),
+                ElevatedButton(
+                  onPressed: onNext,
+                  child: Text(
+                    currentStep == totalSteps ? 'Done' : 'Next',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AnimatedPointer extends StatefulWidget {
+  const AnimatedPointer({Key? key}) : super(key: key);
+
+  @override
+  State<AnimatedPointer> createState() => _AnimatedPointerState();
+}
+
+class _AnimatedPointerState extends State<AnimatedPointer>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    )..repeat(reverse: true);
+    _animation = Tween<double>(begin: 0, end: -10).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _animation.value),
+          child: const Icon(
+            Icons.arrow_upward,
+            color: Colors.white,
+            size: 30,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class PulseAnimation extends StatefulWidget {
+  final Size size;
+  final BoxShape shape;
+
+  const PulseAnimation({
+    Key? key,
+    required this.size,
+    required this.shape,
+  }) : super(key: key);
+
+  @override
+  State<PulseAnimation> createState() => _PulseAnimationState();
+}
+
+class _PulseAnimationState extends State<PulseAnimation>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat();
+
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.5).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+
+    _opacityAnimation = Tween<double>(begin: 0.5, end: 0.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _opacityAnimation.value,
+          child: Transform.scale(
+            scale: _scaleAnimation.value,
+            child: Container(
+              width: widget.size.width + 16,
+              height: widget.size.height + 16,
+              decoration: BoxDecoration(
+                shape: widget.shape,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
