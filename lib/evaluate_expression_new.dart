@@ -53,6 +53,12 @@ class MathSolverNew {
     // Remove spaces
     expr = expr.replaceAll(' ', '');
 
+    expr = expr.replaceAll('\u00B7', '*'); // middle dot ·
+    expr = expr.replaceAll('\u00D7', '*'); // times sign ×
+
+    // Convert small caps E back to regular e for parsing
+    expr = expr.replaceAll('\u1D07', 'E');
+
     expr = expr.replaceAll('\u00B0', '*(${pi}/180)'); // degrees
     expr = expr.replaceAll('rad', '*((1/${pi})*180)'); // radian
 
@@ -394,7 +400,7 @@ class MathSolverNew {
     String expr,
     Map<int, String> ansValues,
   ) {
-    RegExp ansRegex = RegExp(r'ANS(\d+)', caseSensitive: false);
+    RegExp ansRegex = RegExp(r'ans(\d+)', caseSensitive: false);
 
     return expr.replaceAllMapped(ansRegex, (match) {
       String indexStr = match.group(1) ?? '';
@@ -535,7 +541,7 @@ class MathSolverNew {
       exponent = exponent.substring(1);
     }
 
-    return '${mantissa}E$exponent';
+    return '${mantissa}\u1D07$exponent';
   }
 }
 

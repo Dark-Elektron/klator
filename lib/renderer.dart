@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'math_expression_serializer.dart';
 import 'evaluate_expression_new.dart';
 import 'constants.dart';
+import 'package:flutter/rendering.dart';
 
 abstract class MathNode {
   final String id;
@@ -159,18 +160,39 @@ class NodeLayoutInfo {
 class MathTextStyle {
   static const String plusSign = '\u002B';
   static const String minusSign = '\u2212';
-  static const String multiplySign = '\u00B7';
   static const String equalsSign = '=';
+
+  // Both possible multiplication signs (for padding detection)
+  static const String multiplyDot = '\u00B7'; // · (middle dot)
+  static const String multiplyTimes = '\u00D7'; // × (times sign)
+
+  // Current user preference (dynamic)
+  static String _multiplySign = '\u00D7';
+
+  static String get multiplySign => _multiplySign;
+
+  static void setMultiplySign(String sign) {
+    _multiplySign = sign;
+  }
+
+  // Include BOTH multiplication signs - they both need padding
+  static const Set<String> _allMultiplySigns = {multiplyDot, multiplyTimes};
 
   static const Set<String> _paddedOperators = {
     plusSign,
     minusSign,
-    multiplySign,
+    multiplyDot,
+    multiplyTimes,
     equalsSign,
   };
 
   static bool _isPaddedOperator(String char) {
     return _paddedOperators.contains(char);
+  }
+
+  // Helper to check if char is any multiplication sign
+  static bool _isMultiplySign(String char) {
+    return _allMultiplySigns.contains(char);
   }
 
   static TextStyle getStyle(double fontSize) {
@@ -187,10 +209,17 @@ class MathTextStyle {
     final buffer = StringBuffer();
     for (int i = 0; i < text.length; i++) {
       final char = text[i];
+
+      // Convert any multiplication sign to current user preference
+      String displayChar = char;
+      if (_isMultiplySign(char)) {
+        displayChar = _multiplySign; // Convert to user's preferred sign
+      }
+
       if (_isPaddedOperator(char)) {
-        buffer.write(' $char ');
+        buffer.write(' $displayChar '); // Use displayChar, not char!
       } else {
-        buffer.write(char);
+        buffer.write(displayChar); // Use displayChar, not char!
       }
     }
     return buffer.toString();
@@ -202,14 +231,33 @@ class MathTextStyle {
     TextScaler textScaler,
   ) {
     if (text.isEmpty) return 0.0;
+    // Use toDisplayText to get consistent measurement
+    final displayText = toDisplayText(text);
     final painter = TextPainter(
-      text: TextSpan(text: text, style: getStyle(fontSize)),
+      text: TextSpan(text: displayText, style: getStyle(fontSize)),
       textDirection: TextDirection.ltr,
       textScaler: textScaler,
     )..layout();
     final width = painter.width;
     painter.dispose();
     return width;
+  }
+
+  /// Converts a logical character index to display text index
+  static int _logicalToDisplayIndex(String text, int logicalIndex) {
+    int displayIndex = 0;
+    final clampedIndex = logicalIndex.clamp(0, text.length);
+
+    for (int i = 0; i < clampedIndex; i++) {
+      final char = text[i];
+      if (_isPaddedOperator(char)) {
+        displayIndex += 3; // space + char + space
+      } else {
+        displayIndex += 1;
+      }
+    }
+
+    return displayIndex;
   }
 
   static double getCursorOffset(
@@ -219,19 +267,31 @@ class MathTextStyle {
     TextScaler textScaler,
   ) {
     if (text.isEmpty || charIndex <= 0) return 0.0;
-    final clampedIndex = charIndex.clamp(0, text.length);
 
-    final buffer = StringBuffer();
-    for (int i = 0; i < clampedIndex; i++) {
-      final char = text[i];
-      if (_isPaddedOperator(char)) {
-        buffer.write(' $char ');
-      } else {
-        buffer.write(char);
-      }
-    }
+    // Convert full text to display format
+    final displayText = toDisplayText(text);
 
-    return measureText(buffer.toString(), fontSize, textScaler);
+    // Convert logical index to display index
+    final displayIndex = _logicalToDisplayIndex(
+      text,
+      charIndex,
+    ).clamp(0, displayText.length);
+
+    // Create painter with FULL display text (same as rendered)
+    final painter = TextPainter(
+      text: TextSpan(text: displayText, style: getStyle(fontSize)),
+      textDirection: TextDirection.ltr,
+      textScaler: textScaler,
+    )..layout();
+
+    // Get exact cursor position using Flutter's built-in method
+    final offset = painter.getOffsetForCaret(
+      TextPosition(offset: displayIndex),
+      Rect.zero,
+    );
+
+    painter.dispose();
+    return offset.dx;
   }
 
   static int getCharIndexForOffset(
@@ -248,6 +308,7 @@ class MathTextStyle {
       textDirection: TextDirection.ltr,
       textScaler: textScaler,
     )..layout();
+
     final position = painter.getPositionForOffset(
       Offset(xOffset, fontSize / 2),
     );
@@ -283,6 +344,25 @@ class MathTextStyle {
 
     return text.length;
   }
+
+  // In MathTextStyle class
+  static int logicalToDisplayIndex(String text, int logicalIndex) {
+    if (text.isEmpty || logicalIndex <= 0) return 0;
+
+    int displayIndex = 0;
+    final clampedIndex = logicalIndex.clamp(0, text.length);
+
+    for (int i = 0; i < clampedIndex; i++) {
+      final char = text[i];
+      if (_isPaddedOperator(char)) {
+        displayIndex += 3;
+      } else {
+        displayIndex += 1;
+      }
+    }
+
+    return displayIndex;
+  }
 }
 
 class _ParentListInfo {
@@ -317,6 +397,87 @@ class MathEditorController extends ChangeNotifier {
   int get structureVersion => _structureVersion;
   VoidCallback? onResultChanged;
 
+  // ============== UNDO/REDO ==============
+  final List<EditorState> _undoStack = [];
+  final List<EditorState> _redoStack = [];
+  static const int _maxHistorySize = 50;
+  bool _isUndoRedoOperation = false;
+
+  /// Check if undo is available
+  bool get canUndo => _undoStack.isNotEmpty;
+
+  /// Check if redo is available
+  bool get canRedo => _redoStack.isNotEmpty;
+
+  // Add this method to refresh display when settings change
+  void refreshDisplay() {
+    _structureVersion++;
+    notifyListeners();
+  }
+
+  /// Save current state before making changes
+  void saveStateForUndo() {
+    if (_isUndoRedoOperation) return;
+
+    _undoStack.add(EditorState.capture(expression, cursor));
+
+    // Limit stack size
+    if (_undoStack.length > _maxHistorySize) {
+      _undoStack.removeAt(0);
+    }
+
+    // Clear redo stack when new action is performed
+    _redoStack.clear();
+  }
+
+  /// Undo the last action
+  void undo() {
+    if (!canUndo) return;
+
+    _isUndoRedoOperation = true;
+
+    // Save current state to redo stack
+    _redoStack.add(EditorState.capture(expression, cursor));
+
+    // Restore previous state
+    EditorState previousState = _undoStack.removeLast();
+    expression = previousState.expression;
+    cursor = previousState.cursor;
+    _structureVersion++;
+
+    _isUndoRedoOperation = false;
+
+    notifyListeners();
+    onResultChanged?.call();
+  }
+
+  /// Redo the last undone action
+  void redo() {
+    if (!canRedo) return;
+
+    _isUndoRedoOperation = true;
+
+    // Save current state to undo stack
+    _undoStack.add(EditorState.capture(expression, cursor));
+
+    // Restore redo state
+    EditorState redoState = _redoStack.removeLast();
+    expression = redoState.expression;
+    cursor = redoState.cursor;
+    _structureVersion++;
+
+    _isUndoRedoOperation = false;
+
+    notifyListeners();
+    onResultChanged?.call();
+  }
+
+  /// Clear undo/redo history
+  void clearHistory() {
+    _undoStack.clear();
+    _redoStack.clear();
+  }
+
   static String _mapToDisplayChar(String char) {
     switch (char) {
       case '+':
@@ -324,12 +485,13 @@ class MathEditorController extends ChangeNotifier {
       case '-':
         return MathTextStyle.minusSign;
       case '*':
-        return MathTextStyle.multiplySign;
+        return MathTextStyle.multiplySign; // Uses current setting
       default:
         return char;
     }
   }
 
+  // Update _isWordBoundary to check for BOTH multiplication signs
   static bool _isWordBoundary(String char) {
     return char == '+' ||
         char == '-' ||
@@ -339,7 +501,8 @@ class MathEditorController extends ChangeNotifier {
         char == ' ' ||
         char == MathTextStyle.plusSign ||
         char == MathTextStyle.minusSign ||
-        char == MathTextStyle.multiplySign;
+        char == MathTextStyle.multiplyDot || // Check both
+        char == MathTextStyle.multiplyTimes; // Check both
   }
 
   static bool _isNonMultiplyWordBoundary(String char) {
@@ -480,6 +643,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void insertCharacter(String char) {
+    saveStateForUndo();
     if (char == '/') {
       _wrapIntoFraction();
       return;
@@ -500,7 +664,7 @@ class MathEditorController extends ChangeNotifier {
       return;
     }
 
-    if (char == 'ANS') {
+    if (char == 'ans') {
       insertAns();
       return;
     }
@@ -522,6 +686,28 @@ class MathEditorController extends ChangeNotifier {
     _notifyStructureChanged();
 
     onCalculate();
+  }
+
+  /// Set expression from loaded data
+  void setExpression(List<MathNode> nodes) {
+    expression = nodes.isNotEmpty ? nodes : [LiteralNode()];
+    _structureVersion++;
+    // Position cursor at end of root expression
+    int lastIndex = expression.length - 1;
+    MathNode lastNode = expression[lastIndex];
+
+    int subIndex = 0;
+    if (lastNode is LiteralNode) {
+      subIndex = lastNode.text.length;
+    }
+
+    cursor = EditorCursor(
+      parentId: null,
+      path: null,
+      index: lastIndex,
+      subIndex: subIndex,
+    );
+    notifyListeners();
   }
 
   // === NEW HELPER METHODS ===
@@ -579,6 +765,8 @@ class MathEditorController extends ChangeNotifier {
 
   // ============== TRIG FUNCTIONS ==============
   void insertSquare() {
+    saveStateForUndo();
+
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -665,6 +853,8 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void insertTrig(String function) {
+    saveStateForUndo();
+
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -701,6 +891,8 @@ class MathEditorController extends ChangeNotifier {
   // ============== ROOT FUNCTIONS ==============
 
   void insertSquareRoot() {
+    saveStateForUndo();
+
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -736,6 +928,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void insertNthRoot() {
+    saveStateForUndo();
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -772,6 +965,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void insertLog10() {
+    saveStateForUndo();
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -808,6 +1002,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void insertLogN() {
+    saveStateForUndo();
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -844,6 +1039,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void insertNaturalLog() {
+    saveStateForUndo();
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -876,6 +1072,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void insertAns() {
+    saveStateForUndo();
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -910,6 +1107,7 @@ class MathEditorController extends ChangeNotifier {
   // ============== PERMUTATION & COMBINATION ==============
 
   void insertPermutation() {
+    saveStateForUndo();
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -963,6 +1161,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void insertCombination() {
+    saveStateForUndo();
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -1014,6 +1213,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void insertNewline() {
+    saveStateForUndo();
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -1899,57 +2099,6 @@ class MathEditorController extends ChangeNotifier {
     _notifyStructureChanged();
   }
 
-  void _debugPrintStructure() {
-    print('=== Expression Structure ===');
-    _printNodes(expression, 0);
-    print('=== Cursor ===');
-    print(
-      'parentId: ${cursor.parentId}, path: ${cursor.path}, index: ${cursor.index}, subIndex: ${cursor.subIndex}',
-    );
-  }
-
-  void _printNodes(List<MathNode> nodes, int indent) {
-    String pad = '  ' * indent;
-    for (int i = 0; i < nodes.length; i++) {
-      final node = nodes[i];
-      if (node is LiteralNode) {
-        print('$pad[$i] LiteralNode("${node.text}")');
-      } else if (node is ExponentNode) {
-        print('$pad[$i] ExponentNode:');
-        print('$pad  base:');
-        _printNodes(node.base, indent + 2);
-        print('$pad  power:');
-        _printNodes(node.power, indent + 2);
-      } else if (node is FractionNode) {
-        print('$pad[$i] FractionNode:');
-        print('$pad  num:');
-        _printNodes(node.numerator, indent + 2);
-        print('$pad  den:');
-        _printNodes(node.denominator, indent + 2);
-      } else if (node is AnsNode) {
-        print('$pad[$i] AnsNode:');
-        _printNodes(node.index, indent + 2);
-      } else if (node is LogNode) {
-        print('$pad[$i] LogNode (natural: ${node.isNaturalLog}):');
-        print('$pad  base:');
-        _printNodes(node.base, indent + 2);
-        print('$pad  arg:');
-        _printNodes(node.argument, indent + 2);
-      } else if (node is TrigNode) {
-        print('$pad[$i] TrigNode(${node.function}):');
-        _printNodes(node.argument, indent + 2);
-      } else if (node is RootNode) {
-        print('$pad[$i] RootNode (square: ${node.isSquareRoot}):');
-        print('$pad  index:');
-        _printNodes(node.index, indent + 2);
-        print('$pad  radicand:');
-        _printNodes(node.radicand, indent + 2);
-      } else {
-        print('$pad[$i] ${node.runtimeType}');
-      }
-    }
-  }
-
   /// Wraps an entire AnsNode into a fraction's numerator
   void _wrapAnsNodeIntoFraction(AnsNode ans) {
     final parentInfo = _findParentListOf(ans.id);
@@ -2355,6 +2504,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void deleteChar() {
+    saveStateForUndo();
     final node = _resolveCursorNode();
     if (node is! LiteralNode) return;
 
@@ -2375,6 +2525,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void clear() {
+    saveStateForUndo();
     expression = [LiteralNode()];
     result = '';
     cursor = const EditorCursor(); // Reset cursor to initial state
@@ -2611,13 +2762,13 @@ class MathEditorController extends ChangeNotifier {
     return true;
   }
 
-  int _getTextLengthOfList(List<MathNode> nodes) {
-    int total = 0;
-    for (final node in nodes) {
-      if (node is LiteralNode) total += node.text.length;
-    }
-    return total;
-  }
+  // int _getTextLengthOfList(List<MathNode> nodes) {
+  //   int total = 0;
+  //   for (final node in nodes) {
+  //     if (node is LiteralNode) total += node.text.length;
+  //   }
+  //   return total;
+  // }
 
   void _moveCursorToEndOfList(
     List<MathNode> nodes,
@@ -2702,6 +2853,33 @@ class MathEditorController extends ChangeNotifier {
 
   void _moveCursorBeforeNode(String nodeId) =>
       _findAndPositionBefore(expression, nodeId, null, null);
+
+  void moveCursorToStart() {
+    cursor = const EditorCursor(
+      parentId: null,
+      path: null,
+      index: 0,
+      subIndex: 0,
+    );
+    notifyListeners();
+  }
+
+  void moveCursorToEnd() {
+    if (expression.isEmpty) {
+      cursor = const EditorCursor(index: 0, subIndex: 0);
+    } else {
+      int lastIndex = expression.length - 1;
+      MathNode lastNode = expression[lastIndex];
+
+      cursor = EditorCursor(
+        parentId: null,
+        path: null,
+        index: lastIndex,
+        subIndex: lastNode is LiteralNode ? lastNode.text.length : 0,
+      );
+    }
+    notifyListeners();
+  }
 
   bool _findAndPositionBefore(
     List<MathNode> nodes,
@@ -3853,7 +4031,7 @@ class MathRenderer extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children:
           lines.asMap().entries.map((entry) {
-            int lineIndex = entry.key;
+            // int lineIndex = entry.key;
             _LineInfo lineInfo = entry.value;
 
             return Padding(
@@ -4488,7 +4666,7 @@ class MathRenderer extends StatelessWidget {
           children: [
             // "ANS" text
             Text(
-              'ANS',
+              'ans',
               style: MathTextStyle.getStyle(
                 fontSize,
               ).copyWith(color: Colors.orangeAccent),
@@ -4561,6 +4739,7 @@ class LiteralWidget extends StatefulWidget {
 
 class _LiteralWidgetState extends State<LiteralWidget> {
   int _lastReportedVersion = -1;
+  final GlobalKey _textKey = GlobalKey();
 
   @override
   void initState() {
@@ -4615,13 +4794,45 @@ class _LiteralWidgetState extends State<LiteralWidget> {
     );
   }
 
-  double _getCursorOffset() {
-    return MathTextStyle.getCursorOffset(
-      widget.node.text,
+  double _getCursorOffsetFromRenderParagraph(
+    String logicalText,
+    String displayText,
+  ) {
+    if (logicalText.isEmpty || widget.subIndex <= 0) return 0.0;
+
+    final displayIndex = MathTextStyle.logicalToDisplayIndex(
+      logicalText,
       widget.subIndex,
-      widget.fontSize,
-      widget.textScaler,
+    ).clamp(0, displayText.length);
+
+    // Try to get RenderParagraph from the Text widget
+    final renderObject = _textKey.currentContext?.findRenderObject();
+    if (renderObject is RenderParagraph) {
+      final offset = renderObject.getOffsetForCaret(
+        TextPosition(offset: displayIndex),
+        Rect.zero,
+      );
+      return offset.dx;
+    }
+
+    // Fallback to TextPainter
+    final painter = TextPainter(
+      text: TextSpan(
+        text: displayText,
+        style: MathTextStyle.getStyle(
+          widget.fontSize,
+        ).copyWith(color: Colors.white),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: widget.textScaler,
+    )..layout();
+
+    final offset = painter.getOffsetForCaret(
+      TextPosition(offset: displayIndex),
+      Rect.zero,
     );
+    painter.dispose();
+    return offset.dx;
   }
 
   @override
@@ -4630,30 +4841,55 @@ class _LiteralWidgetState extends State<LiteralWidget> {
     final displayText =
         logicalText.isEmpty ? " " : MathTextStyle.toDisplayText(logicalText);
 
-    return Container(
-      color: Colors.transparent,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Text(
-            displayText,
-            style: MathTextStyle.getStyle(
-              widget.fontSize,
-            ).copyWith(color: Colors.white),
-            textScaler: widget.textScaler,
-          ),
-          if (widget.active && widget.cursorOpacity > 0.5)
-            Positioned(
-              left: _getCursorOffset(),
-              top: 0,
-              bottom: 0,
-              child: Container(
-                width: math.max(2.0, widget.fontSize * 0.06),
-                color: Colors.yellowAccent,
-              ),
+    final showCursor = widget.active && widget.cursorOpacity > 0.5;
+
+    // Calculate cursor offset after build to use RenderParagraph
+    double cursorOffset = 0.0;
+
+    return StatefulBuilder(
+      builder: (context, setInnerState) {
+        // Schedule cursor offset calculation after Text renders
+        if (showCursor) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final newOffset = _getCursorOffsetFromRenderParagraph(
+              logicalText,
+              displayText,
+            );
+            if (newOffset != cursorOffset && mounted) {
+              setInnerState(() {
+                cursorOffset = newOffset;
+              });
+            }
+          });
+        }
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Text(
+              key: _textKey,
+              displayText,
+              style: MathTextStyle.getStyle(
+                widget.fontSize,
+              ).copyWith(color: Colors.white),
+              textScaler: widget.textScaler,
             ),
-        ],
-      ),
+            if (showCursor)
+              Positioned(
+                left: _getCursorOffsetFromRenderParagraph(
+                  logicalText,
+                  displayText,
+                ),
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: math.max(2.0, widget.fontSize * 0.06),
+                  color: Colors.yellowAccent,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -4732,11 +4968,9 @@ class ScalableParenthesis extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
-      constraints: BoxConstraints(
-        minHeight: fontSize * 1,
-      ),
+      constraints: BoxConstraints(minHeight: fontSize * 1),
       child: CustomPaint(
-        size: Size(fontSize * 0.2, double.infinity),  // Reduced from 0.35
+        size: Size(fontSize * 0.2, double.infinity), // Reduced from 0.35
         painter: ParenthesisPainter(
           isOpening: isOpening,
           color: color,
@@ -4760,11 +4994,12 @@ class ParenthesisPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+    final paint =
+        Paint()
+          ..color = color
+          ..strokeWidth = strokeWidth
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
 
     final path = Path();
 
@@ -4796,5 +5031,86 @@ class ParenthesisPainter extends CustomPainter {
     return oldDelegate.isOpening != isOpening ||
         oldDelegate.color != color ||
         oldDelegate.strokeWidth != strokeWidth;
+  }
+}
+
+/// Snapshot of editor state for undo/redo
+class EditorState {
+  final List<MathNode> expression;
+  final EditorCursor cursor;
+
+  EditorState({required this.expression, required this.cursor});
+
+  /// Deep copy the expression tree
+  static List<MathNode> _deepCopyNodes(List<MathNode> nodes) {
+    return nodes.map((node) => _deepCopyNode(node)).toList();
+  }
+
+  static MathNode _deepCopyNode(MathNode node) {
+    if (node is LiteralNode) {
+      return LiteralNode(text: node.text);
+    }
+    if (node is FractionNode) {
+      return FractionNode(
+        num: _deepCopyNodes(node.numerator),
+        den: _deepCopyNodes(node.denominator),
+      );
+    }
+    if (node is ExponentNode) {
+      return ExponentNode(
+        base: _deepCopyNodes(node.base),
+        power: _deepCopyNodes(node.power),
+      );
+    }
+    if (node is ParenthesisNode) {
+      return ParenthesisNode(content: _deepCopyNodes(node.content));
+    }
+    if (node is TrigNode) {
+      return TrigNode(
+        function: node.function,
+        argument: _deepCopyNodes(node.argument),
+      );
+    }
+    if (node is RootNode) {
+      return RootNode(
+        isSquareRoot: node.isSquareRoot,
+        index: _deepCopyNodes(node.index),
+        radicand: _deepCopyNodes(node.radicand),
+      );
+    }
+    if (node is LogNode) {
+      return LogNode(
+        isNaturalLog: node.isNaturalLog,
+        base: _deepCopyNodes(node.base),
+        argument: _deepCopyNodes(node.argument),
+      );
+    }
+    if (node is PermutationNode) {
+      return PermutationNode(
+        n: _deepCopyNodes(node.n),
+        r: _deepCopyNodes(node.r),
+      );
+    }
+    if (node is CombinationNode) {
+      return CombinationNode(
+        n: _deepCopyNodes(node.n),
+        r: _deepCopyNodes(node.r),
+      );
+    }
+    if (node is AnsNode) {
+      return AnsNode(index: _deepCopyNodes(node.index));
+    }
+    if (node is NewlineNode) {
+      return NewlineNode();
+    }
+    return LiteralNode();
+  }
+
+  /// Create a snapshot from current state
+  factory EditorState.capture(List<MathNode> expression, EditorCursor cursor) {
+    return EditorState(
+      expression: _deepCopyNodes(expression),
+      cursor: cursor.copyWith(),
+    );
   }
 }

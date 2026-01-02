@@ -35,7 +35,7 @@ Widget build(BuildContext context) {
               buttontapped();
             }
           },
-          splashColor: Colors.black.withOpacity(0.1),
+          splashColor: Colors.black.withOpacity(0.2),
           highlightColor: Colors.white.withOpacity(0.1),
           child: Container(
             // Remove color here since Material has it now

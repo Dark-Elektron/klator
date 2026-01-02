@@ -44,9 +44,14 @@ class HelpPage extends StatelessWidget {
             description: 'Insert fractions with "/" and exponents with "^". Tap any part of the expression to move your cursor.',
           ),
           _buildHelpStep(
+            icon: Icons.restore,
+            title: 'Undo & Redo',
+            description: 'Easily fix mistakes using the history buttons: Tap ⎌ to Undo your last change, or ⎏ to Redo an action you moved back from.',
+          ),
+          _buildHelpStep(
             icon: Icons.settings_backup_restore,
             title: 'Recall Results',
-            description: 'Every calculation is assigned an orange cell number on the left. To use a result in a new equation, press "ANS" followed by that cell’s number (e.g., ANS0).',
+            description: 'Every calculation is assigned an orange cell number on the left. To use a result in a new equation, press "ans" followed by that cell’s number (e.g., ans0).',
           ),
           _buildHelpStep(
             icon: Icons.functions,
