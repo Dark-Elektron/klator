@@ -26,7 +26,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: EdgeInsets.all(16.0),
         children: [
           ListTile(
-            title: Text('Precision: ${settings.precision.toInt()} decimal places'),
+            title: Text(
+              'Precision: ${settings.precision.toInt()} decimal places',
+            ),
             subtitle: Slider(
               activeColor: sliderActiveColor,
               value: settings.precision,
@@ -46,13 +48,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: settings.isDarkTheme,
             onChanged: settings.toggleDarkTheme,
           ),
-          // SwitchListTile(
-          //   title: Text('Angle Mode (Radians)'),
-          //   activeColor: activeColor,
-          //   activeTrackColor: activeTrackColor,
-          //   value: settings.isRadians,
-          //   onChanged: settings.toggleRadians,
-          // ),
           SwitchListTile(
             title: Text('Haptic Feedback'),
             activeColor: activeColor,
@@ -60,13 +55,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: settings.hapticFeedback,
             onChanged: settings.toggleHapticFeedback,
           ),
-          // SwitchListTile(
-          //   title: Text('Sound Effects'),
-          //   activeColor: activeColor,
-          //   activeTrackColor: activeTrackColor,
-          //   value: settings.soundEffects,
-          //   onChanged: settings.toggleSoundEffects,
-          // ),
+
+          // Multiplication Sign Selection
+          ListTile(
+            title: const Text('Multiplication Sign'),
+            // Move your row here to align it to the right
+            trailing: Wrap(
+              // Wrap is safer than Row here to prevent overflow
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _buildMultiplyOption(
+                  settings,
+                  '\u00D7',
+                  '\u00D7',
+                  sliderActiveColor,
+                ),
+                const SizedBox(
+                  width: 12,
+                ), // Slightly tighter spacing for the trailing area
+                _buildMultiplyOption(
+                  settings,
+                  '\u00B7',
+                  '\u00B7',
+                  sliderActiveColor,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMultiplyOption(
+    SettingsProvider settings,
+    String value,
+    String displayText,
+    Color? activeColor,
+  ) {
+    final isSelected = settings.multiplicationSign == value;
+
+    return InkWell(
+      onTap: () {
+        settings.setMultiplicationSign(value);
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Radio<String>(
+            value: value,
+            groupValue: settings.multiplicationSign,
+            activeColor: activeColor,
+            onChanged: (value) {
+              if (value != null) {
+                settings.setMultiplicationSign(value);
+              }
+            },
+          ),
+          Text(
+            displayText,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
         ],
       ),
     );

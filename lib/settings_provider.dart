@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'evaluate_expression_new.dart';
+import 'renderer.dart';
 
 class SettingsProvider extends ChangeNotifier {
   double _precision = 8;
@@ -8,6 +9,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _isRadians = false;
   bool _hapticFeedback = true;
   bool _soundEffects = false;
+  String _multiplicationSign = '\u00D7'; // Default: ×
 
   // Getters
   double get precision => _precision;
@@ -15,6 +17,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get isRadians => _isRadians;
   bool get hapticFeedback => _hapticFeedback;
   bool get soundEffects => _soundEffects;
+  String get multiplicationSign => _multiplicationSign;
 
   // Static method to create provider with preloaded settings
   static Future<SettingsProvider> create() async {
@@ -27,31 +30,35 @@ class SettingsProvider extends ChangeNotifier {
   SettingsProvider._();
 
   // Load all settings from SharedPreferences
-Future<void> _loadSettings() async {
-  final prefs = await SharedPreferences.getInstance();
-  _precision = prefs.getDouble('precision') ?? 6;
-  _isDarkTheme = prefs.getBool('isDarkTheme') ?? false;
-  _isRadians = prefs.getBool('isRadians') ?? false;
-  _hapticFeedback = prefs.getBool('hapticFeedback') ?? true;
-  _soundEffects = prefs.getBool('soundEffects') ?? false;
-  
-  // Set global precision on load
-  MathSolverNew.setPrecision(_precision.toInt());
-  
-  notifyListeners();
-}
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    _precision = prefs.getDouble('precision') ?? 6;
+    _isDarkTheme = prefs.getBool('isDarkTheme') ?? false;
+    _isRadians = prefs.getBool('isRadians') ?? false;
+    _hapticFeedback = prefs.getBool('hapticFeedback') ?? true;
+    _soundEffects = prefs.getBool('soundEffects') ?? false;
+    _multiplicationSign = prefs.getString('multiplicationSign') ?? '\u00D7';
+
+    // Set global precision on load
+    MathSolverNew.setPrecision(_precision.toInt());
+
+    // // Set global multiplication sign on load  ← ADD THIS
+    MathTextStyle.setMultiplySign(_multiplicationSign);
+
+    notifyListeners();
+  }
 
   // Setters with persistence
-Future<void> setPrecision(double value) async {
-  _precision = value;
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setDouble('precision', value);
-  
-  // Update the global precision in MathSolverNew
-  MathSolverNew.setPrecision(value.toInt());
-  
-  notifyListeners();
-}
+  Future<void> setPrecision(double value) async {
+    _precision = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('precision', value);
+
+    // Update the global precision in MathSolverNew
+    MathSolverNew.setPrecision(value.toInt());
+
+    notifyListeners();
+  }
 
   Future<void> toggleDarkTheme(bool value) async {
     _isDarkTheme = value;
@@ -78,6 +85,16 @@ Future<void> setPrecision(double value) async {
     _soundEffects = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('soundEffects', value);
+    notifyListeners();
+  }
+
+  Future<void> setMultiplicationSign(String value) async {
+    _multiplicationSign = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('multiplicationSign', value);
+
+    // Update MathTextStyle  ← ADD THIS
+    MathTextStyle.setMultiplySign(value);
     notifyListeners();
   }
 }

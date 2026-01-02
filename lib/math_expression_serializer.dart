@@ -1,4 +1,5 @@
-import 'renderer.dart'; // or wherever your MathNode classes are
+import 'dart:convert';
+import 'renderer.dart';
 
 class MathExpressionSerializer {
   // Unicode characters used in the editor
@@ -62,18 +63,18 @@ class MathExpressionSerializer {
     } else if (node is PermutationNode) {
       String n = _serializeList(node.n);
       String r = _serializeList(node.r);
-      return 'perm($n,$r)';  // Changed from '${n}P${r}'
+      return 'perm($n,$r)'; // Changed from '${n}P${r}'
     } else if (node is CombinationNode) {
       String n = _serializeList(node.n);
       String r = _serializeList(node.r);
-      return 'comb($n,$r)';  // Changed from '${n}C${r}'
+      return 'comb($n,$r)'; // Changed from '${n}C${r}'
     } else if (node is AnsNode) {
       String idx = _serializeList(node.index);
-      return 'ANS$idx';
+      return 'ans$idx';
     }
     return '';
   }
-  
+
   /// Converts unicode operators to standard operators
   static String _normalizeLiteral(String text) {
     return text
@@ -84,41 +85,41 @@ class MathExpressionSerializer {
 
   /// Checks if expression contains +, -, *, /
   static bool _containsOperators(String expr) {
-    return expr.contains('+') || 
-           expr.contains('-') || 
-           expr.contains('*') || 
-           expr.contains('/');
+    return expr.contains('+') ||
+        expr.contains('-') ||
+        expr.contains('*') ||
+        expr.contains('/');
   }
 
   /// Cleans up the final expression
   static String _cleanupExpression(String expr) {
     // Remove unnecessary double parentheses
     String result = expr;
-    
+
     // Handle implicit multiplication: 2(x+1) -> 2*(x+1), (x)(y) -> (x)*(y)
     result = _addImplicitMultiplication(result);
-    
+
     // Remove leading + sign
     if (result.startsWith('+')) {
       result = result.substring(1);
     }
-    
+
     return result;
   }
 
   /// Adds implicit multiplication where needed
   static String _addImplicitMultiplication(String expr) {
     StringBuffer result = StringBuffer();
-    
+
     for (int i = 0; i < expr.length; i++) {
       String current = expr[i];
       result.write(current);
-      
+
       if (i < expr.length - 1) {
         String next = expr[i + 1];
-        
+
         bool needsMultiply = false;
-        
+
         // Check if this is scientific notation (e.g., 2E5, 2e-3)
         bool isScientificNotation = false;
         if (_isDigit(current) && (next == 'E' || next == 'e')) {
@@ -130,13 +131,17 @@ class MathExpressionSerializer {
             }
           }
         }
-        
+
         // Check if next char is P or C (permutation/combination operator)
-        bool isPermCombOperator = (next == 'P' || next == 'C') && 
-                                  _isDigit(current) && 
-                                  _hasDigitAfterOperator(expr, i + 1);
-        
-        if (_isDigit(current) && _isLetter(next) && !isPermCombOperator && !isScientificNotation) {
+        bool isPermCombOperator =
+            (next == 'P' || next == 'C') &&
+            _isDigit(current) &&
+            _hasDigitAfterOperator(expr, i + 1);
+
+        if (_isDigit(current) &&
+            _isLetter(next) &&
+            !isPermCombOperator &&
+            !isScientificNotation) {
           needsMultiply = true;
         } else if (_isDigit(current) && next == '(') {
           needsMultiply = true;
@@ -151,16 +156,16 @@ class MathExpressionSerializer {
             needsMultiply = true;
           }
         }
-        
+
         if (needsMultiply) {
           result.write('*');
         }
       }
     }
-    
+
     return result.toString();
   }
-  
+
   /// Checks if there's a digit or opening parenthesis after P or C (to confirm it's a perm/comb operator)
   static bool _hasDigitAfterOperator(String expr, int operatorIndex) {
     if (operatorIndex + 1 < expr.length) {
@@ -169,7 +174,7 @@ class MathExpressionSerializer {
     }
     return false;
   }
-  
+
   static bool _isDigit(String char) {
     return char.isNotEmpty && '0123456789.'.contains(char);
   }
@@ -180,11 +185,24 @@ class MathExpressionSerializer {
 
   static bool _isFunction(String expr, int index) {
     // Common function names to check
-    const functions = ['sin', 'cos', 'tan', 'log', 'ln', 'sqrt', 'abs', 'perm', 'comb'];
-    
+    const functions = [
+      'sin',
+      'cos',
+      'tan',
+      'log',
+      'ln',
+      'sqrt',
+      'abs',
+      'perm',
+      'comb',
+    ];
+
     for (String func in functions) {
       if (index >= func.length - 1) {
-        String potentialFunc = expr.substring(index - func.length + 1, index + 1);
+        String potentialFunc = expr.substring(
+          index - func.length + 1,
+          index + 1,
+        );
         if (potentialFunc == func) {
           return true;
         }
@@ -206,7 +224,10 @@ class MathExpressionSerializer {
     return variables;
   }
 
-  static void _extractVariablesFromList(List<MathNode> nodes, Set<String> variables) {
+  static void _extractVariablesFromList(
+    List<MathNode> nodes,
+    Set<String> variables,
+  ) {
     for (final node in nodes) {
       _extractVariablesFromNode(node, variables);
     }
@@ -219,7 +240,17 @@ class MathExpressionSerializer {
       for (Match match in varRegex.allMatches(node.text)) {
         String potential = match.group(0)!;
         // Exclude common function names
-        if (!['sin', 'cos', 'tan', 'log', 'ln', 'sqrt', 'abs', 'P', 'C'].contains(potential)) {
+        if (![
+          'sin',
+          'cos',
+          'tan',
+          'log',
+          'ln',
+          'sqrt',
+          'abs',
+          'P',
+          'C',
+        ].contains(potential)) {
           variables.add(potential);
         }
       }
@@ -249,10 +280,203 @@ class MathExpressionSerializer {
   static List<String>? splitEquation(List<MathNode> expression) {
     String expr = serialize(expression);
     if (!expr.contains('=')) return null;
-    
+
     List<String> parts = expr.split('=');
     if (parts.length != 2) return null;
-    
+
     return [parts[0].trim(), parts[1].trim()];
+  }
+
+  // ============== JSON SERIALIZATION FOR PERSISTENCE ==============
+
+  /// Converts expression tree to JSON string for storage
+  static String serializeToJson(List<MathNode> expression) {
+    List<Map<String, dynamic>> jsonList =
+        expression.map((node) => _nodeToJson(node)).toList();
+    return jsonEncode(jsonList);
+  }
+
+  /// Converts JSON string back to expression tree
+  static List<MathNode> deserializeFromJson(String jsonString) {
+    if (jsonString.isEmpty) return [LiteralNode()];
+
+    try {
+      List<dynamic> jsonList = jsonDecode(jsonString);
+      List<MathNode> nodes =
+          jsonList
+              .map((json) => _jsonToNode(json as Map<String, dynamic>))
+              .toList();
+      return nodes.isNotEmpty ? nodes : [LiteralNode()];
+    } catch (e) {
+      return [LiteralNode()];
+    }
+  }
+
+  /// Convert a single MathNode to JSON map
+  static Map<String, dynamic> _nodeToJson(MathNode node) {
+    if (node is LiteralNode) {
+      return {'type': 'literal', 'text': node.text};
+    }
+
+    if (node is FractionNode) {
+      return {
+        'type': 'fraction',
+        'numerator': node.numerator.map((n) => _nodeToJson(n)).toList(),
+        'denominator': node.denominator.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+
+    if (node is ExponentNode) {
+      return {
+        'type': 'exponent',
+        'base': node.base.map((n) => _nodeToJson(n)).toList(),
+        'power': node.power.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+
+    if (node is ParenthesisNode) {
+      return {
+        'type': 'parenthesis',
+        'content': node.content.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+
+    if (node is TrigNode) {
+      return {
+        'type': 'trig',
+        'function': node.function,
+        'argument': node.argument.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+
+    if (node is RootNode) {
+      return {
+        'type': 'root',
+        'isSquareRoot': node.isSquareRoot,
+        'index': node.index.map((n) => _nodeToJson(n)).toList(),
+        'radicand': node.radicand.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+
+    if (node is LogNode) {
+      return {
+        'type': 'log',
+        'isNaturalLog': node.isNaturalLog,
+        'base': node.base.map((n) => _nodeToJson(n)).toList(),
+        'argument': node.argument.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+
+    if (node is PermutationNode) {
+      return {
+        'type': 'permutation',
+        'n': node.n.map((n) => _nodeToJson(n)).toList(),
+        'r': node.r.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+
+    if (node is CombinationNode) {
+      return {
+        'type': 'combination',
+        'n': node.n.map((n) => _nodeToJson(n)).toList(),
+        'r': node.r.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+
+    if (node is AnsNode) {
+      return {
+        'type': 'ans',
+        'index': node.index.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+
+    if (node is NewlineNode) {
+      return {'type': 'newline'};
+    }
+
+    // Fallback for unknown node types
+    return {'type': 'literal', 'text': ''};
+  }
+
+  /// Convert JSON map back to MathNode
+  static MathNode _jsonToNode(Map<String, dynamic> json) {
+    String type = json['type'] as String? ?? 'literal';
+
+    switch (type) {
+      case 'literal':
+        return LiteralNode(text: json['text'] as String? ?? '');
+
+      case 'fraction':
+        return FractionNode(
+          num: _jsonToNodeList(json['numerator']),
+          den: _jsonToNodeList(json['denominator']),
+        );
+
+      case 'exponent':
+        return ExponentNode(
+          base: _jsonToNodeList(json['base']),
+          power: _jsonToNodeList(json['power']),
+        );
+
+      case 'parenthesis':
+        return ParenthesisNode(content: _jsonToNodeList(json['content']));
+
+      case 'trig':
+        return TrigNode(
+          function: json['function'] as String? ?? 'sin',
+          argument: _jsonToNodeList(json['argument']),
+        );
+
+      case 'root':
+        bool isSquare = json['isSquareRoot'] as bool? ?? false;
+        return RootNode(
+          isSquareRoot: isSquare,
+          index: _jsonToNodeList(json['index']),
+          radicand: _jsonToNodeList(json['radicand']),
+        );
+
+      case 'log':
+        return LogNode(
+          isNaturalLog: json['isNaturalLog'] as bool? ?? false,
+          base: _jsonToNodeList(json['base']),
+          argument: _jsonToNodeList(json['argument']),
+        );
+
+      case 'permutation':
+        return PermutationNode(
+          n: _jsonToNodeList(json['n']),
+          r: _jsonToNodeList(json['r']),
+        );
+
+      case 'combination':
+        return CombinationNode(
+          n: _jsonToNodeList(json['n']),
+          r: _jsonToNodeList(json['r']),
+        );
+
+      case 'ans':
+        return AnsNode(index: _jsonToNodeList(json['index']));
+
+      case 'newline':
+        return NewlineNode();
+
+      default:
+        return LiteralNode();
+    }
+  }
+
+  /// Helper to convert JSON list to List<MathNode>
+  static List<MathNode> _jsonToNodeList(dynamic jsonList) {
+    if (jsonList == null) return [LiteralNode()];
+
+    try {
+      List<MathNode> nodes =
+          (jsonList as List)
+              .map((item) => _jsonToNode(item as Map<String, dynamic>))
+              .toList();
+      return nodes.isNotEmpty ? nodes : [LiteralNode()];
+    } catch (e) {
+      return [LiteralNode()];
+    }
   }
 }

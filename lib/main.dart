@@ -8,6 +8,9 @@ import 'package:provider/provider.dart';
 import 'settings_provider.dart';
 import 'renderer.dart';
 import 'app_colors.dart';
+import 'cell_persistence_service.dart';
+import 'math_expression_serializer.dart';
+import 'dart:async';
 
 void main() async {
   // Ensure Flutter bindings are initialized
@@ -86,7 +89,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // Map<String, String> replacements = {
   //   "\u2212": "-",
   //   "\u002B": "+",
@@ -120,7 +123,6 @@ class _HomePageState extends State<HomePage> {
   int count = 0;
   // Map<int, TextEditingController> textEditingControllers = {};
   Map<int, TextEditingController> textDisplayControllers = {};
-  // Map<int, TextEditingController> customTextEditingControllers = {};
   Map<int, MathEditorController> mathEditorControllers = {};
   // late final MathEditorController mathEditor = MathEditorController();
   // Map<int, Container> displays = {};
@@ -138,13 +140,21 @@ class _HomePageState extends State<HomePage> {
   late PageController _keypadController;
   int? _lastPagesPerView;
   bool _isUpdating = false;
-  
+  bool _isLoading = true; // Add loading state
+  List<String> answers = []; // Store answers for persistence
+
   SettingsProvider? _settingsProvider;
   bool _listenerAdded = false;
+  Timer? _deleteTimer;
+  bool _isDeleting = false;
+  int _deleteSpeed = 150; // Starting speed in milliseconds
 
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addObserver(this);
+    _loadCells();
 
     if (mathEditorControllers.isEmpty) {
       _createControllers(0);
@@ -154,9 +164,13 @@ class _HomePageState extends State<HomePage> {
 
     _keypadController = PageController(initialPage: 1);
   }
-  
+
   @override
   void dispose() {
+    _deleteTimer?.cancel(); // <-- Add this
+    WidgetsBinding.instance.removeObserver(this);
+    _saveCells();
+
     // Clean up the controller when the widget is disposed.
     // for (TextEditingController controller in textEditingControllers.values) {
     //   controller.dispose();
@@ -172,13 +186,30 @@ class _HomePageState extends State<HomePage> {
     for (FocusNode focusNode in focusNodes.values) {
       focusNode.dispose();
     }
+
+    // Dispose all controllers
+    mathEditorControllers.values.forEach((c) => c.dispose());
+    textDisplayControllers.values.forEach((c) => c.dispose());
+
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    // Save when app goes to background or is paused
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _saveCells();
+    }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    
+
     // Add listener only once
     if (!_listenerAdded) {
       _settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
@@ -187,10 +218,70 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// Load cells from persistence
+  Future<void> _loadCells() async {
+    List<CellData> savedCells = await CellPersistence.loadCells();
+    int savedIndex = await CellPersistence.loadActiveIndex();
+
+    if (savedCells.isEmpty) {
+      // Use existing method
+      _createControllers(0);
+      count = 1;
+      activeIndex = 0;
+    } else {
+      // Load each saved cell
+      for (int i = 0; i < savedCells.length; i++) {
+        // Use existing method to create controllers with proper callbacks
+        _createControllers(i);
+
+        // Deserialize and set the expression
+        List<MathNode> nodes = MathExpressionSerializer.deserializeFromJson(
+          savedCells[i].expressionJson,
+        );
+        mathEditorControllers[i]?.setExpression(nodes);
+
+        // Set the answer
+        textDisplayControllers[i]?.text = savedCells[i].answer;
+      }
+
+      count = savedCells.length;
+      activeIndex = savedIndex.clamp(0, count - 1);
+    }
+
+    setState(() => _isLoading = false);
+  }
+
+  /// Save all cells to persistence
+  Future<void> _saveCells() async {
+    // Get sorted keys to maintain order
+    List<int> sortedKeys = mathEditorControllers.keys.toList()..sort();
+
+    List<List<MathNode>> expressions = [];
+    List<String> answers = [];
+
+    for (int key in sortedKeys) {
+      MathEditorController? mathController = mathEditorControllers[key];
+      TextEditingController? textController = textDisplayControllers[key];
+
+      if (mathController != null) {
+        expressions.add(mathController.expression);
+        answers.add(textController?.text ?? '');
+      }
+    }
+
+    await CellPersistence.saveCells(expressions, answers);
+    await CellPersistence.saveActiveIndex(activeIndex);
+  }
+
   /// Called whenever any setting changes
   void _onSettingsChanged() {
     // Recalculate all answers with new settings (precision, radians, etc.)
     updateMathEditor();
+
+    // Refresh display for all math editors (to show new multiply symbol)
+    for (final controller in mathEditorControllers.values) {
+      controller.refreshDisplay();
+    }
   }
 
   void _createControllers(int index) {
@@ -221,8 +312,7 @@ class _HomePageState extends State<HomePage> {
           String expr = mathEditorControllers[key]?.expr ?? '';
 
           // Check if this display references the changed one
-          if (expr.toUpperCase().contains('ANS$changedIndex') ||
-              expr.toUpperCase().contains('ANS')) {
+          if (expr.contains('ans$changedIndex') || expr.contains('ans')) {
             Map<int, String> ansValues = _getAnsValues();
             mathEditorControllers[key]?.onCalculate(ansValues: ansValues);
             mathEditorControllers[key]?.updateAnswer(
@@ -251,14 +341,6 @@ class _HomePageState extends State<HomePage> {
     activeIndex = index;
   }
 
-  //   void _updatePlotHeight(DragUpdateDetails details, double maxHeight) {
-  //     setState(() {
-  //         _plotHeight -= details.primaryDelta!; // Adjust height based on drag
-  //         _plotHeight = _plotHeight.clamp(plotMinHeight, maxHeight + plotMinHeight,
-  //       ); // Keep within bounds
-  //     });
-  //     // print(_plotHeight);
-  //   }
   Container _buildExpressionDisplay(int index, AppColors colors) {
     final mathEditorController = mathEditorControllers[index];
     final resController = textDisplayControllers[index];
@@ -279,15 +361,40 @@ class _HomePageState extends State<HomePage> {
               curve: Curves.easeIn,
               duration: Duration(milliseconds: 500),
               opacity: isVisible ? 1.0 : 0.0,
-              child: Center(
-                child: MathEditorInline(
-                  controller: mathEditorController!,
-                  showCursor: isFocused,
-                  onFocus: () {
-                    setState(() {
-                      activeIndex = index;
-                    });
-                  },
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTapUp: (details) {
+                  setState(() {
+                    activeIndex = index;
+                  });
+
+                  final box = context.findRenderObject() as RenderBox?;
+                  if (box != null) {
+                    final width = box.size.width;
+                    final tapX = details.localPosition.dx;
+
+                    // Wider zones - left 40% and right 40%
+                    if (tapX < width * 0.4) {
+                      mathEditorController.moveCursorToStart();
+                    } else if (tapX > width * 0.6) {
+                      mathEditorController.moveCursorToEnd();
+                    }
+                  }
+                },
+                child: Center(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    reverse: true, // This keeps cursor visible on the right
+                    child: MathEditorInline(
+                      controller: mathEditorController!,
+                      showCursor: isFocused,
+                      onFocus: () {
+                        setState(() {
+                          activeIndex = index;
+                        });
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -433,6 +540,48 @@ class _HomePageState extends State<HomePage> {
     focusNodes = newFocusNodes;
   }
 
+  void _startContinuousDelete() {
+    _isDeleting = true;
+    _deleteSpeed = 150; // Reset speed
+
+    // Delete immediately
+    _performDelete();
+
+    // Start with slower speed, then accelerate
+    _scheduleNextDelete();
+  }
+
+  void _scheduleNextDelete() {
+    _deleteTimer = Timer(Duration(milliseconds: _deleteSpeed), () {
+      if (_isDeleting) {
+        _performDelete();
+
+        // Accelerate (minimum 30ms)
+        _deleteSpeed = (_deleteSpeed * 0.85).clamp(30, 150).toInt();
+
+        _scheduleNextDelete();
+      }
+    });
+  }
+
+  void _stopContinuousDelete() {
+    _isDeleting = false;
+    _deleteTimer?.cancel();
+    _deleteTimer = null;
+  }
+
+  void _performDelete() {
+    if (mathEditorControllers[activeIndex]?.expr == '') {
+      _removeDisplay(activeIndex);
+      _stopContinuousDelete();
+      return;
+    }
+
+    mathEditorControllers[activeIndex]?.deleteChar();
+    updateMathEditor();
+    setState(() {});
+  }
+
   double _boxHeight = 21.0; // Initial height when collapsed
   final double _minHeight = 21.0; // Minimum height (collapsed)
 
@@ -448,6 +597,11 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Show loading indicator while restoring cells
+    if (_isLoading) {
+      return Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     // Get app colors
     final colors = AppColors.of(context);
 
@@ -517,7 +671,7 @@ class _HomePageState extends State<HomePage> {
       '()',
       '+',
       '-',
-      'E',
+      '\u1D07',
       '\u2318',
       '0',
       '1',
@@ -548,7 +702,7 @@ class _HomePageState extends State<HomePage> {
       '/',
       '0',
       '.',
-      'E',
+      '\u1D07',
       'C',
       'EN',
     ];
@@ -560,31 +714,31 @@ class _HomePageState extends State<HomePage> {
       'nSQR',
       'x',
       'PI',
-      'SIN',
-      'COS',
-      'TAN',
+      'sin',
+      'cos',
+      'tan',
       'y',
       '\u00B0',
-      'ASIN',
-      'ACOS',
-      'ATAN',
+      'asin',
+      'acos',
+      'atan',
       'z',
       'e',
-      'LN',
-      'LOG',
-      'LOGn',
+      'ln',
+      'log',
+      'logn',
     ];
     final List<String> buttonsR = [
       '',
+      '',
+      '\u238F',
+      '\u238C',
+      '\u27F2',
       'i',
       'x!',
       'nPr',
-      '\u27F2',
-      '',
-      '',
-      '',
       'nCr',
-      'ANS',
+      'ans',
       '',
       '',
       '',
@@ -695,7 +849,9 @@ class _HomePageState extends State<HomePage> {
                             return MyButton(
                               buttontapped: () {
                                 mathEditorControllers[activeIndex]
-                                    ?.insertCharacter('\u00B7');
+                                    ?.insertCharacter(
+                                      _settingsProvider!.multiplicationSign,
+                                    );
                               },
                               buttonText: '\u00D7',
                               color: Colors.white,
@@ -747,28 +903,36 @@ class _HomePageState extends State<HomePage> {
                           }
                           // Delete Button
                           else if (index == 9) {
-                            return MyButton(
-                              buttontapped: () {
-                                mathEditorControllers[activeIndex]
-                                    ?.deleteChar();
-                                updateMathEditor();
-                                setState(() {
-                                  if (mathEditorControllers[activeIndex]
-                                          ?.expr ==
-                                      '') {
-                                    //   if (textEditingControllers[activeIndex]!
-                                    //           .text ==
-                                    //       '') {
-                                    //     // if (customTextEditingControllers[activeIndex]!.text == '') {
-                                    //     if (displays.length > 1) {
-                                    //       // delete the currently active display
-                                    _removeDisplay(activeIndex);
-                                  }
-                                });
+                            return GestureDetector(
+                              onLongPressStart: (_) {
+                                // Start continuous delete
+                                _startContinuousDelete();
                               },
-                              buttonText: '\u232B',
-                              color: const Color.fromARGB(255, 226, 104, 104),
-                              textColor: Colors.black,
+                              onLongPressEnd: (_) {
+                                // Stop continuous delete
+                                _stopContinuousDelete();
+                              },
+                              onLongPressCancel: () {
+                                // Stop if cancelled (e.g., finger moved away)
+                                _stopContinuousDelete();
+                              },
+                              child: MyButton(
+                                buttontapped: () {
+                                  mathEditorControllers[activeIndex]
+                                      ?.deleteChar();
+                                  updateMathEditor();
+                                  setState(() {
+                                    if (mathEditorControllers[activeIndex]
+                                            ?.expr ==
+                                        '') {
+                                      _removeDisplay(activeIndex);
+                                    }
+                                  });
+                                },
+                                buttonText: '\u232B',
+                                color: const Color.fromARGB(255, 226, 104, 104),
+                                textColor: Colors.black,
+                              ),
                             );
                           }
                           // Clear Button
@@ -1129,7 +1293,7 @@ class _HomePageState extends State<HomePage> {
                         //   // expressionInputManager(customTextEditingControllers[activeIndex], 'logn()');
                         // });
                       },
-                      buttonText: 'LOG\u1D63',
+                      buttonText: 'log\u1D63',
                       color: Colors.white,
                       textColor: Colors.black,
                     );
@@ -1219,30 +1383,34 @@ class _HomePageState extends State<HomePage> {
                   }
                   // Delete Button
                   else if (index == 4) {
-                    return MyButton(
-                      buttontapped: () {
-                        mathEditorControllers[activeIndex]?.deleteChar();
-                        updateMathEditor();
-                        setState(() {
-                          if (mathEditorControllers[activeIndex]?.expr == '') {
-                            //   if (textEditingControllers[activeIndex]!.text == '') {
-                            //     // if (customTextEditingControllers[activeIndex]!.text == '') {
-                            //     if (displays.length > 1) {
-                            //       // delete the currently active display
-                            _removeDisplay(activeIndex);
-                            //     }
-                            //   } else {
-                            //     deleteTextAtCursor(
-                            //       textEditingControllers[activeIndex]!,
-                            //     );
-                            //     // deleteTextAtCursor(customTextEditingControllers[activeIndex]!);
-                            //   }
-                          }
-                        });
+                    return GestureDetector(
+                      onLongPressStart: (_) {
+                        // Start continuous delete
+                        _startContinuousDelete();
                       },
-                      buttonText: '\u232B',
-                      color: const Color.fromARGB(255, 226, 104, 104),
-                      textColor: Colors.black,
+                      onLongPressEnd: (_) {
+                        // Stop continuous delete
+                        _stopContinuousDelete();
+                      },
+                      onLongPressCancel: () {
+                        // Stop if cancelled (e.g., finger moved away)
+                        _stopContinuousDelete();
+                      },
+                      child: MyButton(
+                        buttontapped: () {
+                          mathEditorControllers[activeIndex]?.deleteChar();
+                          updateMathEditor();
+                          setState(() {
+                            if (mathEditorControllers[activeIndex]?.expr ==
+                                '') {
+                              _removeDisplay(activeIndex);
+                            }
+                          });
+                        },
+                        buttonText: '\u232B',
+                        color: const Color.fromARGB(255, 226, 104, 104),
+                        textColor: Colors.black,
+                      ),
                     );
                   }
                   // Addition Button
@@ -1294,7 +1462,7 @@ class _HomePageState extends State<HomePage> {
                     return MyButton(
                       buttontapped: () {
                         mathEditorControllers[activeIndex]?.insertCharacter(
-                          '\u00B7',
+                          _settingsProvider!.multiplicationSign,
                         );
                         // setState(() {
                         //   expressionInputManager(
@@ -1430,22 +1598,49 @@ class _HomePageState extends State<HomePage> {
                   crossAxisCount: 5,
                 ),
                 itemBuilder: (BuildContext context, int index) {
-                  // ans button
-                  if (index == 9) {
+                  // Undo button
+                  if (index == 3) {
+                    bool canUndo =
+                        mathEditorControllers[activeIndex]?.canUndo ?? false;
                     return MyButton(
                       buttontapped: () {
-                        mathEditorControllers[activeIndex]?.insertCharacter(
-                          buttonsR[index],
-                        );
+                        mathEditorControllers[activeIndex]?.undo();
                         updateMathEditor();
+                        setState(() {});
                       },
                       buttonText: buttonsR[index],
-                      color: Colors.white,
+                      color: canUndo ? Colors.white : Colors.grey[300]!,
+                      textColor: canUndo ? Colors.black : Colors.grey,
+                    );
+                  }
+                  // Redo button
+                  if (index == 2) {
+                    bool canRedo =
+                        mathEditorControllers[activeIndex]?.canRedo ?? false;
+                    return MyButton(
+                      buttontapped: () {
+                        mathEditorControllers[activeIndex]?.redo();
+                        updateMathEditor();
+                        setState(() {});
+                      },
+                      buttonText: buttonsR[index],
+                      color: canRedo ? Colors.white : Colors.grey[300]!,
+                      textColor: canRedo ? Colors.black : Colors.grey,
+                    );
+                  }
+                  // Clear All Button
+                  if (index == 4) {
+                    return MyButton(
+                      buttontapped: () {
+                        _clearAllDisplays();
+                      },
+                      buttonText: buttonsR[index],
+                      color: const Color.fromARGB(255, 226, 104, 104),
                       textColor: Colors.black,
                     );
                   }
                   // complex number button
-                  if (index == 1) {
+                  if (index == 5) {
                     return MyButton(
                       buttontapped: () {
                         mathEditorControllers[activeIndex]?.insertCharacter(
@@ -1458,7 +1653,7 @@ class _HomePageState extends State<HomePage> {
                     );
                   }
                   // factorial Button
-                  else if (index == 2) {
+                  else if (index == 6) {
                     return MyButton(
                       buttontapped: () {
                         mathEditorControllers[activeIndex]?.insertCharacter(
@@ -1472,7 +1667,7 @@ class _HomePageState extends State<HomePage> {
                     );
                   }
                   // permutation Button
-                  else if (index == 3) {
+                  else if (index == 7) {
                     return MyButton(
                       buttontapped: () {
                         mathEditorControllers[activeIndex]?.insertPermutation();
@@ -1493,14 +1688,17 @@ class _HomePageState extends State<HomePage> {
                       textColor: Colors.black,
                     );
                   }
-                  // Clear All Button
-                  else if (index == 4) {
+                  // ans button
+                  else if (index == 9) {
                     return MyButton(
                       buttontapped: () {
-                        _clearAllDisplays();
+                        mathEditorControllers[activeIndex]?.insertCharacter(
+                          buttonsR[index],
+                        );
+                        updateMathEditor();
                       },
                       buttonText: buttonsR[index],
-                      color: const Color.fromARGB(255, 226, 104, 104),
+                      color: Colors.white,
                       textColor: Colors.black,
                     );
                   }
@@ -1579,17 +1777,23 @@ class _HomePageState extends State<HomePage> {
     List<int> keys = mathEditorControllers.keys.toList()..sort();
     for (int key in keys) {
       String? result = mathEditorControllers[key]?.result;
+
       // Only include valid numeric results
       if (result != null && result.isNotEmpty) {
+        // Convert Unicode scientific notation to standard format for parsing
+        String parseableResult = result.replaceAll('\u1D07', 'E');
+
         // Check if it's a simple number
-        if (double.tryParse(result) != null) {
-          ansValues[key] = result;
+        if (double.tryParse(parseableResult) != null) {
+          // Store the converted version so it can be parsed later
+          ansValues[key] = parseableResult;
         } else {
           // For multiline results (like simultaneous equations),
           // try to extract first value
-          List<String> lines = result.split('\n');
+          List<String> lines = parseableResult.split('\n');
           if (lines.isNotEmpty) {
-            RegExp numRegex = RegExp(r'=\s*(-?\d+\.?\d*)');
+            // Updated regex to handle scientific notation
+            RegExp numRegex = RegExp(r'=\s*(-?\d+\.?\d*(?:[eE][+-]?\d+)?)');
             Match? numMatch = numRegex.firstMatch(lines.first);
             if (numMatch != null) {
               ansValues[key] = numMatch.group(1)!;
@@ -1620,6 +1824,8 @@ class _HomePageState extends State<HomePage> {
     }
 
     setState(() {});
+
+    _saveCells(); // Save after update
   }
 
   // void updateMathEditor(int activeIndex) {
@@ -1659,5 +1865,4 @@ class _HomePageState extends State<HomePage> {
       String? ans = mathEditorControllers[activeIndex - 1]!.result;
     }
   }
-
 }
