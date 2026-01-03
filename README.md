@@ -77,7 +77,7 @@ Tailor Klator to your preferences.
 - Theme selection
 - Haptic feedback toggle
 <p align="center">
-  <img src="assets/imgs/dark_mode.jpg"/>
+  <img src="assets/imgs/dark_mode.jpg" width="20%/>
 </p>
 
 Access these options via the settings (gear) icon.
