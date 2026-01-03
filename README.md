@@ -6,7 +6,7 @@ It is optimised for clarity, precision, and fast iterative problem-solving.
 <p align="center">
   <img src="assets/imgs/basic.jpg" width="30%" />
   <img src="assets/imgs/scientific.jpg" width="30%" />
-  <img src="assets/imgs/others.jpg" width="30%" />
+  <img src="assets/imgs/extras.jpg" width="30%" />
 </p>
 
 ---
