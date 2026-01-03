@@ -4061,7 +4061,7 @@ class MathRenderer extends StatelessWidget {
                 children:
                     lineInfo.nodes.asMap().entries.map((e) {
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 1.0),
                         child: _renderNode(
                           e.value,
                           lineInfo.startIndex + e.key, // Use global index
@@ -4718,6 +4718,7 @@ class MathRenderer extends StatelessWidget {
 
     return const SizedBox.shrink();
   }
+
 }
 
 class LiteralWidget extends StatefulWidget {

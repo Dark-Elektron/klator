@@ -438,13 +438,13 @@ class MathSolverNew {
 
   /// Regex to find perm(n,r) and comb(n,r)
   static String _preprocessPermuCombination(String expr) {
-    expr = expr.replaceAllMapped(RegExp(r'perm$(\d+),(\d+)$'), (match) {
+    expr = expr.replaceAllMapped(RegExp(r'perm\((\d+),(\d+)\)'), (match) {
       int n = int.parse(match.group(1)!);
       int r = int.parse(match.group(2)!);
       return permutation(n, r).toString();
     });
 
-    expr = expr.replaceAllMapped(RegExp(r'comb$(\d+),(\d+)$'), (match) {
+    expr = expr.replaceAllMapped(RegExp(r'comb\((\d+),(\d+)\)'), (match) {
       int n = int.parse(match.group(1)!);
       int r = int.parse(match.group(2)!);
       return combination(n, r).toString();
