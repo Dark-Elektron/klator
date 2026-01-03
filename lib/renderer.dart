@@ -204,31 +204,32 @@ class MathTextStyle {
     );
   }
 
-static String toDisplayText(String text) {
-  if (text.isEmpty) return text;
-  final buffer = StringBuffer();
-  for (int i = 0; i < text.length; i++) {
-    final char = text[i];
-    
-    // Convert multiply sign to user preference
-    String displayChar = char;
-    if (_isMultiplySign(char)) {
-      displayChar = _multiplySign;
-    }
-    
-    if (_isPaddedOperator(char)) {
-      // Don't add leading space if this is the first character
-      if (i == 0) {
-        buffer.write('$displayChar ');  // Only trailing space
-      } else {
-        buffer.write(' $displayChar ');  // Both spaces
+  static String toDisplayText(String text) {
+    if (text.isEmpty) return text;
+    final buffer = StringBuffer();
+    for (int i = 0; i < text.length; i++) {
+      final char = text[i];
+
+      // Convert multiply sign to user preference
+      String displayChar = char;
+      if (_isMultiplySign(char)) {
+        displayChar = _multiplySign;
       }
-    } else {
-      buffer.write(displayChar);
+
+      if (_isPaddedOperator(char)) {
+        // Don't add leading space if this is the first character
+        if (i == 0) {
+          buffer.write('$displayChar '); // Only trailing space
+        } else {
+          buffer.write(' $displayChar '); // Both spaces
+        }
+      } else {
+        buffer.write(displayChar);
+      }
     }
+    return buffer.toString();
   }
-  return buffer.toString();
-}
+
   static double measureText(
     String text,
     double fontSize,
@@ -322,63 +323,62 @@ static String toDisplayText(String text) {
     return _displayToLogicalIndex(text, displayOffset);
   }
 
-static int _displayToLogicalIndex(String text, int displayIndex) {
-  if (displayIndex <= 0) return 0;
+  static int _displayToLogicalIndex(String text, int displayIndex) {
+    if (displayIndex <= 0) return 0;
 
-  int displayPos = 0;
+    int displayPos = 0;
 
-  for (int logical = 0; logical < text.length; logical++) {
-    final char = text[logical];
-    int charWidth;
-    
-    if (_isPaddedOperator(char)) {
-      charWidth = (logical == 0) ? 2 : 3;  // First char has no leading space
-    } else {
-      charWidth = 1;
-    }
-    
-    final prevDisplayPos = displayPos;
-    displayPos += charWidth;
+    for (int logical = 0; logical < text.length; logical++) {
+      final char = text[logical];
+      int charWidth;
 
-    if (displayIndex <= displayPos) {
       if (_isPaddedOperator(char)) {
-        final midpoint = prevDisplayPos + ((logical == 0) ? 1 : 2);
-        if (displayIndex <= midpoint) {
-          return logical;
-        } else {
-          return logical + 1;
-        }
+        charWidth = (logical == 0) ? 2 : 3; // First char has no leading space
+      } else {
+        charWidth = 1;
       }
-      return logical + 1;
-    }
-  }
 
-  return text.length;
-}
+      final prevDisplayPos = displayPos;
+      displayPos += charWidth;
+
+      if (displayIndex <= displayPos) {
+        if (_isPaddedOperator(char)) {
+          final midpoint = prevDisplayPos + ((logical == 0) ? 1 : 2);
+          if (displayIndex <= midpoint) {
+            return logical;
+          } else {
+            return logical + 1;
+          }
+        }
+        return logical + 1;
+      }
+    }
+
+    return text.length;
+  }
 
   // In MathTextStyle class
-static int logicalToDisplayIndex(String text, int logicalIndex) {
-  if (text.isEmpty || logicalIndex <= 0) return 0;
+  static int logicalToDisplayIndex(String text, int logicalIndex) {
+    if (text.isEmpty || logicalIndex <= 0) return 0;
 
-  int displayIndex = 0;
-  final clampedIndex = logicalIndex.clamp(0, text.length);
+    int displayIndex = 0;
+    final clampedIndex = logicalIndex.clamp(0, text.length);
 
-  for (int i = 0; i < clampedIndex; i++) {
-    final char = text[i];
-    if (_isPaddedOperator(char)) {
-      if (i == 0) {
-        displayIndex += 2;  // char + trailing space (no leading space)
+    for (int i = 0; i < clampedIndex; i++) {
+      final char = text[i];
+      if (_isPaddedOperator(char)) {
+        if (i == 0) {
+          displayIndex += 2; // char + trailing space (no leading space)
+        } else {
+          displayIndex += 3; // leading space + char + trailing space
+        }
       } else {
-        displayIndex += 3;  // leading space + char + trailing space
+        displayIndex += 1;
       }
-    } else {
-      displayIndex += 1;
     }
+
+    return displayIndex;
   }
-
-  return displayIndex;
-}
-
 }
 
 class _ParentListInfo {
@@ -702,9 +702,9 @@ class MathEditorController extends ChangeNotifier {
     _notifyStructureChanged();
 
     onCalculate();
-    
-  // DEBUG: Print structure after each character
-  // debugPrintExpression();
+
+    // DEBUG: Print structure after each character
+    // debugPrintExpression();
   }
 
   /// Set expression from loaded data
@@ -1127,6 +1127,19 @@ class MathEditorController extends ChangeNotifier {
 
   void insertPermutation() {
     saveStateForUndo();
+
+    // Check if we're inside a container that should be wrapped entirely
+    if (cursor.parentId != null) {
+      final parent = _findNode(expression, cursor.parentId!);
+
+      // If inside a parenthesis, wrap the entire parenthesis as n
+      if (parent is ParenthesisNode) {
+        _wrapParenthesisNodeIntoPermutation(parent);
+        return;
+      }
+    }
+
+    // Check if previous node is a parenthesis or complex node
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -1135,6 +1148,38 @@ class MathEditorController extends ChangeNotifier {
     String text = current.text;
     int cursorPos = cursor.subIndex;
     int actualIndex = siblings.indexWhere((n) => n.id == currentId);
+
+    // If cursor is at start of literal and previous node exists
+    if (cursorPos == 0 && actualIndex > 0) {
+      final prevNode = siblings[actualIndex - 1];
+
+      // If previous node is a ParenthesisNode, wrap it
+      if (prevNode is ParenthesisNode) {
+        _wrapPreviousNodeIntoPermutation(
+          prevNode,
+          actualIndex,
+          siblings,
+          current,
+        );
+        return;
+      }
+
+      // If previous node is another complex node (fraction, trig, etc.)
+      if (prevNode is FractionNode ||
+          prevNode is TrigNode ||
+          prevNode is RootNode ||
+          prevNode is LogNode ||
+          prevNode is ExponentNode ||
+          prevNode is AnsNode) {
+        _wrapPreviousNodeIntoPermutation(
+          prevNode,
+          actualIndex,
+          siblings,
+          current,
+        );
+        return;
+      }
+    }
 
     // Check if there's a number before cursor to use as n
     int operandStart = cursorPos;
@@ -1145,6 +1190,49 @@ class MathEditorController extends ChangeNotifier {
     String nText = text.substring(operandStart, cursorPos);
     String before = text.substring(0, operandStart);
     String after = text.substring(cursorPos);
+
+    // If no number but there's a previous complex node
+    if (nText.isEmpty && operandStart == 0 && actualIndex > 0) {
+      final chainResult = _collectMultiplicationChain(
+        siblings,
+        actualIndex - 1,
+      );
+      if (chainResult.nodes.isNotEmpty) {
+        if (chainResult.prefixToKeep != null &&
+            chainResult.prefixNodeIndex != null) {
+          (siblings[chainResult.prefixNodeIndex!] as LiteralNode).text =
+              chainResult.prefixToKeep!;
+        }
+
+        int removeStart =
+            chainResult.prefixNodeIndex != null
+                ? chainResult.prefixNodeIndex! + 1
+                : chainResult.removeFromIndex;
+        int removeEnd = actualIndex - 1;
+
+        for (int j = removeEnd; j >= removeStart; j--) {
+          siblings.removeAt(j);
+        }
+
+        int newCurrentIndex = removeStart;
+        current.text = after;
+
+        final perm = PermutationNode(
+          n: chainResult.nodes,
+          r: [LiteralNode(text: "")],
+        );
+        siblings.insert(newCurrentIndex, perm);
+
+        cursor = EditorCursor(
+          parentId: perm.id,
+          path: 'r',
+          index: 0,
+          subIndex: 0,
+        );
+        _notifyStructureChanged();
+        return;
+      }
+    }
 
     current.text = before;
 
@@ -1158,29 +1246,154 @@ class MathEditorController extends ChangeNotifier {
       siblings.insert(actualIndex + 1, perm);
       siblings.insert(actualIndex + 2, tail);
 
-      if (nText.isEmpty) {
-        // No number before, start in n field
-        cursor = EditorCursor(
-          parentId: perm.id,
-          path: 'n',
-          index: 0,
-          subIndex: 0,
+      cursor = EditorCursor(
+        parentId: perm.id,
+        path: nText.isEmpty ? 'n' : 'r',
+        index: 0,
+        subIndex: 0,
+      );
+    }
+    _notifyStructureChanged();
+  }
+
+  /// Wraps a previous node (parenthesis, fraction, etc.) into permutation's n field
+  void _wrapPreviousNodeIntoPermutation(
+    MathNode prevNode,
+    int currentIndex,
+    List<MathNode> siblings,
+    LiteralNode currentLiteral,
+  ) {
+    String afterText = currentLiteral.text;
+
+    // Remove the current literal and previous node
+    siblings.removeAt(currentIndex); // Remove current literal
+    siblings.removeAt(currentIndex - 1); // Remove previous node
+
+    // Collect any chain before the previous node
+    List<MathNode> nNodes = [];
+    int insertIndex = currentIndex - 1;
+
+    if (currentIndex - 2 >= 0) {
+      final beforePrev = siblings[currentIndex - 2];
+      if (beforePrev is LiteralNode &&
+          (beforePrev.text.endsWith(MathTextStyle.multiplySign) ||
+              (beforePrev.text.isNotEmpty &&
+                  _isDigitOrLetter(
+                    beforePrev.text[beforePrev.text.length - 1],
+                  )))) {
+        final chainResult = _collectMultiplicationChain(
+          siblings,
+          currentIndex - 2,
         );
-      } else {
-        // Number was captured, go to r field
-        cursor = EditorCursor(
-          parentId: perm.id,
-          path: 'r',
-          index: 0,
-          subIndex: 0,
-        );
+        if (chainResult.nodes.isNotEmpty) {
+          if (chainResult.prefixToKeep != null &&
+              chainResult.prefixNodeIndex != null) {
+            (siblings[chainResult.prefixNodeIndex!] as LiteralNode).text =
+                chainResult.prefixToKeep!;
+          }
+          insertIndex =
+              chainResult.prefixNodeIndex != null
+                  ? chainResult.prefixNodeIndex! + 1
+                  : chainResult.removeFromIndex;
+
+          // Remove chain nodes
+          for (int j = currentIndex - 2; j >= insertIndex; j--) {
+            siblings.removeAt(j);
+          }
+
+          nNodes.addAll(chainResult.nodes);
+        }
       }
     }
+
+    nNodes.add(prevNode);
+
+    final perm = PermutationNode(n: nNodes, r: [LiteralNode(text: "")]);
+    final tail = LiteralNode(text: afterText);
+
+    siblings.insert(insertIndex, perm);
+    siblings.insert(insertIndex + 1, tail);
+
+    cursor = EditorCursor(parentId: perm.id, path: 'r', index: 0, subIndex: 0);
+    _notifyStructureChanged();
+  }
+
+  /// Wraps a ParenthesisNode (when cursor is inside) into permutation's n field
+  void _wrapParenthesisNodeIntoPermutation(ParenthesisNode paren) {
+    final parentInfo = _findParentListOf(paren.id);
+    if (parentInfo == null) return;
+
+    final parentList = parentInfo.list;
+    final parenIndex = parentInfo.index;
+
+    // Get text after parenthesis
+    String afterText = '';
+    if (parenIndex + 1 < parentList.length &&
+        parentList[parenIndex + 1] is LiteralNode) {
+      afterText = (parentList[parenIndex + 1] as LiteralNode).text;
+      parentList.removeAt(parenIndex + 1);
+    }
+
+    // Collect multiplication chain before parenthesis
+    List<MathNode> nNodes = [];
+    int removeStartIndex = parenIndex;
+
+    if (parenIndex > 0) {
+      final prevNode = parentList[parenIndex - 1];
+      if (prevNode is LiteralNode &&
+          (prevNode.text.endsWith(MathTextStyle.multiplySign) ||
+              (prevNode.text.isNotEmpty &&
+                  _isDigitOrLetter(prevNode.text[prevNode.text.length - 1])))) {
+        final chainResult = _collectMultiplicationChain(
+          parentList,
+          parenIndex - 1,
+        );
+        if (chainResult.nodes.isNotEmpty) {
+          if (chainResult.prefixToKeep != null &&
+              chainResult.prefixNodeIndex != null) {
+            (parentList[chainResult.prefixNodeIndex!] as LiteralNode).text =
+                chainResult.prefixToKeep!;
+          }
+          removeStartIndex =
+              chainResult.prefixNodeIndex != null
+                  ? chainResult.prefixNodeIndex! + 1
+                  : chainResult.removeFromIndex;
+          nNodes.addAll(chainResult.nodes);
+        }
+      }
+    }
+
+    nNodes.add(paren);
+
+    // Remove collected nodes
+    for (int j = parenIndex; j >= removeStartIndex; j--) {
+      parentList.removeAt(j);
+    }
+
+    final perm = PermutationNode(n: nNodes, r: [LiteralNode(text: "")]);
+    final tail = LiteralNode(text: afterText);
+
+    parentList.insert(removeStartIndex, perm);
+    parentList.insert(removeStartIndex + 1, tail);
+
+    cursor = EditorCursor(parentId: perm.id, path: 'r', index: 0, subIndex: 0);
     _notifyStructureChanged();
   }
 
   void insertCombination() {
     saveStateForUndo();
+
+    // Check if we're inside a container that should be wrapped entirely
+    if (cursor.parentId != null) {
+      final parent = _findNode(expression, cursor.parentId!);
+
+      if (parent is ParenthesisNode) {
+        _wrapParenthesisNodeIntoCombination(parent);
+        return;
+      }
+    }
+
+    // Check if previous node is a parenthesis or complex node
     final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
     if (current is! LiteralNode) return;
@@ -1189,6 +1402,27 @@ class MathEditorController extends ChangeNotifier {
     String text = current.text;
     int cursorPos = cursor.subIndex;
     int actualIndex = siblings.indexWhere((n) => n.id == currentId);
+
+    // If cursor is at start of literal and previous node exists
+    if (cursorPos == 0 && actualIndex > 0) {
+      final prevNode = siblings[actualIndex - 1];
+
+      if (prevNode is ParenthesisNode ||
+          prevNode is FractionNode ||
+          prevNode is TrigNode ||
+          prevNode is RootNode ||
+          prevNode is LogNode ||
+          prevNode is ExponentNode ||
+          prevNode is AnsNode) {
+        _wrapPreviousNodeIntoCombination(
+          prevNode,
+          actualIndex,
+          siblings,
+          current,
+        );
+        return;
+      }
+    }
 
     // Check if there's a number before cursor to use as n
     int operandStart = cursorPos;
@@ -1199,6 +1433,48 @@ class MathEditorController extends ChangeNotifier {
     String nText = text.substring(operandStart, cursorPos);
     String before = text.substring(0, operandStart);
     String after = text.substring(cursorPos);
+
+    if (nText.isEmpty && operandStart == 0 && actualIndex > 0) {
+      final chainResult = _collectMultiplicationChain(
+        siblings,
+        actualIndex - 1,
+      );
+      if (chainResult.nodes.isNotEmpty) {
+        if (chainResult.prefixToKeep != null &&
+            chainResult.prefixNodeIndex != null) {
+          (siblings[chainResult.prefixNodeIndex!] as LiteralNode).text =
+              chainResult.prefixToKeep!;
+        }
+
+        int removeStart =
+            chainResult.prefixNodeIndex != null
+                ? chainResult.prefixNodeIndex! + 1
+                : chainResult.removeFromIndex;
+        int removeEnd = actualIndex - 1;
+
+        for (int j = removeEnd; j >= removeStart; j--) {
+          siblings.removeAt(j);
+        }
+
+        int newCurrentIndex = removeStart;
+        current.text = after;
+
+        final comb = CombinationNode(
+          n: chainResult.nodes,
+          r: [LiteralNode(text: "")],
+        );
+        siblings.insert(newCurrentIndex, comb);
+
+        cursor = EditorCursor(
+          parentId: comb.id,
+          path: 'r',
+          index: 0,
+          subIndex: 0,
+        );
+        _notifyStructureChanged();
+        return;
+      }
+    }
 
     current.text = before;
 
@@ -1212,22 +1488,129 @@ class MathEditorController extends ChangeNotifier {
       siblings.insert(actualIndex + 1, comb);
       siblings.insert(actualIndex + 2, tail);
 
-      if (nText.isEmpty) {
-        cursor = EditorCursor(
-          parentId: comb.id,
-          path: 'n',
-          index: 0,
-          subIndex: 0,
+      cursor = EditorCursor(
+        parentId: comb.id,
+        path: nText.isEmpty ? 'n' : 'r',
+        index: 0,
+        subIndex: 0,
+      );
+    }
+    _notifyStructureChanged();
+  }
+
+  void _wrapPreviousNodeIntoCombination(
+    MathNode prevNode,
+    int currentIndex,
+    List<MathNode> siblings,
+    LiteralNode currentLiteral,
+  ) {
+    String afterText = currentLiteral.text;
+
+    siblings.removeAt(currentIndex);
+    siblings.removeAt(currentIndex - 1);
+
+    List<MathNode> nNodes = [];
+    int insertIndex = currentIndex - 1;
+
+    if (currentIndex - 2 >= 0) {
+      final beforePrev = siblings[currentIndex - 2];
+      if (beforePrev is LiteralNode &&
+          (beforePrev.text.endsWith(MathTextStyle.multiplySign) ||
+              (beforePrev.text.isNotEmpty &&
+                  _isDigitOrLetter(
+                    beforePrev.text[beforePrev.text.length - 1],
+                  )))) {
+        final chainResult = _collectMultiplicationChain(
+          siblings,
+          currentIndex - 2,
         );
-      } else {
-        cursor = EditorCursor(
-          parentId: comb.id,
-          path: 'r',
-          index: 0,
-          subIndex: 0,
-        );
+        if (chainResult.nodes.isNotEmpty) {
+          if (chainResult.prefixToKeep != null &&
+              chainResult.prefixNodeIndex != null) {
+            (siblings[chainResult.prefixNodeIndex!] as LiteralNode).text =
+                chainResult.prefixToKeep!;
+          }
+          insertIndex =
+              chainResult.prefixNodeIndex != null
+                  ? chainResult.prefixNodeIndex! + 1
+                  : chainResult.removeFromIndex;
+
+          for (int j = currentIndex - 2; j >= insertIndex; j--) {
+            siblings.removeAt(j);
+          }
+
+          nNodes.addAll(chainResult.nodes);
+        }
       }
     }
+
+    nNodes.add(prevNode);
+
+    final comb = CombinationNode(n: nNodes, r: [LiteralNode(text: "")]);
+    final tail = LiteralNode(text: afterText);
+
+    siblings.insert(insertIndex, comb);
+    siblings.insert(insertIndex + 1, tail);
+
+    cursor = EditorCursor(parentId: comb.id, path: 'r', index: 0, subIndex: 0);
+    _notifyStructureChanged();
+  }
+
+  void _wrapParenthesisNodeIntoCombination(ParenthesisNode paren) {
+    final parentInfo = _findParentListOf(paren.id);
+    if (parentInfo == null) return;
+
+    final parentList = parentInfo.list;
+    final parenIndex = parentInfo.index;
+
+    String afterText = '';
+    if (parenIndex + 1 < parentList.length &&
+        parentList[parenIndex + 1] is LiteralNode) {
+      afterText = (parentList[parenIndex + 1] as LiteralNode).text;
+      parentList.removeAt(parenIndex + 1);
+    }
+
+    List<MathNode> nNodes = [];
+    int removeStartIndex = parenIndex;
+
+    if (parenIndex > 0) {
+      final prevNode = parentList[parenIndex - 1];
+      if (prevNode is LiteralNode &&
+          (prevNode.text.endsWith(MathTextStyle.multiplySign) ||
+              (prevNode.text.isNotEmpty &&
+                  _isDigitOrLetter(prevNode.text[prevNode.text.length - 1])))) {
+        final chainResult = _collectMultiplicationChain(
+          parentList,
+          parenIndex - 1,
+        );
+        if (chainResult.nodes.isNotEmpty) {
+          if (chainResult.prefixToKeep != null &&
+              chainResult.prefixNodeIndex != null) {
+            (parentList[chainResult.prefixNodeIndex!] as LiteralNode).text =
+                chainResult.prefixToKeep!;
+          }
+          removeStartIndex =
+              chainResult.prefixNodeIndex != null
+                  ? chainResult.prefixNodeIndex! + 1
+                  : chainResult.removeFromIndex;
+          nNodes.addAll(chainResult.nodes);
+        }
+      }
+    }
+
+    nNodes.add(paren);
+
+    for (int j = parenIndex; j >= removeStartIndex; j--) {
+      parentList.removeAt(j);
+    }
+
+    final comb = CombinationNode(n: nNodes, r: [LiteralNode(text: "")]);
+    final tail = LiteralNode(text: afterText);
+
+    parentList.insert(removeStartIndex, comb);
+    parentList.insert(removeStartIndex + 1, tail);
+
+    cursor = EditorCursor(parentId: comb.id, path: 'r', index: 0, subIndex: 0);
     _notifyStructureChanged();
   }
 
@@ -4040,6 +4423,8 @@ class MathRenderer extends StatelessWidget {
     required this.textScaler,
   });
 
+  static const double _nodePadding = 0.0;
+
   @override
   Widget build(BuildContext context) {
     // Split expression into lines
@@ -4061,7 +4446,7 @@ class MathRenderer extends StatelessWidget {
                 children:
                     lineInfo.nodes.asMap().entries.map((e) {
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 1.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 2.0),
                         child: _renderNode(
                           e.value,
                           lineInfo.startIndex + e.key, // Use global index
@@ -4146,53 +4531,56 @@ class MathRenderer extends StatelessWidget {
     }
 
     if (node is FractionNode) {
-      return IntrinsicWidth(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children:
-                  node.numerator
-                      .asMap()
-                      .entries
-                      .map(
-                        (e) => _renderNode(
-                          e.value,
-                          e.key,
-                          node.numerator,
-                          node.id,
-                          'num',
-                          fontSize,
-                        ),
-                      )
-                      .toList(),
-            ),
-            Container(
-              height: math.max(1.5, fontSize * 0.06),
-              width: double.infinity,
-              color: Colors.white,
-              margin: EdgeInsets.symmetric(vertical: fontSize * 0.15),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children:
-                  node.denominator
-                      .asMap()
-                      .entries
-                      .map(
-                        (e) => _renderNode(
-                          e.value,
-                          e.key,
-                          node.denominator,
-                          node.id,
-                          'den',
-                          fontSize,
-                        ),
-                      )
-                      .toList(),
-            ),
-          ],
+      return Padding(
+        padding: const EdgeInsets.only(right: _nodePadding),
+        child: IntrinsicWidth(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children:
+                    node.numerator
+                        .asMap()
+                        .entries
+                        .map(
+                          (e) => _renderNode(
+                            e.value,
+                            e.key,
+                            node.numerator,
+                            node.id,
+                            'num',
+                            fontSize,
+                          ),
+                        )
+                        .toList(),
+              ),
+              Container(
+                height: math.max(1.5, fontSize * 0.06),
+                width: double.infinity,
+                color: Colors.white,
+                margin: EdgeInsets.symmetric(vertical: fontSize * 0.15),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children:
+                    node.denominator
+                        .asMap()
+                        .entries
+                        .map(
+                          (e) => _renderNode(
+                            e.value,
+                            e.key,
+                            node.denominator,
+                            node.id,
+                            'den',
+                            fontSize,
+                          ),
+                        )
+                        .toList(),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -4297,60 +4685,63 @@ class MathRenderer extends StatelessWidget {
     }
 
     if (node is TrigNode) {
-      return IntrinsicHeight(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Function name (sin, cos, etc.)
-            Text(
-              node.function,
-              style: MathTextStyle.getStyle(
-                fontSize,
-              ).copyWith(color: Colors.white),
-              textScaler: textScaler,
-            ),
-            // Parentheses with content
-            Flexible(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ScalableParenthesis(
-                    isOpening: true,
-                    fontSize: fontSize,
-                    color: Colors.white,
-                    textScaler: textScaler,
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children:
-                        node.argument
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.argument,
-                                node.id,
-                                'arg',
-                                fontSize,
-                              ),
-                            )
-                            .toList(),
-                  ),
-                  ScalableParenthesis(
-                    isOpening: false,
-                    fontSize: fontSize,
-                    color: Colors.white,
-                    textScaler: textScaler,
-                  ),
-                ],
+      return Padding(
+        padding: const EdgeInsets.only(right: _nodePadding),
+        child: IntrinsicHeight(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Function name (sin, cos, etc.)
+              Text(
+                node.function,
+                style: MathTextStyle.getStyle(
+                  fontSize,
+                ).copyWith(color: Colors.white),
+                textScaler: textScaler,
               ),
-            ),
-          ],
+              // Parentheses with content
+              Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ScalableParenthesis(
+                      isOpening: true,
+                      fontSize: fontSize,
+                      color: Colors.white,
+                      textScaler: textScaler,
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children:
+                          node.argument
+                              .asMap()
+                              .entries
+                              .map(
+                                (e) => _renderNode(
+                                  e.value,
+                                  e.key,
+                                  node.argument,
+                                  node.id,
+                                  'arg',
+                                  fontSize,
+                                ),
+                              )
+                              .toList(),
+                    ),
+                    ScalableParenthesis(
+                      isOpening: false,
+                      fontSize: fontSize,
+                      color: Colors.white,
+                      textScaler: textScaler,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -4400,142 +4791,54 @@ class MathRenderer extends StatelessWidget {
                   .toList(),
         );
       }
-
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          // Index for nth root (positioned above the hook)
-          if (indexWidget != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 1),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [indexWidget, SizedBox(height: fontSize * 0.35)],
-              ),
-            ),
-
-          // Radical symbol + radicand
-          IntrinsicHeight(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Radical symbol (custom painted)
-                CustomPaint(
-                  size: Size(fontSize * 0.6, double.infinity),
-                  painter: RadicalSymbolPainter(
-                    color: Colors.white,
-                    strokeWidth: math.max(1.5, fontSize * 0.06),
-                  ),
-                ),
-
-                // Radicand with vinculum (top line)
-                Container(
-                  decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(
-                        color: Colors.white,
-                        width: math.max(1.5, fontSize * 0.06),
-                      ),
-                    ),
-                  ),
-                  padding: EdgeInsets.only(
-                    left: 3,
-                    right: 4,
-                    top: fontSize * 0.08,
-                    bottom: 2,
-                  ),
-                  child: radicandWidget,
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    if (node is LogNode) {
-      final double baseSize = fontSize * 0.6;
-
-      return IntrinsicHeight(
+      return Padding(
+        padding: const EdgeInsets.only(right: _nodePadding),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // "log" or "ln" text with subscript base
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  node.isNaturalLog ? 'ln' : 'log',
-                  style: MathTextStyle.getStyle(
-                    fontSize,
-                  ).copyWith(color: Colors.white),
-                  textScaler: textScaler,
+            // Index for nth root (positioned above the hook)
+            if (indexWidget != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 1),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [indexWidget, SizedBox(height: fontSize * 0.35)],
                 ),
-                if (!node.isNaturalLog)
-                  Transform.translate(
-                    offset: Offset(0, -fontSize * 0.1),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children:
-                          node.base
-                              .asMap()
-                              .entries
-                              .map(
-                                (e) => _renderNode(
-                                  e.value,
-                                  e.key,
-                                  node.base,
-                                  node.id,
-                                  'base',
-                                  baseSize,
-                                ),
-                              )
-                              .toList(),
-                    ),
-                  ),
-              ],
-            ),
-            // Parentheses with argument
-            Flexible(
+              ),
+
+            // Radical symbol + radicand
+            IntrinsicHeight(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ScalableParenthesis(
-                    isOpening: true,
-                    fontSize: fontSize,
-                    color: Colors.white,
-                    textScaler: textScaler,
+                  // Radical symbol (custom painted)
+                  CustomPaint(
+                    size: Size(fontSize * 0.6, double.infinity),
+                    painter: RadicalSymbolPainter(
+                      color: Colors.white,
+                      strokeWidth: math.max(1.5, fontSize * 0.06),
+                    ),
                   ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children:
-                        node.argument
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.argument,
-                                node.id,
-                                'arg',
-                                fontSize,
-                              ),
-                            )
-                            .toList(),
-                  ),
-                  ScalableParenthesis(
-                    isOpening: false,
-                    fontSize: fontSize,
-                    color: Colors.white,
-                    textScaler: textScaler,
+
+                  // Radicand with vinculum (top line)
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          color: Colors.white,
+                          width: math.max(1.5, fontSize * 0.06),
+                        ),
+                      ),
+                    ),
+                    padding: EdgeInsets.only(
+                      left: 3,
+                      right: 4,
+                      top: fontSize * 0.08,
+                      bottom: 2,
+                    ),
+                    child: radicandWidget,
                   ),
                 ],
               ),
@@ -4545,180 +4848,278 @@ class MathRenderer extends StatelessWidget {
       );
     }
 
+    if (node is LogNode) {
+      final double baseSize = fontSize * 0.6;
+      return Padding(
+        padding: const EdgeInsets.only(right: _nodePadding),
+        child: IntrinsicHeight(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // "log" or "ln" text with subscript base
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    node.isNaturalLog ? 'ln' : 'log',
+                    style: MathTextStyle.getStyle(
+                      fontSize,
+                    ).copyWith(color: Colors.white),
+                    textScaler: textScaler,
+                  ),
+                  if (!node.isNaturalLog)
+                    Transform.translate(
+                      offset: Offset(0, -fontSize * 0.1),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children:
+                            node.base
+                                .asMap()
+                                .entries
+                                .map(
+                                  (e) => _renderNode(
+                                    e.value,
+                                    e.key,
+                                    node.base,
+                                    node.id,
+                                    'base',
+                                    baseSize,
+                                  ),
+                                )
+                                .toList(),
+                      ),
+                    ),
+                ],
+              ),
+              // Parentheses with argument
+              Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ScalableParenthesis(
+                      isOpening: true,
+                      fontSize: fontSize,
+                      color: Colors.white,
+                      textScaler: textScaler,
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children:
+                          node.argument
+                              .asMap()
+                              .entries
+                              .map(
+                                (e) => _renderNode(
+                                  e.value,
+                                  e.key,
+                                  node.argument,
+                                  node.id,
+                                  'arg',
+                                  fontSize,
+                                ),
+                              )
+                              .toList(),
+                    ),
+                    ScalableParenthesis(
+                      isOpening: false,
+                      fontSize: fontSize,
+                      color: Colors.white,
+                      textScaler: textScaler,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (node is PermutationNode) {
       final double smallSize = fontSize * 0.6;
-
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children:
-                    node.n
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.n,
-                            node.id,
-                            'n',
-                            smallSize,
-                          ),
-                        )
-                        .toList(),
-              ),
-              SizedBox(height: fontSize * 0.4),
-            ],
-          ),
-          Text(
-            'P',
-            style: MathTextStyle.getStyle(
-              fontSize,
-            ).copyWith(color: Colors.white),
-            textScaler: textScaler,
-          ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(height: fontSize * 0.4),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children:
-                    node.r
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.r,
-                            node.id,
-                            'r',
-                            smallSize,
-                          ),
-                        )
-                        .toList(),
-              ),
-            ],
-          ),
-        ],
-      );
-    }
-
-    if (node is CombinationNode) {
-      final double smallSize = fontSize * 0.6;
-
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children:
-                    node.n
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.n,
-                            node.id,
-                            'n',
-                            smallSize,
-                          ),
-                        )
-                        .toList(),
-              ),
-              SizedBox(height: fontSize * 0.4),
-            ],
-          ),
-          Text(
-            'C',
-            style: MathTextStyle.getStyle(
-              fontSize,
-            ).copyWith(color: Colors.white),
-            textScaler: textScaler,
-          ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(height: fontSize * 0.4),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children:
-                    node.r
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.r,
-                            node.id,
-                            'r',
-                            smallSize,
-                          ),
-                        )
-                        .toList(),
-              ),
-            ],
-          ),
-        ],
-      );
-    }
-
-    if (node is AnsNode) {
-      return IntrinsicHeight(
+      return Padding(
+        padding: const EdgeInsets.only(right: _nodePadding),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // "ANS" text
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children:
+                      node.n
+                          .asMap()
+                          .entries
+                          .map(
+                            (e) => _renderNode(
+                              e.value,
+                              e.key,
+                              node.n,
+                              node.id,
+                              'n',
+                              smallSize,
+                            ),
+                          )
+                          .toList(),
+                ),
+                SizedBox(height: fontSize * 0.4),
+              ],
+            ),
             Text(
-              'ans',
+              'P',
               style: MathTextStyle.getStyle(
                 fontSize,
-              ).copyWith(color: Colors.orangeAccent),
+              ).copyWith(color: Colors.white),
               textScaler: textScaler,
             ),
-
-            // Index - same size as regular text
-            Row(
+            Column(
               mainAxisSize: MainAxisSize.min,
-              children:
-                  node.index
-                      .asMap()
-                      .entries
-                      .map(
-                        (e) => _renderNode(
-                          e.value,
-                          e.key,
-                          node.index,
-                          node.id,
-                          'index',
-                          fontSize, // <-- Same size, not smaller
-                        ),
-                      )
-                      .toList(),
+              children: [
+                SizedBox(height: fontSize * 0.4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children:
+                      node.r
+                          .asMap()
+                          .entries
+                          .map(
+                            (e) => _renderNode(
+                              e.value,
+                              e.key,
+                              node.r,
+                              node.id,
+                              'r',
+                              smallSize,
+                            ),
+                          )
+                          .toList(),
+                ),
+              ],
             ),
           ],
         ),
       );
     }
 
+    if (node is CombinationNode) {
+      final double smallSize = fontSize * 0.6;
+      return Padding(
+        padding: const EdgeInsets.only(right: _nodePadding),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children:
+                      node.n
+                          .asMap()
+                          .entries
+                          .map(
+                            (e) => _renderNode(
+                              e.value,
+                              e.key,
+                              node.n,
+                              node.id,
+                              'n',
+                              smallSize,
+                            ),
+                          )
+                          .toList(),
+                ),
+                SizedBox(height: fontSize * 0.4),
+              ],
+            ),
+            Text(
+              'C',
+              style: MathTextStyle.getStyle(
+                fontSize,
+              ).copyWith(color: Colors.white),
+              textScaler: textScaler,
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(height: fontSize * 0.4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children:
+                      node.r
+                          .asMap()
+                          .entries
+                          .map(
+                            (e) => _renderNode(
+                              e.value,
+                              e.key,
+                              node.r,
+                              node.id,
+                              'r',
+                              smallSize,
+                            ),
+                          )
+                          .toList(),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (node is AnsNode) {
+      return Padding(
+        padding: const EdgeInsets.only(right: _nodePadding),
+        child: IntrinsicHeight(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // "ANS" text
+              Text(
+                'ans',
+                style: MathTextStyle.getStyle(
+                  fontSize,
+                ).copyWith(color: Colors.orangeAccent),
+                textScaler: textScaler,
+              ),
+
+              // Index - same size as regular text
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children:
+                    node.index
+                        .asMap()
+                        .entries
+                        .map(
+                          (e) => _renderNode(
+                            e.value,
+                            e.key,
+                            node.index,
+                            node.id,
+                            'index',
+                            fontSize, // <-- Same size, not smaller
+                          ),
+                        )
+                        .toList(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return const SizedBox.shrink();
   }
-
 }
 
 class LiteralWidget extends StatefulWidget {
@@ -4858,18 +5259,20 @@ class _LiteralWidgetState extends State<LiteralWidget> {
   @override
   Widget build(BuildContext context) {
     final logicalText = widget.node.text;
-    final displayText =
-        logicalText.isEmpty ? " " : MathTextStyle.toDisplayText(logicalText);
-
     final showCursor = widget.active && widget.cursorOpacity > 0.5;
 
-    // Calculate cursor offset after build to use RenderParagraph
+    final isEmpty = logicalText.isEmpty;
+
+    // Only hide if empty and not active
+    final shouldRenderMinimal = isEmpty && !widget.active;
+
+    final displayText = isEmpty ? "" : MathTextStyle.toDisplayText(logicalText);
+
     double cursorOffset = 0.0;
 
     return StatefulBuilder(
       builder: (context, setInnerState) {
-        // Schedule cursor offset calculation after Text renders
-        if (showCursor) {
+        if (showCursor && !isEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             final newOffset = _getCursorOffsetFromRenderParagraph(
               logicalText,
@@ -4883,6 +5286,31 @@ class _LiteralWidgetState extends State<LiteralWidget> {
           });
         }
 
+        // Render nothing visible for empty non-active literals
+        if (shouldRenderMinimal) {
+          return const SizedBox.shrink();
+        }
+
+        // For empty but active (cursor here), render minimal width container
+        if (isEmpty && widget.active) {
+          return SizedBox(
+            width: widget.fontSize * 0.5,
+            height: widget.fontSize, // Add height constraint
+            child:
+                showCursor
+                    ? Align(
+                      alignment: Alignment.center,
+                      child: Container(
+                        width: math.max(2.0, widget.fontSize * 0.06),
+                        height: widget.fontSize,
+                        color: Colors.yellowAccent,
+                      ),
+                    )
+                    : null,
+          );
+        }
+
+        // Normal rendering for non-empty text
         return Stack(
           clipBehavior: Clip.none,
           children: [
@@ -5025,10 +5453,15 @@ class ParenthesisPainter extends CustomPainter {
 
     double padding = size.height * 0.05;
 
+    // Control the bow amount here (lower = less bow)
+    // Original was -size.width for opening and 2 * size.width for closing
+    double bowAmount =
+        size.width * 0.3; // Adjust this value (0.0 = straight, 1.0 = more bow)
+
     if (isOpening) {
       path.moveTo(size.width, padding);
       path.quadraticBezierTo(
-        -size.width,
+        -bowAmount, // Changed from -size.width
         size.height / 2,
         size.width,
         size.height - padding,
@@ -5036,7 +5469,7 @@ class ParenthesisPainter extends CustomPainter {
     } else {
       path.moveTo(0, padding);
       path.quadraticBezierTo(
-        2 * size.width,
+        size.width + bowAmount, // Changed from 2 * size.width
         size.height / 2,
         0,
         size.height - padding,

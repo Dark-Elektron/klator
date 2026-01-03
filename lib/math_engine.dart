@@ -436,21 +436,189 @@ class MathSolverNew {
     });
   }
 
-  /// Regex to find perm(n,r) and comb(n,r)
-  static String _preprocessPermuCombination(String expr) {
-    expr = expr.replaceAllMapped(RegExp(r'perm\((\d+),(\d+)\)'), (match) {
-      int n = int.parse(match.group(1)!);
-      int r = int.parse(match.group(2)!);
-      return permutation(n, r).toString();
-    });
+  // ============== PERMUTATION & COMBINATION ==============
 
-    expr = expr.replaceAllMapped(RegExp(r'comb\((\d+),(\d+)\)'), (match) {
-      int n = int.parse(match.group(1)!);
-      int r = int.parse(match.group(2)!);
-      return combination(n, r).toString();
-    });
+  static String _preprocessPermuCombination(String expr) {
+    expr = _processPermComb(expr, 'perm', true);
+    expr = _processPermComb(expr, 'comb', false);
+    return expr;
+  }
+
+  static String _processPermComb(
+    String expr,
+    String funcName,
+    bool isPermutation,
+  ) {
+    while (expr.contains('$funcName(')) {
+      int startIndex = expr.indexOf('$funcName(');
+      if (startIndex == -1) break;
+
+      int openParen = startIndex + funcName.length;
+
+      int closeParen = _findMatchingParen(expr, openParen);
+      if (closeParen == -1) break;
+
+      String content = expr.substring(openParen + 1, closeParen);
+
+      int commaIndex = _findSeparatingComma(content);
+      if (commaIndex == -1) break;
+
+      String nExpr = content.substring(0, commaIndex).trim();
+      String rExpr = content.substring(commaIndex + 1).trim();
+
+      double? nValue = _evaluateSimpleExpression(nExpr);
+      double? rValue = _evaluateSimpleExpression(rExpr);
+
+      if (nValue == null || rValue == null) break;
+
+      int n = nValue.toInt();
+      int r = rValue.toInt();
+
+      double result =
+          isPermutation ? permutationDouble(n, r) : combinationDouble(n, r);
+
+      String resultStr;
+      if (result == result.roundToDouble() && result.abs() < 1e15) {
+        resultStr = result.toInt().toString();
+      } else {
+        resultStr = result.toString();
+      }
+
+      expr =
+          expr.substring(0, startIndex) +
+          resultStr +
+          expr.substring(closeParen + 1);
+    }
 
     return expr;
+  }
+
+  static int _findMatchingParen(String expr, int openIndex) {
+    if (openIndex >= expr.length || expr[openIndex] != '(') return -1;
+
+    int depth = 1;
+    for (int i = openIndex + 1; i < expr.length; i++) {
+      if (expr[i] == '(') {
+        depth++;
+      } else if (expr[i] == ')') {
+        depth--;
+        if (depth == 0) return i;
+      }
+    }
+    return -1;
+  }
+
+  static int _findSeparatingComma(String content) {
+    int depth = 0;
+    for (int i = 0; i < content.length; i++) {
+      if (content[i] == '(') {
+        depth++;
+      } else if (content[i] == ')') {
+        depth--;
+      } else if (content[i] == ',' && depth == 0) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  static double? _evaluateSimpleExpression(String expr) {
+    try {
+      expr = expr.trim();
+      while (expr.startsWith('(') && expr.endsWith(')')) {
+        if (_findMatchingParen(expr, 0) == expr.length - 1) {
+          expr = expr.substring(1, expr.length - 1).trim();
+        } else {
+          break;
+        }
+      }
+
+      double? direct = double.tryParse(expr);
+      if (direct != null) return direct;
+
+      String preprocessed = _preprocessSimple(expr);
+      return _evaluateExpression(preprocessed);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static String _preprocessSimple(String expr) {
+    expr = expr.replaceAll(' ', '');
+    expr = expr.replaceAll('\u00B7', '*');
+    expr = expr.replaceAll('\u00D7', '*');
+    expr = expr.replaceAll('\u1D07', 'E');
+    expr = expr.replaceAll('\u00B0', '*(${pi}/180)');
+    expr = expr.replaceAll('rad', '*((1/${pi})*180)');
+
+    expr = expr.replaceAllMapped(RegExp(r'([\d\)])?\u03C0'), (match) {
+      String? before = match.group(1);
+      if (before != null) {
+        return '$before*(${pi})';
+      }
+      return '(${pi})';
+    });
+
+    expr = expr.replaceAllMapped(
+      RegExp(r'([\d\)])?(?<![a-zA-Z])e(?![a-zA-Z])'),
+      (match) {
+        String? before = match.group(1);
+        if (before != null) {
+          return '$before*(${e})';
+        }
+        return '(${e})';
+      },
+    );
+
+    expr = _processFactorials(expr);
+
+    return expr;
+  }
+
+  // Keep old int versions for backward compatibility
+  static int factorial(int n) {
+    if (n <= 1) return 1;
+    int result = 1;
+    for (int i = 2; i <= n; i++) {
+      result *= i;
+    }
+    return result;
+  }
+
+  static int permutation(int n, int r) {
+    if (r > n) return 0;
+    return factorial(n) ~/ factorial(n - r);
+  }
+
+  static int combination(int n, int r) {
+    if (r > n) return 0;
+    return factorial(n) ~/ (factorial(r) * factorial(n - r));
+  }
+
+  // New double versions for large numbers
+  static double permutationDouble(int n, int r) {
+    if (r > n || r < 0 || n < 0) return 0;
+
+    double result = 1;
+    for (int i = 0; i < r; i++) {
+      result *= (n - i);
+    }
+    return result;
+  }
+
+  static double combinationDouble(int n, int r) {
+    if (r > n || r < 0 || n < 0) return 0;
+
+    if (r > n - r) {
+      r = n - r;
+    }
+
+    double result = 1;
+    for (int i = 0; i < r; i++) {
+      result *= (n - i);
+      result /= (i + 1);
+    }
+    return result;
   }
 
   /// Process factorials n!
@@ -469,25 +637,6 @@ class MathSolverNew {
       result *= i;
     }
     return result;
-  }
-
-  static int factorial(int n) {
-    if (n <= 1) return 1;
-    int result = 1;
-    for (int i = 2; i <= n; i++) {
-      result *= i;
-    }
-    return result;
-  }
-
-  static int permutation(int n, int r) {
-    if (r > n) return 0;
-    return factorial(n) ~/ factorial(n - r);
-  }
-
-  static int combination(int n, int r) {
-    if (r > n) return 0;
-    return factorial(n) ~/ (factorial(r) * factorial(n - r));
   }
 
   // ============== FORMATTING ==============
