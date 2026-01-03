@@ -4,9 +4,9 @@ Klator is a powerful, multi-line scientific calculator designed for structured m
 It is optimised for clarity, precision, and fast iterative problem-solving.
 
 <p align="center">
-  <img src="assets/imgs/basic.png" width="30%" />
-  <img src="assets/imgs/scientific.png" width="30%" />
-  <img src="assets/imgs/others.png" width="30%" />
+  <img src="assets/imgs/basic.jpg" width="30%" />
+  <img src="assets/imgs/scientific.jpg" width="30%" />
+  <img src="assets/imgs/others.jpg" width="30%" />
 </p>
 
 ---
