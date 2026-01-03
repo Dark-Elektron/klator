@@ -4,9 +4,9 @@ Klator is a powerful, multi-line scientific calculator designed for structured m
 It is optimised for clarity, precision, and fast iterative problem-solving.
 
 <p align="center">
-  <img src="assets/imgs/basic.jpg" width="30%" />
-  <img src="assets/imgs/scientific.jpg" width="30%" />
-  <img src="assets/imgs/extras.jpg" width="30%" />
+  <img src="assets/imgs/basic.jpg" width="20%" />
+  <img src="assets/imgs/scientific.jpg" width="20%" />
+  <img src="assets/imgs/extras.jpg" width="20%" />
 </p>
 
 ---
@@ -18,7 +18,7 @@ Create independent solution cells to structure your work.
 - Press the ⌘ (command) key to open a new calculation cell.
 - Each cell evaluates independently while remaining accessible for later reuse.
 <p align="center">
-  <img src="assets/imgs/multicell.jpg"/>
+  <img src="assets/imgs/multicell.jpg" width="20%" />
 </p>
 
 ---
@@ -44,7 +44,7 @@ Every calculation is automatically numbered.
 - Reuse results by typing ans followed by the cell number  
   Example: ans0
 <p align="center">
-  <img src="assets/imgs/result_recall.jpg"/>
+  <img src="assets/imgs/result_recall.jpg" width="20%/>
 </p>
 
 ---
@@ -55,7 +55,7 @@ Klator includes a built-in equation solver.
 - Handles up to three variables: x, y, z
 - Enter equations naturally as written in mathematics
 <p align="center">
-  <img src="assets/imgs/quadratic.jpg"/>
+  <img src="assets/imgs/quadratic.jpg" width="20% />
 </p>
 
 ---
@@ -66,7 +66,7 @@ For systems of equations:
 - Klator automatically detects the number of variables
 - The solver determines how many equations are required
 <p align="center">
-  <img src="assets/imgs/simultaneous_eqn.jpg"/>
+  <img src="assets/imgs/simultaneous_eqn.jpg" width="20% />
 </p>
 
 ---
