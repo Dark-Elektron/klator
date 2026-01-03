@@ -17,6 +17,9 @@ It is optimised for clarity, precision, and fast iterative problem-solving.
 Create independent solution cells to structure your work.
 - Press the ⌘ (command) key to open a new calculation cell.
 - Each cell evaluates independently while remaining accessible for later reuse.
+<p align="center">
+  <img src="assets/imgs/multicell.jpg"/>
+</p>
 
 ---
 
@@ -40,6 +43,9 @@ Every calculation is automatically numbered.
 - Each result is assigned an orange cell index on the left.
 - Reuse results by typing ans followed by the cell number  
   Example: ans0
+<p align="center">
+  <img src="assets/imgs/result_recall.jpg"/>
+</p>
 
 ---
 
@@ -48,6 +54,9 @@ Klator includes a built-in equation solver.
 - Supports linear, quadratic, and simultaneous equations
 - Handles up to three variables: x, y, z
 - Enter equations naturally as written in mathematics
+<p align="center">
+  <img src="assets/imgs/quadratic.jpg"/>
+</p>
 
 ---
 
@@ -56,6 +65,9 @@ For systems of equations:
 - Use ⌘ to start a new line for each equation
 - Klator automatically detects the number of variables
 - The solver determines how many equations are required
+<p align="center">
+  <img src="assets/imgs/simultaneous_eqn.jpg"/>
+</p>
 
 ---
 
@@ -64,6 +76,9 @@ Tailor Klator to your preferences.
 - Decimal precision control
 - Theme selection
 - Haptic feedback toggle
+<p align="center">
+  <img src="assets/imgs/dark_mode.jpg"/>
+</p>
 
 Access these options via the settings (gear) icon.
 

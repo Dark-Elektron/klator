@@ -11,30 +11,51 @@ class MathSolverNew {
     precision = value;
   }
 
-  /// Main entry point - determines what type of expression and solves accordingly
-  static String? solve(String expression, {Map<int, String>? ansValues}) {
-    expression = expression.trim();
-    if (expression.isEmpty) return null;
+/// Main entry point - determines what type of expression and solves accordingly
+static String? solve(String expression, {Map<int, String>? ansValues}) {
+  expression = expression.trim();
+  if (expression.isEmpty) return null;
 
-    // Replace ANS references first
-    if (ansValues != null && ansValues.isNotEmpty) {
-      expression = _preprocessAnsReferences(expression, ansValues);
-    }
-
-    // Check if it's a system of equations (multiple lines)
-    if (expression.contains('\n')) {
-      return solveLinearSystem(expression);
-    }
-
-    // Check if it's an equation
-    if (expression.contains('=')) {
-      return solveEquation(expression);
-    }
-
-    // Otherwise, evaluate as an expression
-    return evaluate(expression);
+  // Replace ANS references first
+  if (ansValues != null && ansValues.isNotEmpty) {
+    expression = _preprocessAnsReferences(expression, ansValues);
   }
 
+  // Check if it's a system of equations (multiple lines)
+  if (expression.contains('\n')) {
+    // Count variables across all equations
+    Set<String> allVariables = {};
+    List<String> equations = expression.split('\n').where((e) => e.trim().isNotEmpty).toList();
+    
+    for (String eq in equations) {
+      allVariables.addAll(_findVariables(eq));
+    }
+    
+    // Need at least as many equations as variables
+    if (allVariables.length > equations.length) {
+      print('DEBUG: ${allVariables.length} variables but only ${equations.length} equations');
+      return null; // Not enough equations
+    }
+    
+    return solveLinearSystem(expression);
+  }
+
+  // Check if it's an equation
+  if (expression.contains('=')) {
+    // Check variable count before attempting to solve
+    Set<String> variables = _findVariables(expression);
+    
+    if (variables.length > 1) {
+      // More than one variable - cannot solve single equation
+      return null;
+    }
+    
+    return solveEquation(expression);
+  }
+
+  // Otherwise, evaluate as an expression
+  return evaluate(expression);
+}
   // ============== EXPRESSION EVALUATION ==============
 
   /// Evaluates a mathematical expression and returns the result
@@ -98,91 +119,131 @@ class MathSolverNew {
 
   // ============== EQUATION SOLVING ==============
 
-  /// Solves an equation (linear or quadratic)
-  static String? solveEquation(String equation) {
-    equation = equation.replaceAll(' ', '');
+/// Solves an equation (linear or quadratic)
+/// Only solves if there's exactly one variable
+static String? solveEquation(String equation) {
+  equation = equation.replaceAll(' ', '');
 
-    // Detect the variable
-    RegExp variableRegEx = RegExp(r'[a-zA-Z]');
-    Match? varMatch = variableRegEx.firstMatch(equation);
-    if (varMatch == null) return evaluate(equation);
+  // Find all unique variables in the equation
+  Set<String> variables = _findVariables(equation);
+  
+  print('DEBUG: Found variables: $variables');
+  
+  // If no variables, just evaluate the expression
+  if (variables.isEmpty) {
+    return evaluate(equation.replaceAll('=', '-(')+')');
+  }
+  
+  // If more than one variable, return null or the original equation
+  // (needs more equations to solve)
+  if (variables.length > 1) {
+    print('DEBUG: Multiple variables found (${variables.length}), cannot solve single equation');
+    return null; // Or return equation to show it as-is
+  }
+  
+  // Exactly one variable - proceed to solve
+  String variable = variables.first;
 
-    String variable = equation[varMatch.start];
+  List<String> parts = equation.split('=');
+  if (parts.length != 2) return null;
 
-    // Skip function names
-    const functions = ['sin', 'cos', 'tan', 'log', 'sqrt', 'abs', 'ln'];
-    for (String func in functions) {
-      if (equation.contains(func)) {
-        // Find variable that's not part of function name
-        RegExp varOnlyRegex = RegExp(r'(?<![a-zA-Z])[a-zA-Z](?![a-zA-Z])');
-        Match? realVar = varOnlyRegex.firstMatch(equation);
-        if (realVar != null) {
-          variable = equation[realVar.start];
+  String lhs = parts[0].trim();
+  String rhs = parts[1].trim();
+
+  // Get coefficients for both sides
+  List<double> coeffsLHS = _getCoefficients(lhs, variable);
+  List<double> coeffsRHS = _getCoefficients(rhs, variable);
+
+  double a = coeffsLHS[0] - coeffsRHS[0]; // x^2 coefficient
+  double b = coeffsLHS[1] - coeffsRHS[1]; // x coefficient
+  double c = coeffsLHS[2] - coeffsRHS[2]; // constant
+
+  // Linear equation (a = 0)
+  if (a.abs() < 1e-10) {
+    if (b.abs() < 1e-10) {
+      if (c.abs() < 1e-10) return "Infinite solutions";
+      return "No solution";
+    }
+    return '$variable = ${_formatResult(-c / b)}';
+  }
+
+  // Quadratic equation
+  if (c.abs() < 1e-10) {
+    // x(ax + b) = 0
+    return '$variable = 0\n$variable = ${_formatResult(-b / a)}';
+  }
+
+  double discriminant = b * b - 4 * a * c;
+
+  if (discriminant < 0) {
+    // Complex roots
+    double realPart = -b / (2 * a);
+    double imagPart = sqrt(-discriminant) / (2 * a);
+    return '$variable = ${_formatResult(realPart)} ± ${_formatResult(imagPart.abs())}i';
+  }
+
+  // Real roots using numerically stable formula
+  double root1, root2;
+  if (discriminant == 0) {
+    root1 = root2 = -b / (2 * a);
+  } else {
+    // Use citardauq formula for numerical stability
+    double sqrtDisc = sqrt(discriminant);
+    if (b >= 0) {
+      root1 = (-b - sqrtDisc) / (2 * a);
+      root2 = (2 * c) / (-b - sqrtDisc);
+    } else {
+      root1 = (2 * c) / (-b + sqrtDisc);
+      root2 = (-b + sqrtDisc) / (2 * a);
+    }
+  }
+
+  if ((root1 - root2).abs() < 1e-10) {
+    return '$variable = ${_formatResult(root1)}';
+  }
+
+  return '$variable = ${_formatResult(root1)}\n$variable = ${_formatResult(root2)}';
+}
+
+/// Find all unique variables in an expression
+static Set<String> _findVariables(String expression) {
+  Set<String> variables = {};
+  
+  // Reserved function names and constants to exclude
+  const reserved = {
+    'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
+    'log', 'ln', 'sqrt', 'abs', 'exp',
+    'perm', 'comb', 'ans',
+    'e', 'pi', 'i',
+  };
+  
+  // Find all letter sequences
+  RegExp letterRegex = RegExp(r'[a-zA-Z]+');
+  
+  for (Match match in letterRegex.allMatches(expression)) {
+    String potential = match.group(0)!.toLowerCase();
+    
+    // Check if it's a reserved word
+    if (!reserved.contains(potential)) {
+      // For single letters, add them as variables
+      // For multi-letter sequences not in reserved, check each letter
+      if (match.group(0)!.length == 1) {
+        variables.add(match.group(0)!);
+      } else if (!reserved.contains(potential)) {
+        // Multi-letter non-reserved - might be implicit multiplication like "xy"
+        // Add each letter as a separate variable
+        for (int i = 0; i < match.group(0)!.length; i++) {
+          String char = match.group(0)![i];
+          if (!reserved.contains(char.toLowerCase())) {
+            variables.add(char);
+          }
         }
       }
     }
-
-    List<String> parts = equation.split('=');
-    if (parts.length != 2) return null;
-
-    String lhs = parts[0].trim();
-    String rhs = parts[1].trim();
-
-    // Get coefficients for both sides
-    List<double> coeffsLHS = _getCoefficients(lhs, variable);
-    List<double> coeffsRHS = _getCoefficients(rhs, variable);
-
-    double a = coeffsLHS[0] - coeffsRHS[0]; // x^2 coefficient
-    double b = coeffsLHS[1] - coeffsRHS[1]; // x coefficient
-    double c = coeffsLHS[2] - coeffsRHS[2]; // constant
-
-    // Linear equation (a = 0)
-    if (a.abs() < 1e-10) {
-      if (b.abs() < 1e-10) {
-        if (c.abs() < 1e-10) return "Infinite solutions";
-        return "No solution";
-      }
-      return '$variable = ${_formatResult(-c / b)}';
-    }
-
-    // Quadratic equation
-    if (c.abs() < 1e-10) {
-      // x(ax + b) = 0
-      return '$variable = 0\n$variable = ${_formatResult(-b / a)}';
-    }
-
-    double discriminant = b * b - 4 * a * c;
-
-    if (discriminant < 0) {
-      // Complex roots
-      double realPart = -b / (2 * a);
-      double imagPart = sqrt(-discriminant) / (2 * a);
-      return '$variable = ${_formatResult(realPart)} ± ${_formatResult(imagPart.abs())}i';
-    }
-
-    // Real roots using numerically stable formula
-    double root1, root2;
-    if (discriminant == 0) {
-      root1 = root2 = -b / (2 * a);
-    } else {
-      // Use citardauq formula for numerical stability
-      double sqrtDisc = sqrt(discriminant);
-      if (b >= 0) {
-        root1 = (-b - sqrtDisc) / (2 * a);
-        root2 = (2 * c) / (-b - sqrtDisc);
-      } else {
-        root1 = (2 * c) / (-b + sqrtDisc);
-        root2 = (-b + sqrtDisc) / (2 * a);
-      }
-    }
-
-    if ((root1 - root2).abs() < 1e-10) {
-      return '$variable = ${_formatResult(root1)}';
-    }
-
-    return '$variable = ${_formatResult(root1)}\n$variable = ${_formatResult(root2)}';
   }
-
+  
+  return variables;
+}
   /// Extracts coefficients [a, b, c] for ax^2 + bx + c
   static List<double> _getCoefficients(String expression, String variable) {
     double a = 0, b = 0, c = 0;
