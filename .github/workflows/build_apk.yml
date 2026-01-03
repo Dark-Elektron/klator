@@ -1,0 +1,42 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches: [ "main" ] # Or "master", depending on your default branch
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the code
+      - uses: actions/checkout@v4
+
+      # 2. Setup Java (Required for Android builds)
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 3. Setup Flutter
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5' # Use your project's version or 'any'
+          channel: 'stable'
+
+      # 4. Get dependencies
+      - name: Install dependencies
+        run: flutter pub get
+
+      # 5. Build the APK
+      - name: Build APK
+        run: flutter build apk --release
+
+      # 6. Upload the APK so you can download it
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: klator
+          path: build/app/outputs/flutter-apk/klator.apk
