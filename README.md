@@ -43,8 +43,9 @@ Every calculation is automatically numbered.
 - Each result is assigned an orange cell index on the left.
 - Reuse results by typing ans followed by the cell number  
   Example: ans0
+
 <p align="center">
-  <img src="assets/imgs/result_recall.jpg" width="20%/>
+  <img src="assets/imgs/result_recall.jpg" width="20%" />
 </p>
 
 ---
@@ -54,8 +55,9 @@ Klator includes a built-in equation solver.
 - Supports linear, quadratic, and simultaneous equations
 - Handles up to three variables: x, y, z
 - Enter equations naturally as written in mathematics
+
 <p align="center">
-  <img src="assets/imgs/quadratic.jpg" width="20% />
+  <img src="assets/imgs/quadratic.jpg" width="20%" />
 </p>
 
 ---
@@ -65,8 +67,9 @@ For systems of equations:
 - Use ⌘ to start a new line for each equation
 - Klator automatically detects the number of variables
 - The solver determines how many equations are required
+
 <p align="center">
-  <img src="assets/imgs/simultaneous_eqn.jpg" width="20% />
+  <img src="assets/imgs/simultaneous_eqn.jpg" width="20%" />
 </p>
 
 ---
@@ -76,8 +79,9 @@ Tailor Klator to your preferences.
 - Decimal precision control
 - Theme selection
 - Haptic feedback toggle
+
 <p align="center">
-  <img src="assets/imgs/dark_mode.jpg" width="20%/>
+  <img src="assets/imgs/dark_mode.jpg" width="20%" />
 </p>
 
 Access these options via the settings (gear) icon.
