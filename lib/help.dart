@@ -41,7 +41,7 @@ class HelpPage extends StatelessWidget {
           _buildHelpStep(
             icon: Icons.iso,
             title: 'Structural Math',
-            description: 'Insert fractions with "/" and exponents with "^". Tap any part of the expression to move your cursor.',
+            description: 'Insert fractions with "/" and exponents with "x\u207F". Tap any part of the expression to move your cursor.',
           ),
           _buildHelpStep(
             icon: Icons.restore,

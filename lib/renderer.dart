@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'math_expression_serializer.dart';
-import 'evaluate_expression_new.dart';
+import 'math_engine.dart';
 import 'constants.dart';
 import 'package:flutter/rendering.dart';
 
@@ -204,27 +204,31 @@ class MathTextStyle {
     );
   }
 
-  static String toDisplayText(String text) {
-    if (text.isEmpty) return text;
-    final buffer = StringBuffer();
-    for (int i = 0; i < text.length; i++) {
-      final char = text[i];
-
-      // Convert any multiplication sign to current user preference
-      String displayChar = char;
-      if (_isMultiplySign(char)) {
-        displayChar = _multiplySign; // Convert to user's preferred sign
-      }
-
-      if (_isPaddedOperator(char)) {
-        buffer.write(' $displayChar '); // Use displayChar, not char!
-      } else {
-        buffer.write(displayChar); // Use displayChar, not char!
-      }
+static String toDisplayText(String text) {
+  if (text.isEmpty) return text;
+  final buffer = StringBuffer();
+  for (int i = 0; i < text.length; i++) {
+    final char = text[i];
+    
+    // Convert multiply sign to user preference
+    String displayChar = char;
+    if (_isMultiplySign(char)) {
+      displayChar = _multiplySign;
     }
-    return buffer.toString();
+    
+    if (_isPaddedOperator(char)) {
+      // Don't add leading space if this is the first character
+      if (i == 0) {
+        buffer.write('$displayChar ');  // Only trailing space
+      } else {
+        buffer.write(' $displayChar ');  // Both spaces
+      }
+    } else {
+      buffer.write(displayChar);
+    }
   }
-
+  return buffer.toString();
+}
   static double measureText(
     String text,
     double fontSize,
@@ -318,51 +322,63 @@ class MathTextStyle {
     return _displayToLogicalIndex(text, displayOffset);
   }
 
-  static int _displayToLogicalIndex(String text, int displayIndex) {
-    if (displayIndex <= 0) return 0;
+static int _displayToLogicalIndex(String text, int displayIndex) {
+  if (displayIndex <= 0) return 0;
 
-    int displayPos = 0;
+  int displayPos = 0;
 
-    for (int logical = 0; logical < text.length; logical++) {
-      final char = text[logical];
-      final charWidth = _isPaddedOperator(char) ? 3 : 1;
-      final prevDisplayPos = displayPos;
-      displayPos += charWidth;
-
-      if (displayIndex <= displayPos) {
-        if (_isPaddedOperator(char)) {
-          final midpoint = prevDisplayPos + 1;
-          if (displayIndex <= midpoint) {
-            return logical;
-          } else {
-            return logical + 1;
-          }
-        }
-        return logical + 1;
-      }
+  for (int logical = 0; logical < text.length; logical++) {
+    final char = text[logical];
+    int charWidth;
+    
+    if (_isPaddedOperator(char)) {
+      charWidth = (logical == 0) ? 2 : 3;  // First char has no leading space
+    } else {
+      charWidth = 1;
     }
+    
+    final prevDisplayPos = displayPos;
+    displayPos += charWidth;
 
-    return text.length;
+    if (displayIndex <= displayPos) {
+      if (_isPaddedOperator(char)) {
+        final midpoint = prevDisplayPos + ((logical == 0) ? 1 : 2);
+        if (displayIndex <= midpoint) {
+          return logical;
+        } else {
+          return logical + 1;
+        }
+      }
+      return logical + 1;
+    }
   }
+
+  return text.length;
+}
 
   // In MathTextStyle class
-  static int logicalToDisplayIndex(String text, int logicalIndex) {
-    if (text.isEmpty || logicalIndex <= 0) return 0;
+static int logicalToDisplayIndex(String text, int logicalIndex) {
+  if (text.isEmpty || logicalIndex <= 0) return 0;
 
-    int displayIndex = 0;
-    final clampedIndex = logicalIndex.clamp(0, text.length);
+  int displayIndex = 0;
+  final clampedIndex = logicalIndex.clamp(0, text.length);
 
-    for (int i = 0; i < clampedIndex; i++) {
-      final char = text[i];
-      if (_isPaddedOperator(char)) {
-        displayIndex += 3;
+  for (int i = 0; i < clampedIndex; i++) {
+    final char = text[i];
+    if (_isPaddedOperator(char)) {
+      if (i == 0) {
+        displayIndex += 2;  // char + trailing space (no leading space)
       } else {
-        displayIndex += 1;
+        displayIndex += 3;  // leading space + char + trailing space
       }
+    } else {
+      displayIndex += 1;
     }
-
-    return displayIndex;
   }
+
+  return displayIndex;
+}
+
 }
 
 class _ParentListInfo {
@@ -686,6 +702,9 @@ class MathEditorController extends ChangeNotifier {
     _notifyStructureChanged();
 
     onCalculate();
+    
+  // DEBUG: Print structure after each character
+  // debugPrintExpression();
   }
 
   /// Set expression from loaded data
@@ -1792,7 +1811,7 @@ class MathEditorController extends ChangeNotifier {
 
   /// Checks if there's content at cursor position that could become a numerator
   bool _hasContentForNumerator() {
-    final siblings = _resolveSiblingList();
+    // final siblings = _resolveSiblingList();
     final current = _resolveCursorNode();
 
     // If there are previous nodes in the sibling list, there's content
