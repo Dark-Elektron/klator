@@ -4586,7 +4586,7 @@ class MathRenderer extends StatelessWidget {
     }
 
     if (node is ExponentNode) {
-      final double powerSize = fontSize * 0.65;
+      final double powerSize = fontSize * 0.8;
       final double powerRaise = fontSize * 0.35;
 
       return Row(
@@ -4747,7 +4747,9 @@ class MathRenderer extends StatelessWidget {
     }
 
     if (node is RootNode) {
-      final double indexSize = fontSize * 0.5;
+      final double indexSize = fontSize * 0.7;
+      final double minRadicandHeight =
+          fontSize * 1.2; // Minimum height for the radical
 
       // Build radicand widget first
       Widget radicandWidget = Row(
@@ -4791,6 +4793,7 @@ class MathRenderer extends StatelessWidget {
                   .toList(),
         );
       }
+
       return Padding(
         padding: const EdgeInsets.only(right: _nodePadding),
         child: Row(
@@ -4809,38 +4812,43 @@ class MathRenderer extends StatelessWidget {
 
             // Radical symbol + radicand
             IntrinsicHeight(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Radical symbol (custom painted)
-                  CustomPaint(
-                    size: Size(fontSize * 0.6, double.infinity),
-                    painter: RadicalSymbolPainter(
-                      color: Colors.white,
-                      strokeWidth: math.max(1.5, fontSize * 0.06),
-                    ),
-                  ),
-
-                  // Radicand with vinculum (top line)
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: minRadicandHeight),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Radical symbol (custom painted)
+                    SizedBox(
+                      width: fontSize * 0.6,
+                      child: CustomPaint(
+                        painter: RadicalSymbolPainter(
                           color: Colors.white,
-                          width: math.max(1.5, fontSize * 0.06),
+                          strokeWidth: math.max(1.5, fontSize * 0.06),
                         ),
                       ),
                     ),
-                    padding: EdgeInsets.only(
-                      left: 3,
-                      right: 4,
-                      top: fontSize * 0.08,
-                      bottom: 2,
+
+                    // Radicand with vinculum (top line)
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: Colors.white,
+                            width: math.max(1.5, fontSize * 0.06),
+                          ),
+                        ),
+                      ),
+                      padding: EdgeInsets.only(
+                        left: 3,
+                        right: 4,
+                        top: fontSize * 0.08,
+                        bottom: 2,
+                      ),
+                      child: Center(child: radicandWidget),
                     ),
-                    child: radicandWidget,
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -4941,7 +4949,7 @@ class MathRenderer extends StatelessWidget {
     }
 
     if (node is PermutationNode) {
-      final double smallSize = fontSize * 0.6;
+      final double smallSize = fontSize * 0.8;
       return Padding(
         padding: const EdgeInsets.only(right: _nodePadding),
         child: Row(
@@ -4969,7 +4977,7 @@ class MathRenderer extends StatelessWidget {
                           )
                           .toList(),
                 ),
-                SizedBox(height: fontSize * 0.4),
+                SizedBox(height: fontSize * 0.8),
               ],
             ),
             Text(
@@ -4982,7 +4990,7 @@ class MathRenderer extends StatelessWidget {
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(height: fontSize * 0.4),
+                SizedBox(height: fontSize * 0.8),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children:
@@ -5009,7 +5017,7 @@ class MathRenderer extends StatelessWidget {
     }
 
     if (node is CombinationNode) {
-      final double smallSize = fontSize * 0.6;
+      final double smallSize = fontSize * 0.8;
       return Padding(
         padding: const EdgeInsets.only(right: _nodePadding),
         child: Row(
@@ -5037,7 +5045,7 @@ class MathRenderer extends StatelessWidget {
                           )
                           .toList(),
                 ),
-                SizedBox(height: fontSize * 0.4),
+                SizedBox(height: fontSize * 1),
               ],
             ),
             Text(
@@ -5050,7 +5058,7 @@ class MathRenderer extends StatelessWidget {
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(height: fontSize * 0.4),
+                SizedBox(height: fontSize * 0.8),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children:
