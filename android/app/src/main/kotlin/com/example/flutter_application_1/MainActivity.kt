@@ -1,4 +1,4 @@
-package com.example.klator
+package app.darkelektron.klator
 
 import io.flutter.embedding.android.FlutterActivity
 
