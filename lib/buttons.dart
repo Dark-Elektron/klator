@@ -35,9 +35,9 @@ Widget build(BuildContext context) {
               buttontapped();
             }
           },
-          splashColor: Colors.black.withOpacity(0.2),
-          highlightColor: Colors.white.withOpacity(0.1),
-          child: Container(
+          splashColor: Colors.black.withValues(alpha: 0.2),
+          highlightColor: Colors.white.withValues(alpha: 0.1),
+          // child: Container(
             // Remove color here since Material has it now
             child: Center(
               child: Text(
@@ -49,7 +49,7 @@ Widget build(BuildContext context) {
                 ),
               ),
             ),
-          ),
+          // ),
         ),
       ),
     ),

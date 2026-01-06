@@ -7,6 +7,47 @@ import 'settings_provider.dart';
 import 'renderer.dart';
 import 'app_colors.dart';
 import 'dart:async';
+import 'walkthrough/walkthrough_service.dart';
+import 'walkthrough/walkthrough_steps.dart';
+
+/// Custom ScrollPhysics that restricts swipe direction
+class DirectionalScrollPhysics extends ScrollPhysics {
+  final bool allowLeftSwipe;
+  final bool allowRightSwipe;
+
+  const DirectionalScrollPhysics({
+    super.parent,
+    this.allowLeftSwipe = true,
+    this.allowRightSwipe = true,
+  });
+
+  @override
+  DirectionalScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return DirectionalScrollPhysics(
+      parent: buildParent(ancestor),
+      allowLeftSwipe: allowLeftSwipe,
+      allowRightSwipe: allowRightSwipe,
+    );
+  }
+
+  @override
+  double applyBoundaryConditions(ScrollMetrics position, double value) {
+    // value > position.pixels means scrolling left (moving to higher index)
+    // value < position.pixels means scrolling right (moving to lower index)
+
+    if (!allowLeftSwipe && value > position.pixels) {
+      // Trying to swipe left but not allowed - prevent it
+      return value - position.pixels;
+    }
+
+    if (!allowRightSwipe && value < position.pixels) {
+      // Trying to swipe right but not allowed - prevent it
+      return value - position.pixels;
+    }
+
+    return super.applyBoundaryConditions(position, value);
+  }
+}
 
 class CalculatorKeypad extends StatefulWidget {
   final double screenWidth;
@@ -21,7 +62,25 @@ class CalculatorKeypad extends StatefulWidget {
   final void Function(int index) onRemoveDisplay;
   final VoidCallback onClearAllDisplays;
   final int Function(String text) countVariablesInExpressions;
-  final VoidCallback onSetState; // For forcing parent rebuild when needed
+  final VoidCallback onSetState;
+
+  // Walkthrough parameters
+  final WalkthroughService walkthroughService;
+  final GlobalKey basicKeypadKey;
+  final GlobalKey basicKeypadHandleKey;
+  final GlobalKey scientificKeypadKey;
+  final GlobalKey numberKeypadKey;
+  final GlobalKey extrasKeypadKey;
+  final GlobalKey commandButtonKey;
+  final GlobalKey mainKeypadAreaKey;
+  final GlobalKey settingsButtonKey;
+
+  final VoidCallback? onClearSelectionOverlay;
+
+  final bool canUndoAppState;
+  final bool canRedoAppState;
+  final VoidCallback? onUndoAppState;
+  final VoidCallback? onRedoAppState;
 
   const CalculatorKeypad({
     super.key,
@@ -38,6 +97,20 @@ class CalculatorKeypad extends StatefulWidget {
     required this.onClearAllDisplays,
     required this.countVariablesInExpressions,
     required this.onSetState,
+    required this.walkthroughService,
+    required this.basicKeypadKey,
+    required this.basicKeypadHandleKey,
+    required this.scientificKeypadKey,
+    required this.numberKeypadKey,
+    required this.extrasKeypadKey,
+    required this.commandButtonKey,
+    required this.mainKeypadAreaKey,
+    required this.settingsButtonKey,
+    this.onClearSelectionOverlay,
+    this.canUndoAppState = false,
+    this.canRedoAppState = false,
+    this.onUndoAppState,
+    this.onRedoAppState,
   });
 
   @override
@@ -45,24 +118,22 @@ class CalculatorKeypad extends StatefulWidget {
 }
 
 class _CalculatorKeypadState extends State<CalculatorKeypad> {
-  // Sizing state - exactly as original
   int? _lastPagesPerView;
-
   bool _isBasicKeypadExpanded = false;
   final double _collapsedHeight = 21.0;
 
-  // Controllers
-  late PageController _keypadController;
+  PageController? _keypadController;
   late PageController _pgViewController;
 
-  bool _isInitialized = false; // Add this flag
-
-  // Delete timer
   Timer? _deleteTimer;
   bool _isDeleting = false;
   int _deleteSpeed = 150;
 
-  // Button lists - exactly as original
+  int _currentKeypadIndex = 1;
+
+  bool _isNavigatingProgrammatically = false;
+
+  // Button lists
   final List<String> _buttonsBasic = [
     '5',
     '6',
@@ -155,7 +226,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     '',
   ];
 
-  // Add a new list for landscape layout
   final List<String> _buttonsBasicLandscape = [
     '1',
     '2',
@@ -182,31 +252,111 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
   @override
   void initState() {
     super.initState();
-    // Temporary controllers - will be replaced in first build
-    // _keypadController = PageController();
     _pgViewController = PageController();
+    widget.walkthroughService.onResetKeypad = _resetToNumberKeypad;
+    widget.walkthroughService.onNavigateToKeypadPage = _navigateToKeypadPage;
   }
 
   @override
   void dispose() {
     _deleteTimer?.cancel();
-    _keypadController.dispose();
+    _keypadController?.dispose();
     _pgViewController.dispose();
+    widget.walkthroughService.onResetKeypad = null;
+    widget.walkthroughService.onNavigateToKeypadPage = null;
     super.dispose();
   }
 
-  void _initializeControllers(int pagesPerView) {
-    // Dispose old controllers if they exist and were properly initialized
-    if (_isInitialized) {
-      _keypadController.dispose();
+  @override
+  void didUpdateWidget(covariant CalculatorKeypad oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.walkthroughService != oldWidget.walkthroughService) {
+      oldWidget.walkthroughService.onResetKeypad = null;
+      oldWidget.walkthroughService.onNavigateToKeypadPage = null;
+      widget.walkthroughService.onResetKeypad = _resetToNumberKeypad;
+      widget.walkthroughService.onNavigateToKeypadPage = _navigateToKeypadPage;
+    }
+  }
+
+  /// Navigate keypad to a specific page (used by walkthrough back button)
+  void _navigateToKeypadPage(int page) {
+    debugPrint('=== _navigateToKeypadPage called with page: $page ===');
+    debugPrint('Current keypad index before: $_currentKeypadIndex');
+
+    if (_keypadController != null && _keypadController!.hasClients) {
+      // Set flag to bypass directional physics during programmatic navigation
+      setState(() {
+        _isNavigatingProgrammatically = true;
+      });
+
+      _keypadController!
+          .animateToPage(
+            page,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          )
+          .then((_) {
+            // Reset flag after animation completes
+            if (mounted) {
+              setState(() {
+                _isNavigatingProgrammatically = false;
+              });
+            }
+          });
+
+      _currentKeypadIndex = page;
+      debugPrint('Navigating to page: $page');
+    } else {
+      debugPrint('Could not navigate - controller null or no clients');
+    }
+  }
+
+  void _resetToNumberKeypad() {
+    final int targetPage;
+    if (_lastPagesPerView != null && _lastPagesPerView! >= 2) {
+      targetPage = 0;
+    } else {
+      targetPage = 1;
     }
 
+    debugPrint(
+      'Resetting keypad to page $targetPage (pagesPerView: $_lastPagesPerView)',
+    );
+
+    if (_keypadController != null && _keypadController!.hasClients) {
+      // Set flag to bypass directional physics during programmatic navigation
+      setState(() {
+        _isNavigatingProgrammatically = true;
+      });
+
+      _keypadController!
+          .animateToPage(
+            targetPage,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          )
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                _isNavigatingProgrammatically = false;
+              });
+            }
+          });
+    }
+
+    _currentKeypadIndex = targetPage;
+  }
+
+  void _initializeKeypadController(int pagesPerView) {
+    final initialPage = pagesPerView >= 2 ? 0 : 1;
+    _currentKeypadIndex = initialPage;
+
+    _keypadController?.dispose();
     _keypadController = PageController(
-      initialPage: pagesPerView >= 2 ? 0 : 1,
+      initialPage: initialPage,
       viewportFraction: 1 / pagesPerView,
     );
   }
-  // ============== HELPER GETTERS ==============
 
   MathEditorController? get _activeController =>
       widget.mathEditorControllers[widget.activeIndex];
@@ -227,23 +377,11 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     return operators.contains(text);
   }
 
-  // ============== SIZING METHODS ==============
-  // Add this new method:
   void _toggleBasicKeypad() {
     setState(() {
       _isBasicKeypadExpanded = !_isBasicKeypadExpanded;
     });
   }
-
-  void _updatePagesPerView(int pagesPerView) {
-    _keypadController.dispose();
-    _keypadController = PageController(
-      initialPage: pagesPerView >= 2 ? 0 : 1,
-      viewportFraction: 1 / pagesPerView,
-    );
-  }
-
-  // ============== DELETE METHODS ==============
 
   void _startContinuousDelete() {
     _isDeleting = true;
@@ -279,8 +417,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     widget.onSetState();
   }
 
-  // ============== BUTTON HANDLERS ==============
-
   void _handleEnter() {
     if (_activeController?.expr != '') {
       String text = _activeController!.expr;
@@ -294,7 +430,82 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     widget.onSetState();
   }
 
-  // ============== BUILD METHOD ==============
+  void _onKeypadPageChanged(int newIndex) {
+    if (newIndex != _currentKeypadIndex) {
+      // Don't trigger walkthrough action if navigating programmatically
+      if (!_isNavigatingProgrammatically) {
+        final WalkthroughAction direction;
+        if (newIndex > _currentKeypadIndex) {
+          direction = WalkthroughAction.swipeLeft;
+        } else {
+          direction = WalkthroughAction.swipeRight;
+        }
+        widget.walkthroughService.onUserAction(direction);
+        debugPrint(
+          'Keypad page changed by user: $newIndex, Direction: $direction',
+        );
+      } else {
+        debugPrint('Keypad page changed programmatically: $newIndex');
+      }
+
+      _currentKeypadIndex = newIndex;
+    }
+  }
+
+  void _handleButtonWithSelection({
+    required bool Function() wrapAction,
+    required VoidCallback normalAction,
+  }) {
+    final hadSelection = _activeController?.hasSelection ?? false;
+
+    if (hadSelection) {
+      if (wrapAction()) {
+        widget.onClearSelectionOverlay?.call();
+        widget.onUpdateMathEditor();
+        widget.onSetState();
+      }
+    } else {
+      normalAction();
+      widget.onUpdateMathEditor();
+    }
+  }
+
+  /// Get the appropriate scroll physics based on walkthrough state
+  ScrollPhysics _getKeypadPhysics() {
+    // IMPORTANT: Allow normal scrolling during programmatic navigation
+    if (_isNavigatingProgrammatically) {
+      return const PageScrollPhysics();
+    }
+
+    final service = widget.walkthroughService;
+
+    // If walkthrough is not active, allow normal scrolling
+    if (!service.isActive || !service.isInitialized) {
+      return const PageScrollPhysics();
+    }
+
+    final step = service.currentStepData;
+
+    // Only restrict if it's a swipe-required step
+    if (!step.requiresAction || step.requiredAction == null) {
+      return const PageScrollPhysics();
+    }
+
+    // Restrict based on required action
+    if (step.requiredAction == WalkthroughAction.swipeLeft) {
+      return const DirectionalScrollPhysics(
+        allowLeftSwipe: true,
+        allowRightSwipe: false,
+      );
+    } else if (step.requiredAction == WalkthroughAction.swipeRight) {
+      return const DirectionalScrollPhysics(
+        allowLeftSwipe: false,
+        allowRightSwipe: true,
+      );
+    }
+
+    return const PageScrollPhysics();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -309,18 +520,32 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       pagesPerView = 1;
     }
 
-    // Initialize or update controllers when pagesPerView changes
-    if (!_isInitialized || _lastPagesPerView != pagesPerView) {
-      _initializeControllers(pagesPerView);
+    final isTablet = pagesPerView >= 2;
+    if (widget.walkthroughService.isTabletMode != isTablet) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.walkthroughService.setDeviceMode(isTablet: isTablet);
+      });
+    }
+
+    if (_lastPagesPerView != pagesPerView) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _initializeKeypadController(pagesPerView);
+          setState(() {});
+        }
+      });
+
+      if (_keypadController == null) {
+        _initializeKeypadController(pagesPerView);
+      }
+
       _lastPagesPerView = pagesPerView;
-      _isInitialized = true;
     }
 
     int crossAxisCount = 5;
     int rowCount = 4;
     double buttonSize = widget.screenWidth / crossAxisCount;
 
-    // Calculate grid height
     double gridHeight;
     if (widget.isLandscape) {
       double buttonHeightRatio = 0.65;
@@ -329,10 +554,9 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       gridHeight = buttonSize * rowCount / pagesPerView;
     }
 
-    int crossAxisCountBasic = (widget.isLandscape) ? 20 : 10;
+    int crossAxisCountBasic = widget.isLandscape ? 20 : 10;
     double buttonSizeBasic = widget.screenWidth / crossAxisCountBasic;
 
-    // Calculate expanded height for basic keypad
     double basicKeypadExpandedHeight;
     if (widget.isLandscape) {
       double buttonHeightRatio = 0.65;
@@ -341,34 +565,28 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       basicKeypadExpandedHeight = buttonSizeBasic * 2;
     }
 
-    // Determine current height based on expanded state
     double basicKeypadHeight =
         _isBasicKeypadExpanded
             ? basicKeypadExpandedHeight + _collapsedHeight
             : _collapsedHeight;
 
-    if (_lastPagesPerView != pagesPerView) {
-      _updatePagesPerView(pagesPerView);
-      _lastPagesPerView = pagesPerView;
-    }
-
     return Column(
       children: [
-        // Tappable Handle & Basic Keypad
-        // Tappable Handle & Basic Keypad
+        // Basic Keypad
         GestureDetector(
           onTap: _toggleBasicKeypad,
           child: AnimatedContainer(
+            key: widget.basicKeypadKey,
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
             height: basicKeypadHeight,
             width: double.infinity,
-            clipBehavior: Clip.hardEdge, // Add this to clip overflow
-            decoration: const BoxDecoration(), // Required for clipBehavior
+            clipBehavior: Clip.hardEdge,
+            decoration: const BoxDecoration(),
             child: Column(
               children: [
-                // Tap Handle indicator
                 Container(
+                  key: widget.basicKeypadHandleKey,
                   width: 40,
                   height: 5,
                   margin: const EdgeInsets.symmetric(vertical: 8),
@@ -377,7 +595,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                // Always keep the grid in the tree, let clipping handle visibility
                 Expanded(
                   child: PageView(
                     physics: const NeverScrollableScrollPhysics(),
@@ -392,35 +609,52 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             ),
           ),
         ),
-        // Main Keypad
+
+        // Main Keypad with directional physics
         SizedBox(
+          key: widget.mainKeypadAreaKey,
           height: gridHeight,
-          child: PageView(
-            key: ValueKey('keypad_$pagesPerView'),
-            padEnds: false,
-            controller: PageController(
-              initialPage: pagesPerView >= 2 ? 0 : 1,
-              viewportFraction: 1 / pagesPerView,
-            ),
-            children: [
-              _buildScientificGrid(widget.isLandscape),
-              _buildNumberGrid(widget.isLandscape),
-              _buildExtrasGrid(widget.isLandscape),
-            ],
-          ),
+          width: double.infinity, // ← Add this to match Container behavior
+          child:
+              _keypadController != null
+                  ? ListenableBuilder(
+                    listenable: widget.walkthroughService,
+                    builder: (context, _) {
+                      return PageView(
+                        padEnds: false,
+                        controller: _keypadController!,
+                        physics: _getKeypadPhysics(),
+                        onPageChanged: _onKeypadPageChanged,
+                        children: [
+                          // Use SizedBox.expand() for children that need to fill space
+                          SizedBox.expand(
+                            key: widget.scientificKeypadKey,
+                            child: _buildScientificGrid(widget.isLandscape),
+                          ),
+                          SizedBox.expand(
+                            key: widget.numberKeypadKey,
+                            child: _buildNumberGrid(widget.isLandscape),
+                          ),
+                          SizedBox.expand(
+                            key: widget.extrasKeypadKey,
+                            child: _buildExtrasGrid(widget.isLandscape),
+                          ),
+                        ],
+                      );
+                    },
+                  )
+                  : const SizedBox.shrink(),
         ),
       ],
     );
   }
 
-  // ============== GRID BUILDERS ==============
+  // ... rest of your existing methods (_buildBasicGrid, _buildScientificGrid, etc.) remain the same
 
   Widget _buildBasicGrid(int crossAxisCount, bool isLandscape) {
-    // Choose the correct button list based on orientation
     final List<String> buttons =
         isLandscape ? _buttonsBasicLandscape : _buttonsBasic;
 
-    // Map button text to indices for special handling
     return GridView.builder(
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
@@ -432,7 +666,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       itemBuilder: (context, index) {
         String buttonText = buttons[index];
 
-        // Addition Button
         if (buttonText == '+') {
           return MyButton(
             buttontapped: () {
@@ -443,9 +676,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Subtraction Button
-        else if (buttonText == '-') {
+        } else if (buttonText == '-') {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('-');
@@ -455,9 +686,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Multiplication Button
-        else if (buttonText == 'x') {
+        } else if (buttonText == 'x') {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(
@@ -469,30 +698,27 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Division Button
-        else if (buttonText == '/') {
+        } else if (buttonText == '/') {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCharacter('/');
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInFraction(),
+                normalAction: () => _activeController?.insertCharacter('/'),
+              );
             },
             buttonText: '\u00F7',
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Enter/Command Button
-        else if (buttonText == '\u2318') {
+        } else if (buttonText == '\u2318') {
           return MyButton(
             buttontapped: _handleEnter,
             buttonText: '\u2318',
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Delete Button
-        else if (buttonText == '\u232B') {
+        } else if (buttonText == '\u232B') {
           return GestureDetector(
             onLongPressStart: (_) => _startContinuousDelete(),
             onLongPressEnd: (_) => _stopContinuousDelete(),
@@ -511,9 +737,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               textColor: Colors.black,
             ),
           );
-        }
-        // Clear Button
-        else if (buttonText == 'C') {
+        } else if (buttonText == 'C') {
           return MyButton(
             buttontapped: () {
               _activeController?.clear();
@@ -526,21 +750,21 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Parentheses Button
-        else if (buttonText == '()') {
+        } else if (buttonText == '()') {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCharacter('()');
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInParenthesis(),
+                normalAction: () => _activeController?.insertCharacter('()'),
+              );
             },
             buttonText: '()',
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // E (exponent) Button
-        else if (buttonText == '\u1D07') {
+        } else if (buttonText == '\u1D07') {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('\u1D07');
@@ -550,9 +774,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Number and other buttons
-        else {
+        } else {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(buttonText);
@@ -577,8 +799,208 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       ),
       itemCount: _buttonsSci.length,
       itemBuilder: (context, index) {
-        // = button
-        if (index == 0) {
+        // x^2 button
+        if (index == 1) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInSquare(),
+                normalAction: () => _activeController?.insertSquare(),
+              );
+            },
+            buttonText: 'x\u00B2',
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // x^n button
+        else if (index == 2) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInExponent(),
+                normalAction: () => _activeController?.insertCharacter('^'),
+              );
+            },
+            buttonText: 'x\u207F',
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // Square root button
+        else if (index == 3) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInSquareRoot(),
+                normalAction: () => _activeController?.insertSquareRoot(),
+              );
+            },
+            buttonText: '\u221A',
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // Nth root button
+        else if (index == 4) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInNthRoot(),
+                normalAction: () => _activeController?.insertNthRoot(),
+              );
+            },
+            buttonText: '\u207F\u221A',
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // sin button
+        else if (index == 7) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInTrig('sin'),
+                normalAction: () => _activeController?.insertTrig('sin'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // cos button
+        else if (index == 8) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInTrig('cos'),
+                normalAction: () => _activeController?.insertTrig('cos'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // tan button
+        else if (index == 9) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInTrig('tan'),
+                normalAction: () => _activeController?.insertTrig('tan'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // asin button
+        else if (index == 12) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInTrig('asin'),
+                normalAction: () => _activeController?.insertTrig('asin'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // acos button
+        else if (index == 13) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInTrig('acos'),
+                normalAction: () => _activeController?.insertTrig('acos'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // atan button
+        else if (index == 14) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInTrig('atan'),
+                normalAction: () => _activeController?.insertTrig('atan'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // ln button
+        else if (index == 17) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInNaturalLog(),
+                normalAction: () => _activeController?.insertNaturalLog(),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // log button
+        else if (index == 18) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInLog10(),
+                normalAction: () => _activeController?.insertLog10(),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // logn button
+        else if (index == 19) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInLogN(),
+                normalAction: () => _activeController?.insertLogN(),
+              );
+            },
+            buttonText: 'log\u1D63',
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // ... rest of existing cases
+        else if (index == 0) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(_buttonsSci[index]);
@@ -588,9 +1010,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // pi button
-        if (index == 6) {
+        } else if (index == 6) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('\u03C0');
@@ -600,165 +1020,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // ^2 Button
-        else if (index == 1) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertSquare();
-              widget.onUpdateMathEditor();
-            },
-            buttonText: 'x\u00B2',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // ^ Button
-        else if (index == 2) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertCharacter('^');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: 'x\u207F',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // Square root Button
-        else if (index == 3) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertSquareRoot();
-              widget.onUpdateMathEditor();
-            },
-            buttonText: '\u221A',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // Nth root Button
-        else if (index == 4) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertNthRoot();
-              widget.onUpdateMathEditor();
-            },
-            buttonText: '\u207F\u221A',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // sin Button
-        else if (index == 7) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('sin');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // cos Button
-        else if (index == 8) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('cos');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // tan Button
-        else if (index == 9) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('tan');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // asin Button
-        else if (index == 12) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('asin');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // acos Button
-        else if (index == 13) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('acos');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // atan Button
-        else if (index == 14) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('atan');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // ln Button
-        else if (index == 17) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('ln');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // log Button
-        else if (index == 18) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertLog10();
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // logn Button
-        else if (index == 19) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertLogN();
-              widget.onUpdateMathEditor();
-            },
-            buttonText: 'log\u1D63',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        }
-        // Degree button
-        else if (index == 11) {
+        } else if (index == 11) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(_buttonsSci[index]);
@@ -768,9 +1030,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Other buttons
-        else {
+        } else {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(_buttonsSci[index]);
@@ -795,20 +1055,22 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         childAspectRatio: isLandscape ? 1.5 : 1.0,
       ),
       itemBuilder: (context, index) {
-        // () button
         if (index == 3) {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCharacter(_buttons[index]);
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInParenthesis(),
+                normalAction:
+                    () => _activeController?.insertCharacter(_buttons[index]),
+              );
             },
             buttonText: '\u0028\u0029',
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Delete Button
-        else if (index == 4) {
+        } else if (index == 4) {
           return GestureDetector(
             onLongPressStart: (_) => _startContinuousDelete(),
             onLongPressEnd: (_) => _stopContinuousDelete(),
@@ -827,9 +1089,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               textColor: Colors.black,
             ),
           );
-        }
-        // Addition Button
-        else if (index == 8) {
+        } else if (index == 8) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('\u002B');
@@ -839,9 +1099,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Subtraction Button
-        else if (index == 9) {
+        } else if (index == 9) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('\u2212');
@@ -851,9 +1109,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Multiplication Button
-        else if (index == 13) {
+        } else if (index == 13) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(
@@ -865,21 +1121,22 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Division Button
+        } // Division button (index 14)
         else if (index == 14) {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCharacter(_buttons[index]);
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInFraction(),
+                normalAction:
+                    () => _activeController?.insertCharacter(_buttons[index]),
+              );
             },
             buttonText: '\u00F7',
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // E Button
-        else if (index == 17) {
+        } else if (index == 17) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(_buttons[index]);
@@ -889,9 +1146,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Clear Button
-        else if (index == 18) {
+        } else if (index == 18) {
           return MyButton(
             buttontapped: () {
               _activeController?.clear();
@@ -902,18 +1157,17 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Enter Button
-        else if (index == 19) {
-          return MyButton(
-            buttontapped: _handleEnter,
-            buttonText: '\u2318',
-            color: Colors.white,
-            textColor: Colors.black,
+        } else if (index == 19) {
+          return Container(
+            key: widget.commandButtonKey,
+            child: MyButton(
+              buttontapped: _handleEnter,
+              buttonText: '\u2318',
+              color: Colors.white,
+              textColor: Colors.black,
+            ),
           );
-        }
-        // Other buttons
-        else {
+        } else {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(_buttons[index]);
@@ -938,35 +1192,48 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         childAspectRatio: isLandscape ? 1.5 : 1.0,
       ),
       itemBuilder: (context, index) {
-        // Undo button
         if (index == 3) {
-          bool canUndo = _activeController?.canUndo ?? false;
+          // Undo button
+          bool canUndo =
+              (_activeController?.canUndo ?? false) || widget.canUndoAppState;
           return MyButton(
             buttontapped: () {
-              _activeController?.undo();
-              widget.onUpdateMathEditor();
-              widget.onSetState();
+              if (_activeController?.canUndo ?? false) {
+                // Controller-level undo first
+                _activeController?.undo();
+                widget.onUpdateMathEditor();
+                widget.onSetState();
+              } else if (widget.canUndoAppState) {
+                // App-level undo (for Clear All, etc.)
+                widget.onUndoAppState?.call();
+              }
             },
             buttonText: _buttonsR[index],
             color: canUndo ? Colors.white : Colors.grey[300]!,
             textColor: canUndo ? Colors.black : Colors.grey,
           );
         }
-        // Redo button
         if (index == 2) {
-          bool canRedo = _activeController?.canRedo ?? false;
+          // Redo button
+          bool canRedo =
+              (_activeController?.canRedo ?? false) || widget.canRedoAppState;
           return MyButton(
             buttontapped: () {
-              _activeController?.redo();
-              widget.onUpdateMathEditor();
-              widget.onSetState();
+              if (_activeController?.canRedo ?? false) {
+                // Controller-level redo first
+                _activeController?.redo();
+                widget.onUpdateMathEditor();
+                widget.onSetState();
+              } else if (widget.canRedoAppState) {
+                // App-level redo
+                widget.onRedoAppState?.call();
+              }
             },
             buttonText: _buttonsR[index],
             color: canRedo ? Colors.white : Colors.grey[300]!,
             textColor: canRedo ? Colors.black : Colors.grey,
           );
         }
-        // Clear All Button
         if (index == 4) {
           return MyButton(
             buttontapped: widget.onClearAllDisplays,
@@ -975,7 +1242,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         }
-        // Complex number button
         if (index == 5) {
           return MyButton(
             buttontapped: () {
@@ -986,9 +1252,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.grey,
           );
-        }
-        // Factorial Button
-        else if (index == 6) {
+        } else if (index == 6) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('!');
@@ -998,33 +1262,38 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Permutation Button
+        } // nPr button
         else if (index == 7) {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertPermutation();
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInPermutation(),
+                normalAction: () => _activeController?.insertPermutation(),
+              );
             },
             buttonText: '\u207FP\u1D63',
             color: Colors.white,
             textColor: Colors.black,
           );
         }
-        // Combination Button
+        // nCr button
         else if (index == 8) {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCombination();
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInCombination(),
+                normalAction: () => _activeController?.insertCombination(),
+              );
             },
             buttonText: '\u207FC\u1D63',
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // ANS button
-        else if (index == 9) {
+        } else if (index == 9) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(_buttonsR[index]);
@@ -1034,9 +1303,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Help Button
-        else if (index == 18) {
+        } else if (index == 18) {
           return MyButton(
             buttontapped: () {
               Navigator.push(context, SlidePageRoute(page: HelpPage()));
@@ -1046,20 +1313,29 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        // Settings Button
-        else if (index == 19) {
-          return MyButton(
-            buttontapped: () {
-              Navigator.push(context, SlidePageRoute(page: SettingsScreen()));
-            },
-            buttonText: '\u2699',
-            color: Colors.white,
-            textColor: Colors.black,
+        } else if (index == 19) {
+          return Container(
+            key: widget.settingsButtonKey,
+            child: MyButton(
+              buttontapped: () {
+                Navigator.push(
+                  context,
+                  SlidePageRoute(
+                    page: SettingsScreen(
+                      onShowTutorial: () {
+                        Navigator.pop(context);
+                        widget.walkthroughService.resetWalkthrough();
+                      },
+                    ),
+                  ),
+                );
+              },
+              buttonText: '\u2699',
+              color: Colors.white,
+              textColor: Colors.black,
+            ),
           );
-        }
-        // Other buttons (empty/disabled)
-        else {
+        } else {
           return MyButton(
             buttonText: _buttonsR[index],
             color: Colors.white,
