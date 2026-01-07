@@ -595,13 +595,13 @@ class MathEditorController extends ChangeNotifier {
 
     for (final info in _layoutRegistry.values) {
       double dx = 0, dy = 0;
-      if (localPos.dx < info.rect.left)
+      if (localPos.dx < info.rect.left) {
         dx = info.rect.left - localPos.dx;
-      else if (localPos.dx > info.rect.right)
+      } else if (localPos.dx > info.rect.right)
         dx = localPos.dx - info.rect.right;
-      if (localPos.dy < info.rect.top)
+      if (localPos.dy < info.rect.top) {
         dy = info.rect.top - localPos.dy;
-      else if (localPos.dy > info.rect.bottom)
+      } else if (localPos.dy > info.rect.bottom)
         dy = localPos.dy - info.rect.bottom;
       final distance = math.sqrt(dx * dx + dy * dy);
       if (distance < minDistance) {
@@ -1766,8 +1766,9 @@ class MathEditorController extends ChangeNotifier {
     String? path,
   ) {
     for (int i = 0; i < nodes.length; i++) {
-      if (nodes[i].id == targetId)
+      if (nodes[i].id == targetId) {
         return _ParentListInfo(nodes, i, parentId, path);
+      }
       final node = nodes[i];
       if (node is FractionNode) {
         var result = _searchForParent(node.numerator, targetId, node.id, 'num');
@@ -2440,8 +2441,9 @@ class MathEditorController extends ChangeNotifier {
     int cursorClick = cursor.subIndex;
 
     int operandStart = cursorClick;
-    while (operandStart > 0 && !_isWordBoundary(text[operandStart - 1]))
+    while (operandStart > 0 && !_isWordBoundary(text[operandStart - 1])) {
       operandStart--;
+    }
 
     String baseText = text.substring(operandStart, cursorClick);
     int actualIndex = siblings.indexWhere((n) => n.id == currentId);
@@ -2462,7 +2464,9 @@ class MathEditorController extends ChangeNotifier {
                 ? chainResult.prefixNodeIndex! + 1
                 : chainResult.removeFromIndex;
         int removeEnd = actualIndex - 1;
-        for (int j = removeEnd; j >= removeStart; j--) siblings.removeAt(j);
+        for (int j = removeEnd; j >= removeStart; j--) {
+          siblings.removeAt(j);
+        }
         int newCurrentIndex = removeStart;
         current.text = text.substring(cursorClick);
         final exp = ExponentNode(
@@ -3008,17 +3012,17 @@ class MathEditorController extends ChangeNotifier {
 
   void _handleDeleteInFraction(FractionNode frac) {
     if (cursor.path == 'den') {
-      if (_isListEffectivelyEmpty(frac.denominator))
+      if (_isListEffectivelyEmpty(frac.denominator)) {
         _unwrapFraction(frac);
-      else {
+      } else {
         _moveCursorToEndOfList(frac.numerator, frac.id, 'num');
         notifyListeners();
       }
     } else if (cursor.path == 'num') {
       if (_isListEffectivelyEmpty(frac.numerator) &&
-          _isListEffectivelyEmpty(frac.denominator))
+          _isListEffectivelyEmpty(frac.denominator)) {
         _removeFraction(frac);
-      else {
+      } else {
         _moveCursorBeforeNode(frac.id);
         notifyListeners();
       }
@@ -3027,17 +3031,17 @@ class MathEditorController extends ChangeNotifier {
 
   void _handleDeleteInExponent(ExponentNode exp) {
     if (cursor.path == 'pow') {
-      if (_isListEffectivelyEmpty(exp.power))
+      if (_isListEffectivelyEmpty(exp.power)) {
         _unwrapExponent(exp);
-      else {
+      } else {
         _moveCursorToEndOfList(exp.base, exp.id, 'base');
         notifyListeners();
       }
     } else if (cursor.path == 'base') {
       if (_isListEffectivelyEmpty(exp.base) &&
-          _isListEffectivelyEmpty(exp.power))
+          _isListEffectivelyEmpty(exp.power)) {
         _removeExponent(exp);
-      else {
+      } else {
         _moveCursorBeforeNode(exp.id);
         notifyListeners();
       }
@@ -3045,9 +3049,9 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void _handleDeleteInParenthesis(ParenthesisNode paren) {
-    if (_isListEffectivelyEmpty(paren.content))
+    if (_isListEffectivelyEmpty(paren.content)) {
       _removeParenthesis(paren);
-    else {
+    } else {
       _moveCursorBeforeNode(paren.id);
       notifyListeners();
     }
@@ -3321,21 +3325,27 @@ class MathEditorController extends ChangeNotifier {
       }
       final node = nodes[i];
       if (node is FractionNode) {
-        if (_findAndPositionBefore(node.numerator, targetId, node.id, 'num'))
+        if (_findAndPositionBefore(node.numerator, targetId, node.id, 'num')) {
           return true;
-        if (_findAndPositionBefore(node.denominator, targetId, node.id, 'den'))
+        }
+        if (_findAndPositionBefore(node.denominator, targetId, node.id, 'den')) {
           return true;
+        }
       } else if (node is ExponentNode) {
-        if (_findAndPositionBefore(node.base, targetId, node.id, 'base'))
+        if (_findAndPositionBefore(node.base, targetId, node.id, 'base')) {
           return true;
-        if (_findAndPositionBefore(node.power, targetId, node.id, 'pow'))
+        }
+        if (_findAndPositionBefore(node.power, targetId, node.id, 'pow')) {
           return true;
+        }
       } else if (node is ParenthesisNode) {
-        if (_findAndPositionBefore(node.content, targetId, node.id, 'content'))
+        if (_findAndPositionBefore(node.content, targetId, node.id, 'content')) {
           return true;
+        }
       } else if (node is AnsNode) {
-        if (_findAndPositionBefore(node.index, targetId, node.id, 'index'))
+        if (_findAndPositionBefore(node.index, targetId, node.id, 'index')) {
           return true;
+        }
       }
     }
     return false;
@@ -3399,21 +3409,27 @@ class MathEditorController extends ChangeNotifier {
       }
       final node = nodes[i];
       if (node is FractionNode) {
-        if (_findAndPositionAfter(node.numerator, targetId, node.id, 'num'))
+        if (_findAndPositionAfter(node.numerator, targetId, node.id, 'num')) {
           return true;
-        if (_findAndPositionAfter(node.denominator, targetId, node.id, 'den'))
+        }
+        if (_findAndPositionAfter(node.denominator, targetId, node.id, 'den')) {
           return true;
+        }
       } else if (node is ExponentNode) {
-        if (_findAndPositionAfter(node.base, targetId, node.id, 'base'))
+        if (_findAndPositionAfter(node.base, targetId, node.id, 'base')) {
           return true;
-        if (_findAndPositionAfter(node.power, targetId, node.id, 'pow'))
+        }
+        if (_findAndPositionAfter(node.power, targetId, node.id, 'pow')) {
           return true;
+        }
       } else if (node is ParenthesisNode) {
-        if (_findAndPositionAfter(node.content, targetId, node.id, 'content'))
+        if (_findAndPositionAfter(node.content, targetId, node.id, 'content')) {
           return true;
+        }
       } else if (node is AnsNode) {
-        if (_findAndPositionAfter(node.index, targetId, node.id, 'index'))
+        if (_findAndPositionAfter(node.index, targetId, node.id, 'index')) {
           return true;
+        }
       }
     }
     return false;
@@ -3428,8 +3444,9 @@ class MathEditorController extends ChangeNotifier {
       if (current is LiteralNode && next is LiteralNode) {
         current.text += next.text;
         list.removeAt(i + 1);
-      } else
+      } else {
         i++;
+      }
     }
   }
 
@@ -3571,8 +3588,9 @@ class MathEditorController extends ChangeNotifier {
     final fracIndex = parentInfo.index;
 
     int textLengthBefore = 0;
-    if (fracIndex > 0 && parentList[fracIndex - 1] is LiteralNode)
+    if (fracIndex > 0 && parentList[fracIndex - 1] is LiteralNode) {
       textLengthBefore = (parentList[fracIndex - 1] as LiteralNode).text.length;
+    }
 
     parentList.removeAt(fracIndex);
     if (parentList.isEmpty) {
@@ -3730,8 +3748,9 @@ class MathEditorController extends ChangeNotifier {
     final expIndex = parentInfo.index;
 
     int textLengthBefore = 0;
-    if (expIndex > 0 && parentList[expIndex - 1] is LiteralNode)
+    if (expIndex > 0 && parentList[expIndex - 1] is LiteralNode) {
       textLengthBefore = (parentList[expIndex - 1] as LiteralNode).text.length;
+    }
 
     parentList.removeAt(expIndex);
     if (parentList.isEmpty) {
@@ -3765,9 +3784,10 @@ class MathEditorController extends ChangeNotifier {
     final parenIndex = parentInfo.index;
 
     int textLengthBefore = 0;
-    if (parenIndex > 0 && parentList[parenIndex - 1] is LiteralNode)
+    if (parenIndex > 0 && parentList[parenIndex - 1] is LiteralNode) {
       textLengthBefore =
           (parentList[parenIndex - 1] as LiteralNode).text.length;
+    }
 
     parentList.removeAt(parenIndex);
     if (parentList.isEmpty) {
@@ -4072,20 +4092,21 @@ class MathEditorController extends ChangeNotifier {
     if (nodeIndex >= list.length) nodeIndex = list.length - 1;
     if (nodeIndex < 0) nodeIndex = 0;
     final node = list[nodeIndex];
-    if (node is LiteralNode)
+    if (node is LiteralNode) {
       cursor = EditorCursor(
         parentId: parentId,
         path: path,
         index: nodeIndex,
         subIndex: targetOffset.clamp(0, node.text.length),
       );
-    else
+    } else {
       cursor = EditorCursor(
         parentId: parentId,
         path: path,
         index: nodeIndex,
         subIndex: 0,
       );
+    }
   }
 
   void moveRight() {

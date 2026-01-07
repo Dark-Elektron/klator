@@ -80,16 +80,16 @@ static String? solve(String expression, {Map<int, String>? ansValues}) {
     // Convert small caps E back to regular e for parsing
     expr = expr.replaceAll('\u1D07', 'E');
 
-    expr = expr.replaceAll('\u00B0', '*(${pi}/180)'); // degrees
-    expr = expr.replaceAll('rad', '*((1/${pi})*180)'); // radian
+    expr = expr.replaceAll('\u00B0', '*($pi/180)'); // degrees
+    expr = expr.replaceAll('rad', '*((1/$pi)*180)'); // radian
 
     // Replace pi constant - only add * if preceded by digit or )
     expr = expr.replaceAllMapped(RegExp(r'([\d\)])?\u03C0'), (match) {
       String? before = match.group(1);
       if (before != null) {
-        return '$before*(${pi})';
+        return '$before*($pi)';
       }
-      return '(${pi})';
+      return '($pi)';
     });
 
     // Replace standalone e (Euler's number) - only add * if preceded by digit or )
@@ -98,9 +98,9 @@ static String? solve(String expression, {Map<int, String>? ansValues}) {
       (match) {
         String? before = match.group(1);
         if (before != null) {
-          return '$before*(${e})';
+          return '$before*($e)';
         }
-        return '(${e})';
+        return '($e)';
       },
     );
 
@@ -131,7 +131,7 @@ static String? solveEquation(String equation) {
   
   // If no variables, just evaluate the expression
   if (variables.isEmpty) {
-    return evaluate(equation.replaceAll('=', '-(')+')');
+    return evaluate('${equation.replaceAll('=', '-(')})');
   }
   
   // If more than one variable, return null or the original equation
@@ -252,7 +252,7 @@ static Set<String> _findVariables(String expression) {
 
     // Ensure starts with sign
     if (!expression.startsWith('+') && !expression.startsWith('-')) {
-      expression = '+' + expression;
+      expression = '+$expression';
     }
 
     // Split into terms by + or - while keeping the sign
@@ -274,7 +274,7 @@ static Set<String> _findVariables(String expression) {
       terms.add(currentTerm.trim());
     }
 
-    String quadSuffix = variable + '^(2)';
+    String quadSuffix = '$variable^(2)';
     String quadSuffixAlt = variable + r'^2';
 
     for (String term in terms) {
@@ -609,15 +609,15 @@ static Set<String> _findVariables(String expression) {
     expr = expr.replaceAll('\u00B7', '*');
     expr = expr.replaceAll('\u00D7', '*');
     expr = expr.replaceAll('\u1D07', 'E');
-    expr = expr.replaceAll('\u00B0', '*(${pi}/180)');
-    expr = expr.replaceAll('rad', '*((1/${pi})*180)');
+    expr = expr.replaceAll('\u00B0', '*($pi/180)');
+    expr = expr.replaceAll('rad', '*((1/$pi)*180)');
 
     expr = expr.replaceAllMapped(RegExp(r'([\d\)])?\u03C0'), (match) {
       String? before = match.group(1);
       if (before != null) {
-        return '$before*(${pi})';
+        return '$before*($pi)';
       }
-      return '(${pi})';
+      return '($pi)';
     });
 
     expr = expr.replaceAllMapped(
@@ -625,9 +625,9 @@ static Set<String> _findVariables(String expression) {
       (match) {
         String? before = match.group(1);
         if (before != null) {
-          return '$before*(${e})';
+          return '$before*($e)';
         }
-        return '(${e})';
+        return '($e)';
       },
     );
 
@@ -751,7 +751,7 @@ static Set<String> _findVariables(String expression) {
       exponent = exponent.substring(1);
     }
 
-    return '${mantissa}\u1D07$exponent';
+    return '$mantissa\u1D07$exponent';
   }
 }
 

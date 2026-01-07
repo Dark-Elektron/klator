@@ -3,7 +3,8 @@ import 'settings_provider.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final VoidCallback? onShowTutorial;
+  const SettingsScreen({super.key, this.onShowTutorial});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -22,64 +23,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text('Settings')),
-      body: ListView(
-        padding: EdgeInsets.all(16.0),
+      body: Column(
         children: [
-          ListTile(
-            title: Text(
-              'Precision: ${settings.precision.toInt()} decimal places',
-            ),
-            subtitle: Slider(
-              activeColor: sliderActiveColor,
-              value: settings.precision,
-              min: 0,
-              max: 16,
-              divisions: 16,
-              label: settings.precision.toInt().toString(),
-              onChanged: (value) {
-                settings.setPrecision(value);
-              },
-            ),
-          ),
-          SwitchListTile(
-            title: Text('Dark Theme'),
-            activeColor: activeColor,
-            activeTrackColor: activeTrackColor,
-            value: settings.isDarkTheme,
-            onChanged: settings.toggleDarkTheme,
-          ),
-          SwitchListTile(
-            title: Text('Haptic Feedback'),
-            activeColor: activeColor,
-            activeTrackColor: activeTrackColor,
-            value: settings.hapticFeedback,
-            onChanged: settings.toggleHapticFeedback,
-          ),
-
-          // Multiplication Sign Selection
-          ListTile(
-            title: const Text('Multiplication Sign'),
-            // Move your row here to align it to the right
-            trailing: Wrap(
-              // Wrap is safer than Row here to prevent overflow
-              crossAxisAlignment: WrapCrossAlignment.center,
+          // Main settings in scrollable area
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.all(16.0),
               children: [
-                _buildMultiplyOption(
-                  settings,
-                  '\u00D7',
-                  '\u00D7',
-                  sliderActiveColor,
+                ListTile(
+                  title: Text(
+                    'Precision: ${settings.precision.toInt()} decimal places',
+                  ),
+                  subtitle: Slider(
+                    activeColor: sliderActiveColor,
+                    value: settings.precision,
+                    min: 0,
+                    max: 16,
+                    divisions: 16,
+                    label: settings.precision.toInt().toString(),
+                    onChanged: (value) {
+                      settings.setPrecision(value);
+                    },
+                  ),
                 ),
-                const SizedBox(
-                  width: 12,
-                ), // Slightly tighter spacing for the trailing area
-                _buildMultiplyOption(
-                  settings,
-                  '\u00B7',
-                  '\u00B7',
-                  sliderActiveColor,
+                SwitchListTile(
+                  title: Text('Dark Theme'),
+                  activeThumbColor: activeColor,
+                  activeTrackColor: activeTrackColor,
+                  value: settings.isDarkTheme,
+                  onChanged: settings.toggleDarkTheme,
+                ),
+                SwitchListTile(
+                  title: Text('Haptic Feedback'),
+                  activeThumbColor: activeColor,
+                  activeTrackColor: activeTrackColor,
+                  value: settings.hapticFeedback,
+                  onChanged: settings.toggleHapticFeedback,
+                ),
+                ListTile(
+                  title: const Text('Multiplication Sign'),
+                  trailing: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _buildMultiplyOption(
+                        settings,
+                        '\u00D7',
+                        '\u00D7',
+                        sliderActiveColor,
+                      ),
+                      const SizedBox(width: 12),
+                      _buildMultiplyOption(
+                        settings,
+                        '\u00B7',
+                        '\u00B7',
+                        sliderActiveColor,
+                      ),
+                    ],
+                  ),
                 ),
               ],
+            ),
+          ),
+
+          // Tutorial button at bottom
+          const Divider(height: 1),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
+              ),
+              child: ListTile(
+                leading: const Icon(Icons.school_outlined),
+                title: const Text('Show Tutorial'),
+                subtitle: const Text('Learn how to use the calculator'),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                tileColor: isDark ? Colors.blueGrey[800] : Colors.blueGrey[50],
+                onTap: () {
+                  if (widget.onShowTutorial != null) {
+                    widget.onShowTutorial!();
+                  }
+                },
+              ),
             ),
           ),
         ],

@@ -8,14 +8,12 @@ import 'cell_persistence_service.dart';
 import 'math_expression_serializer.dart';
 import 'dart:async';
 import 'keypad.dart';
+import 'walkthrough/walkthrough_service.dart';
+import 'walkthrough/walkthrough_overlay.dart';
 
 void main() async {
-  // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Load settings BEFORE running app
   final settingsProvider = await SettingsProvider.create();
-  // SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
 
   runApp(
     ChangeNotifierProvider.value(value: settingsProvider, child: const MyApp()),
@@ -31,11 +29,7 @@ class MyApp extends StatelessWidget {
       builder: (context, settings, child) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-
-          // Add themeMode to toggle between themes
           themeMode: settings.isDarkTheme ? ThemeMode.dark : ThemeMode.light,
-
-          // Light theme
           theme: ThemeData(
             brightness: Brightness.light,
             primarySwatch: Colors.blueGrey,
@@ -51,8 +45,6 @@ class MyApp extends StatelessWidget {
               selectionHandleColor: Colors.red,
             ),
           ),
-
-          // Dark theme
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primarySwatch: Colors.blueGrey,
@@ -69,10 +61,8 @@ class MyApp extends StatelessWidget {
               selectionColor: Colors.red.withValues(alpha: 0.4),
               selectionHandleColor: Colors.red,
             ),
-            // Text defaults to white in dark mode automatically
           ),
-
-          home: HomePage(),
+          home: const HomePage(),
         );
       },
     );
@@ -91,27 +81,100 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Map<int, TextEditingController> textDisplayControllers = {};
   Map<int, MathEditorController> mathEditorControllers = {};
   Map<int, FocusNode> focusNodes = {};
-  int activeIndex = 0; // Tracks the active container
+  int activeIndex = 0;
   PageController pgViewController = PageController(
     initialPage: 1,
     viewportFraction: 1,
   );
   bool isVisible = true;
   bool isTypingExponent = false;
-  double plotMaxHeight = 300; // Initial height
-  double plotMinHeight = 21; // Initial height
-  // double _plotHeight = 100.0; // Initial height when collapsed
+  double plotMaxHeight = 300;
+  double plotMinHeight = 21;
   bool _isUpdating = false;
-  bool _isLoading = true; // Add loading state
-  List<String> answers = []; // Store answers for persistence
+  bool _isLoading = true;
+  List<String> answers = [];
 
   SettingsProvider? _settingsProvider;
   bool _listenerAdded = false;
   Timer? _deleteTimer;
 
+  // Walkthrough
+  late WalkthroughService _walkthroughService;
+  bool _walkthroughInitialized = false;
+
+  // Walkthrough target keys
+final GlobalKey _expressionKey = GlobalKey();
+final GlobalKey _resultKey = GlobalKey();
+final GlobalKey _ansIndexKey = GlobalKey();
+final GlobalKey _basicKeypadKey = GlobalKey();
+final GlobalKey _basicKeypadHandleKey = GlobalKey();
+final GlobalKey _commandButtonKey = GlobalKey();
+final GlobalKey _scientificKeypadKey = GlobalKey();
+final GlobalKey _numberKeypadKey = GlobalKey();
+final GlobalKey _extrasKeypadKey = GlobalKey();
+final GlobalKey _mainKeypadAreaKey = GlobalKey();
+final GlobalKey _settingsButtonKey = GlobalKey();  // NEW
+
+
+  // Update the _walkthroughTargets getter:
+
+Map<String, GlobalKey> get _walkthroughTargets => {
+  'expression_area': _expressionKey,
+  'result_area': _resultKey,
+  'ans_index': _ansIndexKey,
+  'basic_keypad': _basicKeypadHandleKey,
+  'command_button': _commandButtonKey,
+  // Mobile keypad steps
+  'number_keypad': _mainKeypadAreaKey,
+  'scientific_keypad': _mainKeypadAreaKey,
+  'extras_keypad': _mainKeypadAreaKey,
+  'swipe_right_scientific': _mainKeypadAreaKey,
+  'swipe_left_number': _mainKeypadAreaKey,
+  'swipe_left_extras': _mainKeypadAreaKey,
+  'swipe_right_back': _mainKeypadAreaKey,
+  'settings_button': _settingsButtonKey,  // NEW
+  // Tablet keypad steps
+  'tablet_keypads_visible': _mainKeypadAreaKey,
+  'tablet_swipe_left_extras': _mainKeypadAreaKey,
+  'tablet_extras_visible': _mainKeypadAreaKey,
+  'tablet_swipe_right_back': _mainKeypadAreaKey,
+  'tablet_settings_button': _settingsButtonKey,  // NEW
+  // Common
+  'main_keypad_area': _mainKeypadAreaKey,
+  'complete': _mainKeypadAreaKey,
+};
+
+  Future<void> _initializeWalkthrough() async {
+    if (_walkthroughInitialized) return;
+    _walkthroughInitialized = true;
+
+    // Delay to ensure everything is ready
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    if (mounted) {
+      // Determine if tablet mode based on screen size
+      final mediaQuery = MediaQuery.of(context);
+      final screenWidth = mediaQuery.size.width;
+      final isLandscape = mediaQuery.orientation == Orientation.landscape;
+      final isTablet = screenWidth > 600 || isLandscape;
+
+      // Set device mode BEFORE initializing
+      _walkthroughService.setDeviceMode(isTablet: isTablet);
+
+      await _walkthroughService.initialize();
+      debugPrint(
+        'Walkthrough initialization complete. Active: ${_walkthroughService.isActive}, Tablet: $isTablet, Steps: ${_walkthroughService.steps.length}',
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+
+    // Initialize walkthrough service
+    _walkthroughService = WalkthroughService();
+    _walkthroughService.addListener(_onWalkthroughChanged);
 
     WidgetsBinding.instance.addObserver(this);
     _loadCells();
@@ -121,18 +184,43 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       count = 1;
       activeIndex = 0;
     }
+
+    // Initialize walkthrough after build is complete
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeWalkthrough();
+    });
+  }
+
+  // Future<void> _initializeWalkthrough() async {
+  //   if (_walkthroughInitialized) return;
+  //   _walkthroughInitialized = true;
+
+  //   // Delay to ensure everything is ready
+  //   await Future.delayed(const Duration(milliseconds: 300));
+
+  //   if (mounted) {
+  //     await _walkthroughService.initialize();
+  //     debugPrint(
+  //       'Walkthrough initialization complete. Active: ${_walkthroughService.isActive}',
+  //     );
+  //   }
+  // }
+
+  void _onWalkthroughChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
-    _deleteTimer?.cancel(); // <-- Add this
+    _deleteTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _saveCells();
 
-    // Clean up the controller when the widget is disposed.
-    // for (TextEditingController controller in textEditingControllers.values) {
-    //   controller.dispose();
-    // }
+    _walkthroughService.removeListener(_onWalkthroughChanged);
+    _walkthroughService.dispose();
+
     for (MathEditorController controller in mathEditorControllers.values) {
       controller.dispose();
     }
@@ -145,10 +233,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       focusNode.dispose();
     }
 
-    // Dispose all controllers
-    mathEditorControllers.values.forEach((c) => c.dispose());
-    textDisplayControllers.values.forEach((c) => c.dispose());
-
     super.dispose();
   }
 
@@ -156,7 +240,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    // Save when app goes to background or is paused
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
@@ -168,7 +251,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    // Add listener only once
     if (!_listenerAdded) {
       _settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
       _settingsProvider?.addListener(_onSettingsChanged);
@@ -176,29 +258,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// Load cells from persistence
   Future<void> _loadCells() async {
     List<CellData> savedCells = await CellPersistence.loadCells();
     int savedIndex = await CellPersistence.loadActiveIndex();
 
     if (savedCells.isEmpty) {
-      // Use existing method
       _createControllers(0);
       count = 1;
       activeIndex = 0;
     } else {
-      // Load each saved cell
       for (int i = 0; i < savedCells.length; i++) {
-        // Use existing method to create controllers with proper callbacks
         _createControllers(i);
 
-        // Deserialize and set the expression
         List<MathNode> nodes = MathExpressionSerializer.deserializeFromJson(
           savedCells[i].expressionJson,
         );
         mathEditorControllers[i]?.setExpression(nodes);
 
-        // Set the answer
         textDisplayControllers[i]?.text = savedCells[i].answer;
       }
 
@@ -209,9 +285,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     setState(() => _isLoading = false);
   }
 
-  /// Save all cells to persistence
   Future<void> _saveCells() async {
-    // Get sorted keys to maintain order
     List<int> sortedKeys = mathEditorControllers.keys.toList()..sort();
 
     List<List<MathNode>> expressions = [];
@@ -231,12 +305,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await CellPersistence.saveActiveIndex(activeIndex);
   }
 
-  /// Called whenever any setting changes
   void _onSettingsChanged() {
-    // Recalculate all answers with new settings (precision, radians, etc.)
     updateMathEditor();
 
-    // Refresh display for all math editors (to show new multiply symbol)
     for (final controller in mathEditorControllers.values) {
       controller.refreshDisplay();
     }
@@ -245,7 +316,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _createControllers(int index) {
     mathEditorControllers[index] = MathEditorController();
 
-    // Set up cascading update callback
     mathEditorControllers[index]!.onResultChanged = () {
       _cascadeUpdates(index);
     };
@@ -255,9 +325,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     focusNodes[index] = FocusNode();
   }
 
-  /// Cascading update for displays that reference the changed one
   void _cascadeUpdates(int changedIndex) {
-    if (_isUpdating) return; // Prevent recursion
+    if (_isUpdating) return;
     _isUpdating = true;
 
     try {
@@ -267,7 +336,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (key > changedIndex) {
           String expr = mathEditorControllers[key]?.expr ?? '';
 
-          // Check if this display references the changed one
           if (expr.contains('ans$changedIndex') || expr.contains('ans')) {
             Map<int, String> ansValues = _getAnsValues();
             mathEditorControllers[key]?.onCalculate(ansValues: ansValues);
@@ -294,8 +362,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final resController = textDisplayControllers[index];
     final bool isFocused = (activeIndex == index);
 
-    // // Get app colors
-    // final colors = AppColors.of(context);
+    // Only add keys to the active expression display
+    final bool shouldAddKeys = index == activeIndex;
 
     return Container(
       color: colors.containerBackground,
@@ -303,6 +371,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         mainAxisAlignment: MainAxisAlignment.end,
         children: <Widget>[
           Container(
+            key: shouldAddKeys ? _expressionKey : null,
             width: double.infinity,
             padding: EdgeInsets.all(10),
             child: AnimatedOpacity(
@@ -321,7 +390,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     final width = box.size.width;
                     final tapX = details.localPosition.dx;
 
-                    // Wider zones - left 40% and right 40%
                     if (tapX < width * 0.4) {
                       mathEditorController.moveCursorToStart();
                     } else if (tapX > width * 0.6) {
@@ -332,7 +400,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 child: Center(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    reverse: true, // This keeps cursor visible on the right
+                    reverse: true,
                     child: MathEditorInline(
                       controller: mathEditorController!,
                       showCursor: isFocused,
@@ -349,9 +417,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
           Row(
             children: <Widget>[
-              Text(
-                "$index",
-                style: TextStyle(fontSize: 10, color: colors.textTertiary),
+              // Cell index with key for walkthrough
+              Container(
+                key: shouldAddKeys ? _ansIndexKey : null,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  "$index",
+                  style: TextStyle(fontSize: 10, color: colors.textTertiary),
+                ),
               ),
               Expanded(
                 child: Container(
@@ -372,6 +445,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ],
           ),
           Container(
+            key: shouldAddKeys ? _resultKey : null,
             color: colors.containerBackground,
             padding: EdgeInsets.all(0),
             alignment: Alignment.centerRight,
@@ -403,14 +477,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _createControllers(newIndex);
     setState(() {
       count += 1;
-      activeIndex = newIndex; // <-- Focus the new editor
+      activeIndex = newIndex;
     });
   }
 
   void _removeDisplay(int indexToRemove) {
-    if (count <= 1) return; // Don't remove the last one
+    if (count <= 1) return;
 
-    // Dispose controllers at the index being removed
     mathEditorControllers[indexToRemove]?.dispose();
     mathEditorControllers.remove(indexToRemove);
     textDisplayControllers[indexToRemove]?.dispose();
@@ -418,20 +491,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     focusNodes[indexToRemove]?.dispose();
     focusNodes.remove(indexToRemove);
 
-    // Calculate new activeIndex before reindexing
     int newActiveIndex;
     if (activeIndex == indexToRemove) {
-      // Deleted the active one - move to previous, or 0 if first
       newActiveIndex = indexToRemove > 0 ? indexToRemove - 1 : 0;
     } else if (activeIndex > indexToRemove) {
-      // Active was after deleted one - shift down by 1
       newActiveIndex = activeIndex - 1;
     } else {
-      // Active was before deleted one - stays the same
       newActiveIndex = activeIndex;
     }
 
-    // Reindex all controllers to be sequential (0, 1, 2, ...)
     _reindexControllers();
 
     setState(() {
@@ -441,7 +509,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _clearAllDisplays() {
-    // Dispose all existing controllers
     for (var controller in mathEditorControllers.values) {
       controller.dispose();
     }
@@ -452,12 +519,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       focusNode.dispose();
     }
 
-    // Clear all maps
     mathEditorControllers.clear();
     textDisplayControllers.clear();
     focusNodes.clear();
 
-    // Create fresh controller at index 0
     _createControllers(0);
 
     setState(() {
@@ -467,10 +532,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _reindexControllers() {
-    // Get all current keys sorted
     List<int> oldKeys = mathEditorControllers.keys.toList()..sort();
 
-    // Create new maps with sequential indices starting from 0
     Map<int, MathEditorController> newMathControllers = {};
     Map<int, TextEditingController> newDisplayControllers = {};
     Map<int, FocusNode> newFocusNodes = {};
@@ -482,7 +545,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       newFocusNodes[newIndex] = focusNodes[oldKey]!;
     }
 
-    // Replace the old maps with reindexed ones
     mathEditorControllers = newMathControllers;
     textDisplayControllers = newDisplayControllers;
     focusNodes = newFocusNodes;
@@ -490,81 +552,88 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    // Show loading indicator while restoring cells
     if (_isLoading) {
       return Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // Get app colors
     final colors = AppColors.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: 5,
+    return WalkthroughOverlay(
+      walkthroughService: _walkthroughService,
+      targetKeys: _walkthroughTargets,
+      child: Scaffold(
+        appBar: AppBar(
+          toolbarHeight: 5,
+          backgroundColor: colors.displayBackground,
+        ),
         backgroundColor: colors.displayBackground,
-      ), //AppBar
-      backgroundColor: colors.displayBackground,
-      body: SafeArea(
-        // Keeps content away from system UI (status bar + navigation bar)
-        child: Column(
-          children: <Widget>[
-            Expanded(
-              child: ListView.builder(
-                reverse: true,
-                padding: EdgeInsets.zero,
-                itemCount: count,
-                itemBuilder: (context, index) {
-                  List<int> keys = mathEditorControllers.keys.toList()..sort();
-                  // Reverse the index to maintain correct order when reversed
-                  int reversedIndex = keys.length - 1 - index;
+        body: SafeArea(
+          child: Column(
+            children: <Widget>[
+              Expanded(
+                child: ListView.builder(
+                  reverse: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: count,
+                  itemBuilder: (context, index) {
+                    List<int> keys =
+                        mathEditorControllers.keys.toList()..sort();
+                    int reversedIndex = keys.length - 1 - index;
 
-                  if (reversedIndex >= 0 && reversedIndex < keys.length) {
-                    return Padding(
-                      padding: EdgeInsets.only(top: 5),
-                      child: _buildExpressionDisplay(
-                        keys[reversedIndex],
-                        colors,
-                      ),
-                    );
-                  }
-                  return SizedBox.shrink();
+                    if (reversedIndex >= 0 && reversedIndex < keys.length) {
+                      return Padding(
+                        padding: EdgeInsets.only(top: 5),
+                        child: _buildExpressionDisplay(
+                          keys[reversedIndex],
+                          colors,
+                        ),
+                      );
+                    }
+                    return SizedBox.shrink();
+                  },
+                ),
+              ),
+              Builder(
+                builder: (context) {
+                  final mediaQuery = MediaQuery.of(context);
+                  double screenWidth = mediaQuery.size.width;
+                  bool isLandscape =
+                      mediaQuery.orientation == Orientation.landscape;
+
+return CalculatorKeypad(
+  screenWidth: screenWidth,
+  isLandscape: isLandscape,
+  colors: colors,
+  activeIndex: activeIndex,
+  mathEditorControllers: mathEditorControllers,
+  textDisplayControllers: textDisplayControllers,
+  settingsProvider: _settingsProvider!,
+  onUpdateMathEditor: updateMathEditor,
+  onAddDisplay: _addDisplay,
+  onRemoveDisplay: _removeDisplay,
+  onClearAllDisplays: _clearAllDisplays,
+  countVariablesInExpressions: countVariablesInExpressions,
+  onSetState: () => setState(() {}),
+  // Walkthrough
+  walkthroughService: _walkthroughService,
+  basicKeypadKey: _basicKeypadKey,
+  basicKeypadHandleKey: _basicKeypadHandleKey,
+  scientificKeypadKey: _scientificKeypadKey,
+  numberKeypadKey: _numberKeypadKey,
+  extrasKeypadKey: _extrasKeypadKey,
+  commandButtonKey: _commandButtonKey,
+  mainKeypadAreaKey: _mainKeypadAreaKey,
+  settingsButtonKey: _settingsButtonKey,  // NEW
+);
                 },
               ),
-            ),
-
-            // In your build method:
-            // Replace the LayoutBuilder with:
-            Builder(
-              builder: (context) {
-                final mediaQuery = MediaQuery.of(context);
-                double screenWidth = mediaQuery.size.width;
-                bool isLandscape =
-                    mediaQuery.orientation == Orientation.landscape;
-
-                return CalculatorKeypad(
-                  screenWidth: screenWidth,
-                  isLandscape: isLandscape,
-                  colors: colors,
-                  activeIndex: activeIndex,
-                  mathEditorControllers: mathEditorControllers,
-                  textDisplayControllers: textDisplayControllers,
-                  settingsProvider: _settingsProvider!,
-                  onUpdateMathEditor: updateMathEditor,
-                  onAddDisplay: _addDisplay,
-                  onRemoveDisplay: _removeDisplay,
-                  onClearAllDisplays: _clearAllDisplays,
-                  countVariablesInExpressions: countVariablesInExpressions,
-                  onSetState: () => setState(() {}),
-                );
-              },
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// Gets all ANS values from all displays
   Map<int, String> _getAnsValues() {
     Map<int, String> ansValues = {};
 
@@ -572,21 +641,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     for (int key in keys) {
       String? result = mathEditorControllers[key]?.result;
 
-      // Only include valid numeric results
       if (result != null && result.isNotEmpty) {
-        // Convert Unicode scientific notation to standard format for parsing
         String parseableResult = result.replaceAll('\u1D07', 'E');
 
-        // Check if it's a simple number
         if (double.tryParse(parseableResult) != null) {
-          // Store the converted version so it can be parsed later
           ansValues[key] = parseableResult;
         } else {
-          // For multiline results (like simultaneous equations),
-          // try to extract first value
           List<String> lines = parseableResult.split('\n');
           if (lines.isNotEmpty) {
-            // Updated regex to handle scientific notation
             RegExp numRegex = RegExp(r'=\s*(-?\d+\.?\d*(?:[eE][+-]?\d+)?)');
             Match? numMatch = numRegex.firstMatch(lines.first);
             if (numMatch != null) {
@@ -600,9 +662,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return ansValues;
   }
 
-  /// Recalculates all displays (useful when a referenced result changes)
   void updateMathEditor() {
-    if (_isUpdating) return; // Prevent recursion
+    if (_isUpdating) return;
     _isUpdating = true;
 
     try {
@@ -619,7 +680,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     setState(() {});
 
-    _saveCells(); // Save after update
+    _saveCells();
   }
 
   bool isOperator(String x) {
@@ -630,12 +691,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   int countVariablesInExpressions(String expressions) {
-    // Regular expression to match variables (single letters a-z, A-Z)
     RegExp variableRegex = RegExp(
       r'(?<!\w)([a-bd-hj-oq-zA-BD-HJ-OQ-Z])(?!\s*\()',
     );
 
-    // Extract unique variable names from all lines
     Set<String> variables = {};
     for (var line in expressions.split('\n')) {
       for (var match in variableRegex.allMatches(line)) {
