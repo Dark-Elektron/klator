@@ -46,6 +46,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
                 ),
+                
+                // NEW: Number Format dropdown
+                ListTile(
+                  title: const Text('Number Format'),
+                  subtitle: Text(_getNumberFormatDescription(settings.numberFormat)),
+                  trailing: DropdownButton<NumberFormat>(
+                    value: settings.numberFormat,
+                    underline: const SizedBox(), // Remove underline
+                    onChanged: (NumberFormat? newValue) {
+                      if (newValue != null) {
+                        settings.setNumberFormat(newValue);
+                      }
+                    },
+                    items: NumberFormat.values.map((NumberFormat format) {
+                      return DropdownMenuItem<NumberFormat>(
+                        value: format,
+                        child: Text(_getNumberFormatLabel(format)),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                
                 SwitchListTile(
                   title: Text('Dark Theme'),
                   activeThumbColor: activeColor,
@@ -122,6 +144,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  // NEW: Helper to get display label for number format
+  String _getNumberFormatLabel(NumberFormat format) {
+    switch (format) {
+      case NumberFormat.automatic:
+        return 'Automatic';
+      case NumberFormat.scientific:
+        return 'Scientific';
+      case NumberFormat.plain:
+        return 'Plain (commas)';
+    }
+  }
+
+  // NEW: Helper to get description for number format
+  String _getNumberFormatDescription(NumberFormat format) {
+    switch (format) {
+      case NumberFormat.automatic:
+        return 'Scientific for large/small numbers';
+      case NumberFormat.scientific:
+        return 'Always use scientific notation';
+      case NumberFormat.plain:
+        return 'Use commas (e.g., 1,000,000)';
+    }
   }
 
   Widget _buildMultiplyOption(

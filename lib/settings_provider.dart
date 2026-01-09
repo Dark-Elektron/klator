@@ -3,6 +3,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'math_engine.dart';
 import 'renderer.dart';
 
+enum NumberFormat {
+  automatic, // Scientific only for very large/small numbers
+  scientific, // Always scientific notation
+  plain, // Commas, never scientific
+}
+
 class SettingsProvider extends ChangeNotifier {
   double _precision = 8;
   bool _isDarkTheme = false;
@@ -10,6 +16,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _hapticFeedback = true;
   bool _soundEffects = false;
   String _multiplicationSign = '\u00D7'; // Default: ×
+  NumberFormat _numberFormat = NumberFormat.automatic; // NEW
 
   // Getters
   double get precision => _precision;
@@ -18,6 +25,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get hapticFeedback => _hapticFeedback;
   bool get soundEffects => _soundEffects;
   String get multiplicationSign => _multiplicationSign;
+  NumberFormat get numberFormat => _numberFormat; // NEW
 
   // Static method to create provider with preloaded settings
   static Future<SettingsProvider> create() async {
@@ -32,20 +40,24 @@ class SettingsProvider extends ChangeNotifier {
   SettingsProvider._forTesting({
     bool isDarkTheme = false,
     String multiplicationSign = '×',
+    NumberFormat numberFormat = NumberFormat.automatic,
   })  : _isDarkTheme = isDarkTheme,
-        _multiplicationSign = multiplicationSign;
+        _multiplicationSign = multiplicationSign,
+        _numberFormat = numberFormat;
 
   // Factory constructor for tests
   static SettingsProvider forTesting({
     bool isDarkTheme = false,
     String multiplicationSign = '×',
+    NumberFormat numberFormat = NumberFormat.automatic,
   }) {
     return SettingsProvider._forTesting(
       isDarkTheme: isDarkTheme,
       multiplicationSign: multiplicationSign,
+      numberFormat: numberFormat,
     );
   }
-  
+
   // Load all settings from SharedPreferences
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -55,11 +67,21 @@ class SettingsProvider extends ChangeNotifier {
     _hapticFeedback = prefs.getBool('hapticFeedback') ?? true;
     _soundEffects = prefs.getBool('soundEffects') ?? false;
     _multiplicationSign = prefs.getString('multiplicationSign') ?? '\u00D7';
+    
+    // Load number format
+    String formatStr = prefs.getString('numberFormat') ?? 'automatic';
+    _numberFormat = NumberFormat.values.firstWhere(
+      (e) => e.name == formatStr,
+      orElse: () => NumberFormat.automatic,
+    );
 
     // Set global precision on load
     MathSolverNew.setPrecision(_precision.toInt());
+    
+    // Set global number format on load
+    MathSolverNew.setNumberFormat(_numberFormat);
 
-    // // Set global multiplication sign on load  ← ADD THIS
+    // Set global multiplication sign on load
     MathTextStyle.setMultiplySign(_multiplicationSign);
 
     notifyListeners();
@@ -110,8 +132,19 @@ class SettingsProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('multiplicationSign', value);
 
-    // Update MathTextStyle  ← ADD THIS
+    // Update MathTextStyle
     MathTextStyle.setMultiplySign(value);
+    notifyListeners();
+  }
+
+  // NEW: Set number format
+  Future<void> setNumberFormat(NumberFormat value) async {
+    _numberFormat = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('numberFormat', value.name);
+
+    // Update MathSolverNew
+    MathSolverNew.setNumberFormat(value);
     notifyListeners();
   }
 }
