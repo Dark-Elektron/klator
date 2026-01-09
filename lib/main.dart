@@ -352,7 +352,7 @@ Map<String, GlobalKey> get _walkthroughTargets => {
     setState(() {});
   }
 
-  void focusManager(index) {
+  void focusManager(int index) {
     focusNodes[index]?.requestFocus();
     activeIndex = index;
   }

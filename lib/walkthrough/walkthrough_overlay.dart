@@ -195,7 +195,7 @@ class WalkthroughOverlay extends StatelessWidget {
           child: Container(
             height: adjustedKeypadTop,
             width: screenSize.width,
-            color: Colors.black.withOpacity(_overlayDarkness),
+            color: Colors.black.withValues(alpha: _overlayDarkness),
           ),
         ),
         Expanded(
@@ -203,10 +203,10 @@ class WalkthroughOverlay extends StatelessWidget {
             ignoring: true,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(_swipeAreaDimness),
+                color: Colors.black.withValues(alpha: _swipeAreaDimness),
                 border: Border(
                   top: BorderSide(
-                    color: Colors.amber.withOpacity(0.5),
+                    color: Colors.amber.withValues(alpha: 0.5),
                     width: 2,
                   ),
                 ),
@@ -235,7 +235,7 @@ class WalkthroughOverlay extends StatelessWidget {
                   padding: _spotlightPadding,
                 ),
               )
-              : Container(color: Colors.black.withOpacity(_overlayDarkness)),
+              : Container(color: Colors.black.withValues(alpha: _overlayDarkness)),
     );
   }
 
@@ -263,7 +263,7 @@ class WalkthroughOverlay extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.25),
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -278,7 +278,7 @@ class WalkthroughOverlay extends StatelessWidget {
               height: 44,
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
-                color: primaryColor.withOpacity(0.1),
+                color: primaryColor.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -322,7 +322,7 @@ class WalkthroughOverlay extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: primaryColor.withOpacity(0.1),
+                color: primaryColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
@@ -352,7 +352,7 @@ class WalkthroughOverlay extends StatelessWidget {
             const SizedBox(height: 4),
             Icon(
               Icons.keyboard_arrow_down,
-              color: primaryColor.withOpacity(0.5),
+              color: primaryColor.withValues(alpha: 0.5),
               size: 24,
             ),
             // BACK BUTTON for swipe steps
@@ -530,10 +530,10 @@ class WalkthroughOverlay extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 200),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.7),
+              color: Colors.black.withValues(alpha: 0.7),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.amber.withOpacity(0.3),
+                color: Colors.amber.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -543,7 +543,7 @@ class WalkthroughOverlay extends StatelessWidget {
               children: [
                 Icon(
                   Icons.lightbulb_outline,
-                  color: Colors.amber.withOpacity(0.8),
+                  color: Colors.amber.withValues(alpha: 0.8),
                   size: 16,
                 ),
                 const SizedBox(width: 8),
@@ -551,7 +551,7 @@ class WalkthroughOverlay extends StatelessWidget {
                   child: Text(
                     'You can restart this tutorial anytime. Swipe left on the keypad to find Settings \u2699',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       fontSize: 11,
                       height: 1.3,
                     ),

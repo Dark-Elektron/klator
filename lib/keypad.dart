@@ -34,17 +34,17 @@ class DirectionalScrollPhysics extends ScrollPhysics {
   double applyBoundaryConditions(ScrollMetrics position, double value) {
     // value > position.pixels means scrolling left (moving to higher index)
     // value < position.pixels means scrolling right (moving to lower index)
-    
+
     if (!allowLeftSwipe && value > position.pixels) {
       // Trying to swipe left but not allowed - prevent it
       return value - position.pixels;
     }
-    
+
     if (!allowRightSwipe && value < position.pixels) {
       // Trying to swipe right but not allowed - prevent it
       return value - position.pixels;
     }
-    
+
     return super.applyBoundaryConditions(position, value);
   }
 }
@@ -123,38 +123,121 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
 
   // Button lists
   final List<String> _buttonsBasic = [
-    '5', '6', '7', '8', '9', '()', '+', '-', '\u1D07', '\u2318',
-    '0', '1', '2', '3', '4', '.', 'x', '/', 'C', '\u232B',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '()',
+    '+',
+    '-',
+    '\u1D07',
+    '\u2318',
+    '0',
+    '1',
+    '2',
+    '3',
+    '4',
+    '.',
+    'x',
+    '/',
+    'C',
+    '\u232B',
   ];
 
   final List<String> _buttons = [
-    '7', '8', '9', '()', '<-',
-    '4', '5', '6', '+', '-',
-    '1', '2', '3', 'x', '/',
-    '0', '.', '\u1D07', 'C', 'EN',
+    '7',
+    '8',
+    '9',
+    '()',
+    '<-',
+    '4',
+    '5',
+    '6',
+    '+',
+    '-',
+    '1',
+    '2',
+    '3',
+    'x',
+    '/',
+    '0',
+    '.',
+    '\u1D07',
+    'C',
+    'EN',
   ];
 
   final List<String> _buttonsSci = [
-    '=', 'x^2', 'x^n', 'SQR', 'nSQR',
-    'x', 'PI', 'sin', 'cos', 'tan',
-    'y', '\u00B0', 'asin', 'acos', 'atan',
-    'z', 'e', 'ln', 'log', 'logn',
+    '=',
+    'x^2',
+    'x^n',
+    'SQR',
+    'nSQR',
+    'x',
+    'PI',
+    'sin',
+    'cos',
+    'tan',
+    'y',
+    '\u00B0',
+    'asin',
+    'acos',
+    'atan',
+    'z',
+    'e',
+    'ln',
+    'log',
+    'logn',
   ];
 
   final List<String> _buttonsR = [
-    '', '', '\u238F', '\u238C', '\u27F2',
-    'i', 'x!', 'nPr', 'nCr', 'ans',
-    '', '', '', '', '',
-    '', '', '', '\u24D8', '',
+    '',
+    '',
+    '\u238F',
+    '\u238C',
+    '\u27F2',
+    'i',
+    'x!',
+    'nPr',
+    'nCr',
+    'ans',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '\u24D8',
+    '',
   ];
 
   final List<String> _buttonsBasicLandscape = [
-    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
-    '.', '+', '-', 'x', '/', '()', '\u1D07', 'C', '\u2318', '\u232B',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '0',
+    '.',
+    '+',
+    '-',
+    'x',
+    '/',
+    '()',
+    '\u1D07',
+    'C',
+    '\u2318',
+    '\u232B',
   ];
 
-
-@override
+  @override
   void initState() {
     super.initState();
     _pgViewController = PageController();
@@ -187,26 +270,28 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
   void _navigateToKeypadPage(int page) {
     debugPrint('=== _navigateToKeypadPage called with page: $page ===');
     debugPrint('Current keypad index before: $_currentKeypadIndex');
-    
+
     if (_keypadController != null && _keypadController!.hasClients) {
       // Set flag to bypass directional physics during programmatic navigation
       setState(() {
         _isNavigatingProgrammatically = true;
       });
-      
-      _keypadController!.animateToPage(
-        page,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      ).then((_) {
-        // Reset flag after animation completes
-        if (mounted) {
-          setState(() {
-            _isNavigatingProgrammatically = false;
+
+      _keypadController!
+          .animateToPage(
+            page,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          )
+          .then((_) {
+            // Reset flag after animation completes
+            if (mounted) {
+              setState(() {
+                _isNavigatingProgrammatically = false;
+              });
+            }
           });
-        }
-      });
-      
+
       _currentKeypadIndex = page;
       debugPrint('Navigating to page: $page');
     } else {
@@ -222,25 +307,29 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       targetPage = 1;
     }
 
-    debugPrint('Resetting keypad to page $targetPage (pagesPerView: $_lastPagesPerView)');
+    debugPrint(
+      'Resetting keypad to page $targetPage (pagesPerView: $_lastPagesPerView)',
+    );
 
     if (_keypadController != null && _keypadController!.hasClients) {
       // Set flag to bypass directional physics during programmatic navigation
       setState(() {
         _isNavigatingProgrammatically = true;
       });
-      
-      _keypadController!.animateToPage(
-        targetPage,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      ).then((_) {
-        if (mounted) {
-          setState(() {
-            _isNavigatingProgrammatically = false;
+
+      _keypadController!
+          .animateToPage(
+            targetPage,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          )
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                _isNavigatingProgrammatically = false;
+              });
+            }
           });
-        }
-      });
     }
 
     _currentKeypadIndex = targetPage;
@@ -261,7 +350,18 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       widget.mathEditorControllers[widget.activeIndex];
 
   bool isOperator(String text) {
-    const operators = ['+', '-', 'x', '/', '=', '\u002B', '\u2212', '\u00B7', '\u00D7', '\u00F7'];
+    const operators = [
+      '+',
+      '-',
+      'x',
+      '/',
+      '=',
+      '\u002B',
+      '\u2212',
+      '\u00B7',
+      '\u00D7',
+      '\u00F7',
+    ];
     return operators.contains(text);
   }
 
@@ -318,7 +418,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     widget.onSetState();
   }
 
-void _onKeypadPageChanged(int newIndex) {
+  void _onKeypadPageChanged(int newIndex) {
     if (newIndex != _currentKeypadIndex) {
       // Don't trigger walkthrough action if navigating programmatically
       if (!_isNavigatingProgrammatically) {
@@ -329,35 +429,38 @@ void _onKeypadPageChanged(int newIndex) {
           direction = WalkthroughAction.swipeRight;
         }
         widget.walkthroughService.onUserAction(direction);
-        debugPrint('Keypad page changed by user: $newIndex, Direction: $direction');
+        debugPrint(
+          'Keypad page changed by user: $newIndex, Direction: $direction',
+        );
       } else {
         debugPrint('Keypad page changed programmatically: $newIndex');
       }
-      
+
       _currentKeypadIndex = newIndex;
     }
   }
+
   /// Get the appropriate scroll physics based on walkthrough state
-ScrollPhysics _getKeypadPhysics() {
+  ScrollPhysics _getKeypadPhysics() {
     // IMPORTANT: Allow normal scrolling during programmatic navigation
     if (_isNavigatingProgrammatically) {
       return const PageScrollPhysics();
     }
-    
+
     final service = widget.walkthroughService;
-    
+
     // If walkthrough is not active, allow normal scrolling
     if (!service.isActive || !service.isInitialized) {
       return const PageScrollPhysics();
     }
-    
+
     final step = service.currentStepData;
-    
+
     // Only restrict if it's a swipe-required step
     if (!step.requiresAction || step.requiredAction == null) {
       return const PageScrollPhysics();
     }
-    
+
     // Restrict based on required action
     if (step.requiredAction == WalkthroughAction.swipeLeft) {
       return const DirectionalScrollPhysics(
@@ -370,9 +473,10 @@ ScrollPhysics _getKeypadPhysics() {
         allowRightSwipe: true,
       );
     }
-    
+
     return const PageScrollPhysics();
   }
+
   @override
   Widget build(BuildContext context) {
     bool isWideScreen = widget.screenWidth > 600;
@@ -477,36 +581,38 @@ ScrollPhysics _getKeypadPhysics() {
         ),
 
         // Main Keypad with directional physics
-        Container(
+        SizedBox(
           key: widget.mainKeypadAreaKey,
           height: gridHeight,
+          width: double.infinity, // ← Add this to match Container behavior
           child:
               _keypadController != null
                   ? ListenableBuilder(
-                      listenable: widget.walkthroughService,
-                      builder: (context, _) {
-                        return PageView(
-                          padEnds: false,
-                          controller: _keypadController!,
-                          physics: _getKeypadPhysics(),  // Dynamic physics
-                          onPageChanged: _onKeypadPageChanged,
-                          children: [
-                            Container(
-                              key: widget.scientificKeypadKey,
-                              child: _buildScientificGrid(widget.isLandscape),
-                            ),
-                            Container(
-                              key: widget.numberKeypadKey,
-                              child: _buildNumberGrid(widget.isLandscape),
-                            ),
-                            Container(
-                              key: widget.extrasKeypadKey,
-                              child: _buildExtrasGrid(widget.isLandscape),
-                            ),
-                          ],
-                        );
-                      },
-                    )
+                    listenable: widget.walkthroughService,
+                    builder: (context, _) {
+                      return PageView(
+                        padEnds: false,
+                        controller: _keypadController!,
+                        physics: _getKeypadPhysics(),
+                        onPageChanged: _onKeypadPageChanged,
+                        children: [
+                          // Use SizedBox.expand() for children that need to fill space
+                          SizedBox.expand(
+                            key: widget.scientificKeypadKey,
+                            child: _buildScientificGrid(widget.isLandscape),
+                          ),
+                          SizedBox.expand(
+                            key: widget.numberKeypadKey,
+                            child: _buildNumberGrid(widget.isLandscape),
+                          ),
+                          SizedBox.expand(
+                            key: widget.extrasKeypadKey,
+                            child: _buildExtrasGrid(widget.isLandscape),
+                          ),
+                        ],
+                      );
+                    },
+                  )
                   : const SizedBox.shrink(),
         ),
       ],
@@ -514,7 +620,7 @@ ScrollPhysics _getKeypadPhysics() {
   }
 
   // ... rest of your existing methods (_buildBasicGrid, _buildScientificGrid, etc.) remain the same
-  
+
   Widget _buildBasicGrid(int crossAxisCount, bool isLandscape) {
     final List<String> buttons =
         isLandscape ? _buttonsBasicLandscape : _buttonsBasic;

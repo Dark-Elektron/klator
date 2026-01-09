@@ -62,23 +62,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 ListTile(
                   title: const Text('Multiplication Sign'),
-                  trailing: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      _buildMultiplyOption(
-                        settings,
-                        '\u00D7',
-                        '\u00D7',
-                        sliderActiveColor,
-                      ),
-                      const SizedBox(width: 12),
-                      _buildMultiplyOption(
-                        settings,
-                        '\u00B7',
-                        '\u00B7',
-                        sliderActiveColor,
-                      ),
-                    ],
+                  trailing: RadioGroup<String>(
+                    groupValue: settings.multiplicationSign,
+                    onChanged: (String? value) {
+                      if (value != null) {
+                        settings.setMultiplicationSign(value);
+                      }
+                    },
+                    child: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _buildMultiplyOption(
+                          settings,
+                          '\u00D7',
+                          '\u00D7',
+                          sliderActiveColor,
+                        ),
+                        const SizedBox(width: 12),
+                        _buildMultiplyOption(
+                          settings,
+                          '\u00B7',
+                          '\u00B7',
+                          sliderActiveColor,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -134,13 +142,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           Radio<String>(
             value: value,
-            groupValue: settings.multiplicationSign,
             activeColor: activeColor,
-            onChanged: (value) {
-              if (value != null) {
-                settings.setMultiplicationSign(value);
-              }
-            },
+            // Remove groupValue and onChanged - RadioGroup handles these now
           ),
           Text(
             displayText,

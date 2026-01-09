@@ -85,7 +85,7 @@ class SwipeGesturePainter extends CustomPainter {
     // Draw trail
     final trailPaint =
         Paint()
-          ..color = color.withOpacity(0.3)
+          ..color = color.withValues(alpha: 0.3)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2
           ..strokeCap = StrokeCap.round;
@@ -106,7 +106,7 @@ class SwipeGesturePainter extends CustomPainter {
         canvas.drawCircle(
           Offset(dotX, centerY),
           3,
-          Paint()..color = color.withOpacity(dotOpacity.clamp(0.0, 1.0)),
+          Paint()..color = color.withValues(alpha: dotOpacity.clamp(0.0, 1.0)),
         );
       }
     }
@@ -116,13 +116,13 @@ class SwipeGesturePainter extends CustomPainter {
     canvas.drawCircle(
       Offset(currentX, centerY),
       14,
-      Paint()..color = color.withOpacity(handOpacity.clamp(0.0, 1.0)),
+      Paint()..color = color.withValues(alpha: handOpacity.clamp(0.0, 1.0)),
     );
 
     // Draw finger icon
     final iconPaint =
         Paint()
-          ..color = Colors.white.withOpacity(handOpacity.clamp(0.0, 1.0) * 0.9)
+          ..color = Colors.white.withValues(alpha: handOpacity.clamp(0.0, 1.0) * 0.9)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5
           ..strokeCap = StrokeCap.round;
@@ -136,7 +136,7 @@ class SwipeGesturePainter extends CustomPainter {
     final arrowX = swipeLeft ? size.width * 0.12 : size.width * 0.88;
     final arrowPaint =
         Paint()
-          ..color = color.withOpacity(0.8)
+          ..color = color.withValues(alpha: 0.8)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.5
           ..strokeCap = StrokeCap.round;
@@ -169,7 +169,7 @@ class SpotlightPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.black.withOpacity(0.75);
+    final paint = Paint()..color = Colors.black.withValues(alpha: 0.75);
 
     final fullPath =
         Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));

@@ -58,7 +58,7 @@ const List<WalkthroughStep> walkthroughSteps = [
     id: 'command_button',
     title: 'Command Button',
     description:
-        'Tap ⌘ to create a new calculation cell. Each cell can have its own expression and result!',
+        'Tap ⌘ to create a new calculation cell. A new cell is added only when the current cell is not empty. Each cell can have its own expression and result!',
     position: TooltipPosition.above,
   ),
 

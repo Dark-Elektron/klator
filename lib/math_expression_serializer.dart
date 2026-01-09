@@ -465,7 +465,7 @@ class MathExpressionSerializer {
     }
   }
 
-  /// Helper to convert JSON list to List<MathNode>
+  /// Helper to convert JSON list to List\<MathNode>
   static List<MathNode> _jsonToNodeList(dynamic jsonList) {
     if (jsonList == null) return [LiteralNode()];
 

@@ -597,12 +597,14 @@ class MathEditorController extends ChangeNotifier {
       double dx = 0, dy = 0;
       if (localPos.dx < info.rect.left) {
         dx = info.rect.left - localPos.dx;
-      } else if (localPos.dx > info.rect.right)
+      } else if (localPos.dx > info.rect.right){
         dx = localPos.dx - info.rect.right;
+      }
       if (localPos.dy < info.rect.top) {
         dy = info.rect.top - localPos.dy;
-      } else if (localPos.dy > info.rect.bottom)
+      } else if (localPos.dy > info.rect.bottom){
         dy = localPos.dy - info.rect.bottom;
+        }
       final distance = math.sqrt(dx * dx + dy * dy);
       if (distance < minDistance) {
         minDistance = distance;
@@ -3328,7 +3330,12 @@ class MathEditorController extends ChangeNotifier {
         if (_findAndPositionBefore(node.numerator, targetId, node.id, 'num')) {
           return true;
         }
-        if (_findAndPositionBefore(node.denominator, targetId, node.id, 'den')) {
+        if (_findAndPositionBefore(
+          node.denominator,
+          targetId,
+          node.id,
+          'den',
+        )) {
           return true;
         }
       } else if (node is ExponentNode) {
@@ -3339,7 +3346,12 @@ class MathEditorController extends ChangeNotifier {
           return true;
         }
       } else if (node is ParenthesisNode) {
-        if (_findAndPositionBefore(node.content, targetId, node.id, 'content')) {
+        if (_findAndPositionBefore(
+          node.content,
+          targetId,
+          node.id,
+          'content',
+        )) {
           return true;
         }
       } else if (node is AnsNode) {
@@ -5206,136 +5218,189 @@ class MathRenderer extends StatelessWidget {
       );
     }
 
-if (node is LogNode) {
-  final double baseSize = fontSize * 0.8;
-  
-  final bool baseEmpty = !node.isNaturalLog && _isContentEmpty(node.base);
-  final bool argEmpty = _isContentEmpty(node.argument);
+    if (node is LogNode) {
+      final double baseSize = fontSize * 0.8;
 
-  // Build base widget (only for non-natural log)
-  Widget? baseWidget;
-  if (!node.isNaturalLog) {
-    baseWidget = baseEmpty
-        ? GestureDetector(
-            onTap: () => controller.navigateTo(
-              parentId: node.id,
-              path: 'base',
-              index: 0,
-              subIndex: 0,
-            ),
-            child: PlaceholderBox(
-              fontSize: baseSize,
-              minWidth: baseSize * 0.6,
-              minHeight: baseSize * 0.7,
-              child: Row(
+      final bool baseEmpty = !node.isNaturalLog && _isContentEmpty(node.base);
+      final bool argEmpty = _isContentEmpty(node.argument);
+
+      // Build base widget (only for non-natural log)
+      Widget? baseWidget;
+      if (!node.isNaturalLog) {
+        baseWidget =
+            baseEmpty
+                ? GestureDetector(
+                  onTap:
+                      () => controller.navigateTo(
+                        parentId: node.id,
+                        path: 'base',
+                        index: 0,
+                        subIndex: 0,
+                      ),
+                  child: PlaceholderBox(
+                    fontSize: baseSize,
+                    minWidth: baseSize * 0.6,
+                    minHeight: baseSize * 0.7,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children:
+                          node.base
+                              .asMap()
+                              .entries
+                              .map(
+                                (e) => _renderNode(
+                                  e.value,
+                                  e.key,
+                                  node.base,
+                                  node.id,
+                                  'base',
+                                  baseSize,
+                                ),
+                              )
+                              .toList(),
+                    ),
+                  ),
+                )
+                : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children:
+                      node.base
+                          .asMap()
+                          .entries
+                          .map(
+                            (e) => _renderNode(
+                              e.value,
+                              e.key,
+                              node.base,
+                              node.id,
+                              'base',
+                              baseSize,
+                            ),
+                          )
+                          .toList(),
+                );
+      }
+
+      // Build argument widget
+      Widget argWidget =
+          argEmpty
+              ? GestureDetector(
+                onTap:
+                    () => controller.navigateTo(
+                      parentId: node.id,
+                      path: 'arg',
+                      index: 0,
+                      subIndex: 0,
+                    ),
+                child: PlaceholderBox(
+                  fontSize: fontSize,
+                  minWidth: fontSize * 0.8,
+                  minHeight: fontSize * 0.9,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children:
+                        node.argument
+                            .asMap()
+                            .entries
+                            .map(
+                              (e) => _renderNode(
+                                e.value,
+                                e.key,
+                                node.argument,
+                                node.id,
+                                'arg',
+                                fontSize,
+                              ),
+                            )
+                            .toList(),
+                  ),
+                ),
+              )
+              : Row(
                 mainAxisSize: MainAxisSize.min,
-                children: node.base.asMap().entries.map(
-                  (e) => _renderNode(e.value, e.key, node.base, node.id, 'base', baseSize),
-                ).toList(),
-              ),
-            ),
-          )
-        : Row(
-            mainAxisSize: MainAxisSize.min,
-            children: node.base.asMap().entries.map(
-              (e) => _renderNode(e.value, e.key, node.base, node.id, 'base', baseSize),
-            ).toList(),
-          );
-  }
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children:
+                    node.argument
+                        .asMap()
+                        .entries
+                        .map(
+                          (e) => _renderNode(
+                            e.value,
+                            e.key,
+                            node.argument,
+                            node.id,
+                            'arg',
+                            fontSize,
+                          ),
+                        )
+                        .toList(),
+              );
 
-  // Build argument widget
-  Widget argWidget = argEmpty
-      ? GestureDetector(
-          onTap: () => controller.navigateTo(
-            parentId: node.id,
-            path: 'arg',
-            index: 0,
-            subIndex: 0,
-          ),
-          child: PlaceholderBox(
-            fontSize: fontSize,
-            minWidth: fontSize * 0.8,
-            minHeight: fontSize * 0.9,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: node.argument.asMap().entries.map(
-                (e) => _renderNode(e.value, e.key, node.argument, node.id, 'arg', fontSize),
-              ).toList(),
-            ),
-          ),
-        )
-      : Row(
+      return Padding(
+        padding: const EdgeInsets.only(right: _nodePadding),
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
-          children: node.argument.asMap().entries.map(
-            (e) => _renderNode(e.value, e.key, node.argument, node.id, 'arg', fontSize),
-          ).toList(),
-        );
-
-  return Padding(
-    padding: const EdgeInsets.only(right: _nodePadding),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // "log" or "ln" text
-        Text(
-          node.isNaturalLog ? 'ln' : 'log',
-          style: MathTextStyle.getStyle(fontSize).copyWith(color: Colors.white),
-          textScaler: textScaler,
-        ),
-        
-        // Subscript base - uses Transform for vertical offset only
-        // Width is still part of layout flow
-        if (!node.isNaturalLog && baseWidget != null)
-          Transform.translate(
-            offset: Offset(0, fontSize * 0.6), // Vertical subscript offset
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: fontSize * 0.02,  // Small gap after "log"
-                right: fontSize * 0.08, // Gap before parentheses
-              ),
-              child: baseWidget,
+          children: [
+            // "log" or "ln" text
+            Text(
+              node.isNaturalLog ? 'ln' : 'log',
+              style: MathTextStyle.getStyle(
+                fontSize,
+              ).copyWith(color: Colors.white),
+              textScaler: textScaler,
             ),
-          ),
-        
-        // Small gap for natural log
-        if (node.isNaturalLog)
-          SizedBox(width: fontSize * 0.05),
-        
-        // Parentheses with argument
-        IntrinsicHeight(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ScalableParenthesis(
-                isOpening: true,
-                fontSize: fontSize,
-                color: Colors.white,
-                textScaler: textScaler,
-              ),
-              Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: fontSize * 0.08,
-                  vertical: fontSize * 0.1,
+
+            // Subscript base - uses Transform for vertical offset only
+            // Width is still part of layout flow
+            if (!node.isNaturalLog && baseWidget != null)
+              Transform.translate(
+                offset: Offset(0, fontSize * 0.6), // Vertical subscript offset
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: fontSize * 0.02, // Small gap after "log"
+                    right: fontSize * 0.08, // Gap before parentheses
+                  ),
+                  child: baseWidget,
                 ),
-                child: argWidget,
               ),
-              ScalableParenthesis(
-                isOpening: false,
-                fontSize: fontSize,
-                color: Colors.white,
-                textScaler: textScaler,
+
+            // Small gap for natural log
+            if (node.isNaturalLog) SizedBox(width: fontSize * 0.05),
+
+            // Parentheses with argument
+            IntrinsicHeight(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ScalableParenthesis(
+                    isOpening: true,
+                    fontSize: fontSize,
+                    color: Colors.white,
+                    textScaler: textScaler,
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: fontSize * 0.08,
+                      vertical: fontSize * 0.1,
+                    ),
+                    child: argWidget,
+                  ),
+                  ScalableParenthesis(
+                    isOpening: false,
+                    fontSize: fontSize,
+                    color: Colors.white,
+                    textScaler: textScaler,
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
-}
+      );
+    }
 
     if (node is PermutationNode) {
       final double smallSize = fontSize * 0.8;
