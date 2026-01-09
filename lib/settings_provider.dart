@@ -29,6 +29,23 @@ class SettingsProvider extends ChangeNotifier {
   // Private constructor
   SettingsProvider._();
 
+  SettingsProvider._forTesting({
+    bool isDarkTheme = false,
+    String multiplicationSign = '×',
+  })  : _isDarkTheme = isDarkTheme,
+        _multiplicationSign = multiplicationSign;
+
+  // Factory constructor for tests
+  static SettingsProvider forTesting({
+    bool isDarkTheme = false,
+    String multiplicationSign = '×',
+  }) {
+    return SettingsProvider._forTesting(
+      isDarkTheme: isDarkTheme,
+      multiplicationSign: multiplicationSign,
+    );
+  }
+  
   // Load all settings from SharedPreferences
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
