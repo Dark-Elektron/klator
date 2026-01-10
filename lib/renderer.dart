@@ -5,6 +5,7 @@ import 'math_engine.dart';
 import 'constants.dart';
 import 'package:flutter/rendering.dart';
 import 'expression_selection.dart';
+import 'selection_wrapper.dart';
 
 abstract class MathNode {
   final String id;
@@ -394,6 +395,7 @@ class MathEditorController extends ChangeNotifier {
   List<MathNode> expression = [LiteralNode()];
   EditorCursor cursor = const EditorCursor();
 
+  VoidCallback? onSelectionCleared;
   final Map<String, NodeLayoutInfo> _layoutRegistry = {};
   Map<String, NodeLayoutInfo> get layoutRegistry => _layoutRegistry;
 
@@ -414,6 +416,11 @@ class MathEditorController extends ChangeNotifier {
 
   /// Check if redo is available
   bool get canRedo => _redoStack.isNotEmpty;
+
+  late final SelectionWrapper selectionWrapper;
+  MathEditorController() {
+    selectionWrapper = SelectionWrapper(this);
+  }
 
   // Add this method to refresh display when settings change
   void refreshDisplay() {
@@ -4463,9 +4470,19 @@ class MathEditorController extends ChangeNotifier {
 
   /// Clear selection
   void clearSelection() {
+    debugPrint('=== clearSelection called ===');
+    debugPrint(
+      'onSelectionCleared callback is: ${onSelectionCleared != null ? "SET" : "NULL"}',
+    );
+
     _selection = null;
-    // _resetHandleTracking();
     notifyListeners();
+
+    // Notify that selection was cleared (so overlay can be removed)
+    onSelectionCleared?.call();
+    debugPrint(
+      'clearSelection completed, callback called: ${onSelectionCleared != null}',
+    );
   }
   // ============== CLIPBOARD OPERATIONS ==============
 
@@ -4697,6 +4714,14 @@ class MathEditorController extends ChangeNotifier {
     onResultChanged?.call();
 
     onCalculate();
+  }
+
+  /// Notify listeners and recalculate (used by SelectionWrapper)
+  void notifyAndRecalculate() {
+    _structureVersion++;
+    notifyListeners();
+    onCalculate();
+    onResultChanged?.call();
   }
 
   // ============== SELECTION HELPERS ==============
@@ -4959,6 +4984,7 @@ class MathEditorInlineState extends State<MathEditorInline>
   OverlayEntry? _selectionOverlay;
 
   // Track double-tap position for paste menu
+
   Offset? _doubleTapPosition;
 
   @override
@@ -4974,13 +5000,27 @@ class MathEditorInlineState extends State<MathEditorInline>
     ).animate(_cursorBlinkController);
 
     widget.controller.setContainerKey(_containerKey);
+
+    // Add this: Listen for selection cleared
+    widget.controller.onSelectionCleared = _removeSelectionOverlay;
   }
 
   @override
   void dispose() {
     _removeSelectionOverlay();
     _cursorBlinkController.dispose();
+    widget.controller.onSelectionCleared = null; // Add this
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant MathEditorInline oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.onSelectionCleared = null;
+      widget.controller.onSelectionCleared = _removeSelectionOverlay;
+      widget.controller.setContainerKey(_containerKey);
+    }
   }
 
   void _handleTap(TapDownDetails details) {
@@ -5132,6 +5172,10 @@ class MathEditorInlineState extends State<MathEditorInline>
   }
 
   void _handleDismissPasteMenu() {
+    _removeSelectionOverlay();
+  }
+
+  void clearOverlay() {
     _removeSelectionOverlay();
   }
 

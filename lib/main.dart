@@ -10,6 +10,8 @@ import 'dart:async';
 import 'keypad.dart';
 import 'walkthrough/walkthrough_service.dart';
 import 'walkthrough/walkthrough_overlay.dart';
+import 'app_state.dart';
+import 'expression_selection.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -115,6 +117,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final GlobalKey _extrasKeypadKey = GlobalKey();
   final GlobalKey _mainKeypadAreaKey = GlobalKey();
   final GlobalKey _settingsButtonKey = GlobalKey(); // NEW
+
+  // App-level undo/redo for operations like "Clear All"
+  final List<AppState> _appUndoStack = [];
+  final List<AppState> _appRedoStack = [];
+  static const int _maxAppHistorySize = 10;
 
   // Update the _walkthroughTargets getter:
 
@@ -347,6 +354,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     activeIndex = index;
   }
 
+  void _clearAllSelectionOverlays() {
+    for (final key in mathEditorKeys.values) {
+      key.currentState?.clearOverlay();
+    }
+  }
+
   Container _buildExpressionDisplay(int index, AppColors colors) {
     final mathEditorController = mathEditorControllers[index];
     final resController = textDisplayControllers[index];
@@ -523,6 +536,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _clearAllDisplays() {
+    // Save state before clearing
+    _saveAppStateForUndo();
+
     for (var controller in mathEditorControllers.values) {
       controller.dispose();
     }
@@ -536,7 +552,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     mathEditorControllers.clear();
     textDisplayControllers.clear();
     focusNodes.clear();
-    mathEditorKeys.clear(); // ADD THIS
+    mathEditorKeys.clear();
 
     _createControllers(0);
 
@@ -567,6 +583,116 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     textDisplayControllers = newDisplayControllers;
     focusNodes = newFocusNodes;
     mathEditorKeys = newMathEditorKeys; // ADD THIS
+  }
+
+  /// Save current app state before destructive operations
+  void _saveAppStateForUndo() {
+    _appUndoStack.add(
+      AppState.capture(
+        mathEditorControllers,
+        textDisplayControllers,
+        activeIndex,
+      ),
+    );
+
+    // Limit stack size
+    if (_appUndoStack.length > _maxAppHistorySize) {
+      _appUndoStack.removeAt(0);
+    }
+
+    // Clear redo stack when new action is performed
+    _appRedoStack.clear();
+  }
+
+  /// Check if app-level undo is available
+  bool get canUndoAppState => _appUndoStack.isNotEmpty;
+
+  /// Check if app-level redo is available
+  bool get canRedoAppState => _appRedoStack.isNotEmpty;
+
+  /// Undo app-level action (like Clear All)
+  void _undoAppState() {
+    if (!canUndoAppState) return;
+
+    // Save current state to redo stack
+    _appRedoStack.add(
+      AppState.capture(
+        mathEditorControllers,
+        textDisplayControllers,
+        activeIndex,
+      ),
+    );
+
+    // Get previous state
+    AppState previousState = _appUndoStack.removeLast();
+
+    // Restore the state
+    _restoreAppState(previousState);
+  }
+
+  /// Redo app-level action
+  void _redoAppState() {
+    if (!canRedoAppState) return;
+
+    // Save current state to undo stack
+    _appUndoStack.add(
+      AppState.capture(
+        mathEditorControllers,
+        textDisplayControllers,
+        activeIndex,
+      ),
+    );
+
+    // Get redo state
+    AppState redoState = _appRedoStack.removeLast();
+
+    // Restore the state
+    _restoreAppState(redoState);
+  }
+
+  /// Restore app to a previous state
+  void _restoreAppState(AppState state) {
+    // Dispose existing controllers
+    for (var controller in mathEditorControllers.values) {
+      controller.dispose();
+    }
+    for (var controller in textDisplayControllers.values) {
+      controller.dispose();
+    }
+    for (var focusNode in focusNodes.values) {
+      focusNode.dispose();
+    }
+
+    mathEditorControllers.clear();
+    textDisplayControllers.clear();
+    focusNodes.clear();
+    mathEditorKeys.clear();
+
+    // Recreate controllers with saved state
+    for (int i = 0; i < state.expressions.length; i++) {
+      _createControllers(i);
+
+      // Restore expression (deep copy to avoid reference issues)
+      mathEditorControllers[i]?.setExpression(
+        MathClipboard.deepCopyNodes(state.expressions[i]),
+      );
+
+      // Restore answer
+      textDisplayControllers[i]?.text = state.answers[i];
+    }
+
+    // Handle edge case of empty state
+    if (state.expressions.isEmpty) {
+      _createControllers(0);
+    }
+
+    setState(() {
+      count = state.expressions.isEmpty ? 1 : state.expressions.length;
+      activeIndex = state.activeIndex.clamp(0, count - 1);
+    });
+
+    // Recalculate all cells
+    updateMathEditor();
   }
 
   @override
@@ -633,6 +759,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     onClearAllDisplays: _clearAllDisplays,
                     countVariablesInExpressions: countVariablesInExpressions,
                     onSetState: () => setState(() {}),
+                    onClearSelectionOverlay: _clearAllSelectionOverlays,
+                    canUndoAppState: canUndoAppState,
+                    canRedoAppState: canRedoAppState,
+                    onUndoAppState: _undoAppState,
+                    onRedoAppState: _redoAppState,
                     // Walkthrough
                     walkthroughService: _walkthroughService,
                     basicKeypadKey: _basicKeypadKey,
@@ -642,7 +773,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     extrasKeypadKey: _extrasKeypadKey,
                     commandButtonKey: _commandButtonKey,
                     mainKeypadAreaKey: _mainKeypadAreaKey,
-                    settingsButtonKey: _settingsButtonKey, // NEW
+                    settingsButtonKey: _settingsButtonKey,
                   );
                 },
               ),

@@ -75,6 +75,13 @@ class CalculatorKeypad extends StatefulWidget {
   final GlobalKey mainKeypadAreaKey;
   final GlobalKey settingsButtonKey;
 
+  final VoidCallback? onClearSelectionOverlay;
+
+  final bool canUndoAppState;
+  final bool canRedoAppState;
+  final VoidCallback? onUndoAppState;
+  final VoidCallback? onRedoAppState;
+
   const CalculatorKeypad({
     super.key,
     required this.screenWidth,
@@ -99,6 +106,11 @@ class CalculatorKeypad extends StatefulWidget {
     required this.commandButtonKey,
     required this.mainKeypadAreaKey,
     required this.settingsButtonKey,
+    this.onClearSelectionOverlay,
+    this.canUndoAppState = false,
+    this.canRedoAppState = false,
+    this.onUndoAppState,
+    this.onRedoAppState,
   });
 
   @override
@@ -440,6 +452,24 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     }
   }
 
+  void _handleButtonWithSelection({
+    required bool Function() wrapAction,
+    required VoidCallback normalAction,
+  }) {
+    final hadSelection = _activeController?.hasSelection ?? false;
+
+    if (hadSelection) {
+      if (wrapAction()) {
+        widget.onClearSelectionOverlay?.call();
+        widget.onUpdateMathEditor();
+        widget.onSetState();
+      }
+    } else {
+      normalAction();
+      widget.onUpdateMathEditor();
+    }
+  }
+
   /// Get the appropriate scroll physics based on walkthrough state
   ScrollPhysics _getKeypadPhysics() {
     // IMPORTANT: Allow normal scrolling during programmatic navigation
@@ -671,8 +701,11 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         } else if (buttonText == '/') {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCharacter('/');
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInFraction(),
+                normalAction: () => _activeController?.insertCharacter('/'),
+              );
             },
             buttonText: '\u00F7',
             color: Colors.white,
@@ -720,8 +753,12 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         } else if (buttonText == '()') {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCharacter('()');
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInParenthesis(),
+                normalAction: () => _activeController?.insertCharacter('()'),
+              );
             },
             buttonText: '()',
             color: Colors.white,
@@ -762,7 +799,208 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       ),
       itemCount: _buttonsSci.length,
       itemBuilder: (context, index) {
-        if (index == 0) {
+        // x^2 button
+        if (index == 1) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInSquare(),
+                normalAction: () => _activeController?.insertSquare(),
+              );
+            },
+            buttonText: 'x\u00B2',
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // x^n button
+        else if (index == 2) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInExponent(),
+                normalAction: () => _activeController?.insertCharacter('^'),
+              );
+            },
+            buttonText: 'x\u207F',
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // Square root button
+        else if (index == 3) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInSquareRoot(),
+                normalAction: () => _activeController?.insertSquareRoot(),
+              );
+            },
+            buttonText: '\u221A',
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // Nth root button
+        else if (index == 4) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInNthRoot(),
+                normalAction: () => _activeController?.insertNthRoot(),
+              );
+            },
+            buttonText: '\u207F\u221A',
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // sin button
+        else if (index == 7) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInTrig('sin'),
+                normalAction: () => _activeController?.insertTrig('sin'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // cos button
+        else if (index == 8) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInTrig('cos'),
+                normalAction: () => _activeController?.insertTrig('cos'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // tan button
+        else if (index == 9) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInTrig('tan'),
+                normalAction: () => _activeController?.insertTrig('tan'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // asin button
+        else if (index == 12) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInTrig('asin'),
+                normalAction: () => _activeController?.insertTrig('asin'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // acos button
+        else if (index == 13) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInTrig('acos'),
+                normalAction: () => _activeController?.insertTrig('acos'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // atan button
+        else if (index == 14) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInTrig('atan'),
+                normalAction: () => _activeController?.insertTrig('atan'),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // ln button
+        else if (index == 17) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInNaturalLog(),
+                normalAction: () => _activeController?.insertNaturalLog(),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // log button
+        else if (index == 18) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInLog10(),
+                normalAction: () => _activeController?.insertLog10(),
+              );
+            },
+            buttonText: _buttonsSci[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // logn button
+        else if (index == 19) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInLogN(),
+                normalAction: () => _activeController?.insertLogN(),
+              );
+            },
+            buttonText: 'log\u1D63',
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        // ... rest of existing cases
+        else if (index == 0) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(_buttonsSci[index]);
@@ -772,144 +1010,13 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        if (index == 6) {
+        } else if (index == 6) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('\u03C0');
               widget.onUpdateMathEditor();
             },
             buttonText: '\u03C0',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 1) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertSquare();
-              widget.onUpdateMathEditor();
-            },
-            buttonText: 'x\u00B2',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 2) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertCharacter('^');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: 'x\u207F',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 3) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertSquareRoot();
-              widget.onUpdateMathEditor();
-            },
-            buttonText: '\u221A',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 4) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertNthRoot();
-              widget.onUpdateMathEditor();
-            },
-            buttonText: '\u207F\u221A',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 7) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('sin');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 8) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('cos');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 9) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('tan');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 12) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('asin');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 13) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('acos');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 14) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('atan');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 17) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertTrig('ln');
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 18) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertLog10();
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (index == 19) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertLogN();
-              widget.onUpdateMathEditor();
-            },
-            buttonText: 'log\u1D63',
             color: Colors.white,
             textColor: Colors.black,
           );
@@ -951,8 +1058,13 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         if (index == 3) {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCharacter(_buttons[index]);
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInParenthesis(),
+                normalAction:
+                    () => _activeController?.insertCharacter(_buttons[index]),
+              );
             },
             buttonText: '\u0028\u0029',
             color: Colors.white,
@@ -1009,11 +1121,16 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        } else if (index == 14) {
+        } // Division button (index 14)
+        else if (index == 14) {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCharacter(_buttons[index]);
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInFraction(),
+                normalAction:
+                    () => _activeController?.insertCharacter(_buttons[index]),
+              );
             },
             buttonText: '\u00F7',
             color: Colors.white,
@@ -1076,12 +1193,20 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       ),
       itemBuilder: (context, index) {
         if (index == 3) {
-          bool canUndo = _activeController?.canUndo ?? false;
+          // Undo button
+          bool canUndo =
+              (_activeController?.canUndo ?? false) || widget.canUndoAppState;
           return MyButton(
             buttontapped: () {
-              _activeController?.undo();
-              widget.onUpdateMathEditor();
-              widget.onSetState();
+              if (_activeController?.canUndo ?? false) {
+                // Controller-level undo first
+                _activeController?.undo();
+                widget.onUpdateMathEditor();
+                widget.onSetState();
+              } else if (widget.canUndoAppState) {
+                // App-level undo (for Clear All, etc.)
+                widget.onUndoAppState?.call();
+              }
             },
             buttonText: _buttonsR[index],
             color: canUndo ? Colors.white : Colors.grey[300]!,
@@ -1089,12 +1214,20 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           );
         }
         if (index == 2) {
-          bool canRedo = _activeController?.canRedo ?? false;
+          // Redo button
+          bool canRedo =
+              (_activeController?.canRedo ?? false) || widget.canRedoAppState;
           return MyButton(
             buttontapped: () {
-              _activeController?.redo();
-              widget.onUpdateMathEditor();
-              widget.onSetState();
+              if (_activeController?.canRedo ?? false) {
+                // Controller-level redo first
+                _activeController?.redo();
+                widget.onUpdateMathEditor();
+                widget.onSetState();
+              } else if (widget.canRedoAppState) {
+                // App-level redo
+                widget.onRedoAppState?.call();
+              }
             },
             buttonText: _buttonsR[index],
             color: canRedo ? Colors.white : Colors.grey[300]!,
@@ -1129,21 +1262,32 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        } else if (index == 7) {
+        } // nPr button
+        else if (index == 7) {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertPermutation();
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInPermutation(),
+                normalAction: () => _activeController?.insertPermutation(),
+              );
             },
             buttonText: '\u207FP\u1D63',
             color: Colors.white,
             textColor: Colors.black,
           );
-        } else if (index == 8) {
+        }
+        // nCr button
+        else if (index == 8) {
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCombination();
-              widget.onUpdateMathEditor();
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInCombination(),
+                normalAction: () => _activeController?.insertCombination(),
+              );
             },
             buttonText: '\u207FC\u1D63',
             color: Colors.white,

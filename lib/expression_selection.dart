@@ -173,6 +173,10 @@ class SelectionOverlayWidget extends StatefulWidget {
     required this.onDismiss,
   });
 
+  // Helper to determine if this is paste-only mode
+  bool get isPasteOnlyMode =>
+      onCopy == null && onCut == null && onPaste != null;
+
   @override
   State<SelectionOverlayWidget> createState() => _SelectionOverlayWidgetState();
 }
@@ -554,6 +558,9 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
         MathEditorController.clipboard != null &&
         !MathEditorController.clipboard!.isEmpty;
 
+    // Check if this is paste-only mode (double-tap menu)
+    final isPasteOnlyMode = widget.onCopy == null && widget.onCut == null;
+
     // Calculate menu center position
     double menuCenterX;
     double menuTopY;
@@ -575,7 +582,6 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
 
     // Clamp positions to keep menu on screen
     menuTopY = menuTopY.clamp(8.0, screenSize.height - 100);
-    // Keep menu center away from edges (estimate ~80px half-width for menu)
     menuCenterX = menuCenterX.clamp(80.0, screenSize.width - 80.0);
 
     const double lineWidth = 2.0;
@@ -584,14 +590,16 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
 
     return Stack(
       children: [
-        // Tap anywhere to dismiss
-        Positioned.fill(
-          child: GestureDetector(
-            onTap: widget.onDismiss,
-            behavior: HitTestBehavior.translucent,
-            child: Container(color: Colors.transparent),
+        // Tap anywhere to dismiss - ONLY for paste-only mode (double-tap menu)
+        // For selection mode, dismissal is handled by tapping on the expression area
+        if (isPasteOnlyMode)
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: widget.onDismiss,
+              behavior: HitTestBehavior.translucent,
+              child: Container(color: Colors.transparent),
+            ),
           ),
-        ),
 
         // Selection highlight
         if (hasSelection && selectionInfo != null)

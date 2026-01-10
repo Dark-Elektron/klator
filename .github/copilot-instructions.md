@@ -4,11 +4,11 @@ Short, actionable guidance to be immediately productive in this repo.
 
 1. Big picture
 - Flutter app (multi-platform) that provides a multi-cell scientific calculator.
-- UI bootstrap: [lib/main.dart](lib/main.dart) — uses `SettingsProvider` (provider package) to control theme and numeric precision.
-- Expression model and editor: [lib/renderer.dart](lib/renderer.dart) — core `MathNode` tree types, `MathEditorController`, cursor/layout registry, and rendering helpers.
-- Serialization: [lib/math_expression_serializer.dart](lib/math_expression_serializer.dart) — converts node trees to PEMDAS-friendly strings and JSON for persistence.
-- Evaluation & solving: [lib/math_engine.dart](lib/math_engine.dart) — `MathSolverNew` takes expression strings (uses `ansX` expansion) and returns formatted results or equation solutions.
-- Persistence: see [lib/cell_persistence_service.dart](lib/cell_persistence_service.dart) used from `main.dart` to save/load cells and active index.
+- UI bootstrap: [lib/main.dart](../lib/main.dart) — uses `SettingsProvider` (provider package) to control theme and numeric precision.
+- Expression model and editor: [lib/renderer.dart](../lib/renderer.dart) — core `MathNode` tree types, `MathEditorController`, cursor/layout registry, and rendering helpers.
+- Serialization: [lib/math_expression_serializer.dart](../lib/math_expression_serializer.dart) — converts node trees to PEMDAS-friendly strings and JSON for persistence.
+- Evaluation & solving: [lib/math_engine.dart](../lib/math_engine.dart) — `MathSolverNew` takes expression strings (uses `ansX` expansion) and returns formatted results or equation solutions.
+- Persistence: see [lib/cell_persistence_service.dart](../lib/cell_persistence_service.dart) used from `main.dart` to save/load cells and active index.
 
 2. Key data flows & conventions
 - In-memory expression = List<`MathNode`> (start point: `LiteralNode`).
@@ -31,13 +31,13 @@ Short, actionable guidance to be immediately productive in this repo.
 - `MathSolverNew` expects plain-text solver format (strings from the serializer). It also supports multi-line systems (separated by `\n`) and `=`-based equations. If adding new node types, ensure the serializer maps them into solver-friendly syntax.
 
 5. Important files to inspect when changing behavior
-- UI / app lifecycle: [lib/main.dart](lib/main.dart)
-- Editor core & node types: [lib/renderer.dart](lib/renderer.dart)
-- Serialization & persistence format: [lib/math_expression_serializer.dart](lib/math_expression_serializer.dart)
-- Solver/evaluator: [lib/math_engine.dart](lib/math_engine.dart)
-- Persistence helpers: [lib/cell_persistence_service.dart](lib/cell_persistence_service.dart)
-- Keypad and input handling: [lib/keypad.dart](lib/keypad.dart)
-- Walkthrough/UX hints: [lib/walkthrough](lib/walkthrough)
+- UI / app lifecycle: [lib/main.dart](../lib/main.dart)
+- Editor core & node types: [lib/renderer.dart](../lib/renderer.dart)
+- Serialization & persistence format: [lib/math_expression_serializer.dart](../lib/math_expression_serializer.dart)
+- Solver/evaluator: [lib/math_engine.dart](../lib/math_engine.dart)
+- Persistence helpers: [lib/cell_persistence_service.dart](../lib/cell_persistence_service.dart)
+- Keypad and input handling: [lib/keypad.dart](../lib/keypad.dart)
+- Walkthrough/UX hints: [lib/walkthrough](../lib/walkthrough)
 
 6. Tests and examples
 - Unit tests live in `test/` (e.g., `math_engine_test.dart`, `math_expression_serializer_test.dart`) — use them as examples for expected input/output for serialization and solver.
