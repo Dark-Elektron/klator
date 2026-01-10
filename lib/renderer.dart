@@ -4,6 +4,7 @@ import 'math_expression_serializer.dart';
 import 'math_engine.dart';
 import 'constants.dart';
 import 'package:flutter/rendering.dart';
+import 'expression_selection.dart';
 
 abstract class MathNode {
   final String id;
@@ -145,6 +146,7 @@ class NodeLayoutInfo {
   final int index;
   final double fontSize;
   final TextScaler textScaler;
+  final RenderParagraph? renderParagraph; // ADD THIS
 
   NodeLayoutInfo({
     required this.rect,
@@ -154,6 +156,7 @@ class NodeLayoutInfo {
     required this.index,
     required this.fontSize,
     required this.textScaler,
+    this.renderParagraph, // ADD THIS
   });
 }
 
@@ -162,11 +165,9 @@ class MathTextStyle {
   static const String minusSign = '\u2212';
   static const String equalsSign = '=';
 
-  // Both possible multiplication signs (for padding detection)
-  static const String multiplyDot = '\u00B7'; // · (middle dot)
-  static const String multiplyTimes = '\u00D7'; // × (times sign)
+  static const String multiplyDot = '\u00B7';
+  static const String multiplyTimes = '\u00D7';
 
-  // Current user preference (dynamic)
   static String _multiplySign = '\u00D7';
 
   static String get multiplySign => _multiplySign;
@@ -175,7 +176,6 @@ class MathTextStyle {
     _multiplySign = sign;
   }
 
-  // Include BOTH multiplication signs - they both need padding
   static const Set<String> _allMultiplySigns = {multiplyDot, multiplyTimes};
 
   static const Set<String> _paddedOperators = {
@@ -190,7 +190,6 @@ class MathTextStyle {
     return _paddedOperators.contains(char);
   }
 
-  // Helper to check if char is any multiplication sign
   static bool _isMultiplySign(String char) {
     return _allMultiplySigns.contains(char);
   }
@@ -210,18 +209,16 @@ class MathTextStyle {
     for (int i = 0; i < text.length; i++) {
       final char = text[i];
 
-      // Convert multiply sign to user preference
       String displayChar = char;
       if (_isMultiplySign(char)) {
         displayChar = _multiplySign;
       }
 
       if (_isPaddedOperator(char)) {
-        // Don't add leading space if this is the first character
         if (i == 0) {
-          buffer.write('$displayChar '); // Only trailing space
+          buffer.write('$displayChar ');
         } else {
-          buffer.write(' $displayChar '); // Both spaces
+          buffer.write(' $displayChar ');
         }
       } else {
         buffer.write(displayChar);
@@ -236,19 +233,21 @@ class MathTextStyle {
     TextScaler textScaler,
   ) {
     if (text.isEmpty) return 0.0;
-    // Use toDisplayText to get consistent measurement
     final displayText = toDisplayText(text);
-    final painter = TextPainter(
-      text: TextSpan(text: displayText, style: getStyle(fontSize)),
+
+    final textSpan = TextSpan(text: displayText, style: getStyle(fontSize));
+    final renderParagraph = RenderParagraph(
+      textSpan,
       textDirection: TextDirection.ltr,
       textScaler: textScaler,
-    )..layout();
-    final width = painter.width;
-    painter.dispose();
+    );
+    renderParagraph.layout(const BoxConstraints());
+
+    final width = renderParagraph.size.width;
+    renderParagraph.dispose();
     return width;
   }
 
-  /// Converts a logical character index to display text index
   static int _logicalToDisplayIndex(String text, int logicalIndex) {
     int displayIndex = 0;
     final clampedIndex = logicalIndex.clamp(0, text.length);
@@ -256,7 +255,11 @@ class MathTextStyle {
     for (int i = 0; i < clampedIndex; i++) {
       final char = text[i];
       if (_isPaddedOperator(char)) {
-        displayIndex += 3; // space + char + space
+        if (i == 0) {
+          displayIndex += 2; // char + trailing space
+        } else {
+          displayIndex += 3; // space + char + space
+        }
       } else {
         displayIndex += 1;
       }
@@ -273,29 +276,27 @@ class MathTextStyle {
   ) {
     if (text.isEmpty || charIndex <= 0) return 0.0;
 
-    // Convert full text to display format
     final displayText = toDisplayText(text);
-
-    // Convert logical index to display index
     final displayIndex = _logicalToDisplayIndex(
       text,
       charIndex,
     ).clamp(0, displayText.length);
 
-    // Create painter with FULL display text (same as rendered)
-    final painter = TextPainter(
-      text: TextSpan(text: displayText, style: getStyle(fontSize)),
+    final textSpan = TextSpan(text: displayText, style: getStyle(fontSize));
+    final renderParagraph = RenderParagraph(
+      textSpan,
       textDirection: TextDirection.ltr,
       textScaler: textScaler,
-    )..layout();
+    );
 
-    // Get exact cursor position using Flutter's built-in method
-    final offset = painter.getOffsetForCaret(
+    renderParagraph.layout(const BoxConstraints());
+
+    final offset = renderParagraph.getOffsetForCaret(
       TextPosition(offset: displayIndex),
       Rect.zero,
     );
 
-    painter.dispose();
+    renderParagraph.dispose();
     return offset.dx;
   }
 
@@ -308,22 +309,27 @@ class MathTextStyle {
     if (text.isEmpty) return 0;
 
     final displayText = toDisplayText(text);
-    final painter = TextPainter(
-      text: TextSpan(text: displayText, style: getStyle(fontSize)),
+
+    final textSpan = TextSpan(text: displayText, style: getStyle(fontSize));
+    final renderParagraph = RenderParagraph(
+      textSpan,
       textDirection: TextDirection.ltr,
       textScaler: textScaler,
-    )..layout();
+    );
 
-    final position = painter.getPositionForOffset(
+    renderParagraph.layout(const BoxConstraints());
+
+    final position = renderParagraph.getPositionForOffset(
       Offset(xOffset, fontSize / 2),
     );
-    painter.dispose();
+
+    renderParagraph.dispose();
 
     int displayOffset = position.offset.clamp(0, displayText.length);
-    return _displayToLogicalIndex(text, displayOffset);
+    return displayToLogicalIndex(text, displayOffset);
   }
 
-  static int _displayToLogicalIndex(String text, int displayIndex) {
+  static int displayToLogicalIndex(String text, int displayIndex) {
     if (displayIndex <= 0) return 0;
 
     int displayPos = 0;
@@ -333,7 +339,7 @@ class MathTextStyle {
       int charWidth;
 
       if (_isPaddedOperator(char)) {
-        charWidth = (logical == 0) ? 2 : 3; // First char has no leading space
+        charWidth = (logical == 0) ? 2 : 3;
       } else {
         charWidth = 1;
       }
@@ -357,27 +363,8 @@ class MathTextStyle {
     return text.length;
   }
 
-  // In MathTextStyle class
   static int logicalToDisplayIndex(String text, int logicalIndex) {
-    if (text.isEmpty || logicalIndex <= 0) return 0;
-
-    int displayIndex = 0;
-    final clampedIndex = logicalIndex.clamp(0, text.length);
-
-    for (int i = 0; i < clampedIndex; i++) {
-      final char = text[i];
-      if (_isPaddedOperator(char)) {
-        if (i == 0) {
-          displayIndex += 2; // char + trailing space (no leading space)
-        } else {
-          displayIndex += 3; // leading space + char + trailing space
-        }
-      } else {
-        displayIndex += 1;
-      }
-    }
-
-    return displayIndex;
+    return _logicalToDisplayIndex(text, logicalIndex);
   }
 }
 
@@ -406,7 +393,10 @@ class _MultiplicationChainResult {
 class MathEditorController extends ChangeNotifier {
   List<MathNode> expression = [LiteralNode()];
   EditorCursor cursor = const EditorCursor();
+
   final Map<String, NodeLayoutInfo> _layoutRegistry = {};
+  Map<String, NodeLayoutInfo> get layoutRegistry => _layoutRegistry;
+
   String? result = '';
   String expr = '';
   int _structureVersion = 0;
@@ -597,14 +587,14 @@ class MathEditorController extends ChangeNotifier {
       double dx = 0, dy = 0;
       if (localPos.dx < info.rect.left) {
         dx = info.rect.left - localPos.dx;
-      } else if (localPos.dx > info.rect.right){
+      } else if (localPos.dx > info.rect.right) {
         dx = localPos.dx - info.rect.right;
       }
       if (localPos.dy < info.rect.top) {
         dy = info.rect.top - localPos.dy;
-      } else if (localPos.dy > info.rect.bottom){
+      } else if (localPos.dy > info.rect.bottom) {
         dy = localPos.dy - info.rect.bottom;
-        }
+      }
       final distance = math.sqrt(dx * dx + dy * dy);
       if (distance < minDistance) {
         minDistance = distance;
@@ -4335,30 +4325,641 @@ class MathEditorController extends ChangeNotifier {
     );
     notifyListeners();
   }
+
+  // ============== SELECTION STATE ==============
+  SelectionRange? _selection;
+  SelectionRange? get selection => _selection;
+  bool get hasSelection => _selection != null && !_selection!.isEmpty;
+
+  // Static clipboard shared across all instances
+  static MathClipboard? _clipboard;
+  static MathClipboard? get clipboard => _clipboard;
+
+  // Container key for coordinate conversion
+  GlobalKey? _containerKey;
+  void setContainerKey(GlobalKey key) => _containerKey = key;
+  GlobalKey? get containerKey => _containerKey;
+
+  // ============== SELECTION OPERATIONS ==============
+
+  /// Select word/element at position (for long-press)
+  void selectAtPosition(Offset position) {
+    if (_layoutRegistry.isEmpty) return;
+
+    // Find closest node
+    NodeLayoutInfo? targetInfo;
+    double minDistance = double.infinity;
+
+    for (final info in _layoutRegistry.values) {
+      final distance = _distanceToRect(position, info.rect);
+      if (distance < minDistance) {
+        minDistance = distance;
+        targetInfo = info;
+      }
+    }
+
+    if (targetInfo == null) return;
+
+    final text = targetInfo.node.text;
+
+    if (text.isEmpty) {
+      // Select the entire node if it's empty (likely a complex node placeholder)
+      _selection = SelectionRange(
+        start: SelectionAnchor(
+          parentId: targetInfo.parentId,
+          path: targetInfo.path,
+          nodeIndex: targetInfo.index,
+          charIndex: 0,
+        ),
+        end: SelectionAnchor(
+          parentId: targetInfo.parentId,
+          path: targetInfo.path,
+          nodeIndex: targetInfo.index,
+          charIndex: 0,
+        ),
+      );
+      notifyListeners();
+      return;
+    }
+
+    // Find character index at tap position
+    final relativeX = position.dx - targetInfo.rect.left;
+    int charIndex = MathTextStyle.getCharIndexForOffset(
+      text,
+      relativeX,
+      targetInfo.fontSize,
+      targetInfo.textScaler,
+    );
+
+    // Find word boundaries
+    int wordStart = charIndex;
+    int wordEnd = charIndex;
+
+    while (wordStart > 0 && !_isSelectionWordBoundary(text[wordStart - 1])) {
+      wordStart--;
+    }
+    while (wordEnd < text.length && !_isSelectionWordBoundary(text[wordEnd])) {
+      wordEnd++;
+    }
+
+    // If on operator, select just that
+    if (charIndex < text.length && _isSelectionWordBoundary(text[charIndex])) {
+      wordStart = charIndex;
+      wordEnd = charIndex + 1;
+    }
+
+    // Ensure at least one character
+    if (wordStart == wordEnd && text.isNotEmpty) {
+      if (charIndex < text.length) {
+        wordEnd = charIndex + 1;
+      } else if (charIndex > 0) {
+        wordStart = charIndex - 1;
+      }
+    }
+
+    _selection = SelectionRange(
+      start: SelectionAnchor(
+        parentId: targetInfo.parentId,
+        path: targetInfo.path,
+        nodeIndex: targetInfo.index,
+        charIndex: wordStart,
+      ),
+      end: SelectionAnchor(
+        parentId: targetInfo.parentId,
+        path: targetInfo.path,
+        nodeIndex: targetInfo.index,
+        charIndex: wordEnd,
+      ),
+    );
+
+    // _resetHandleTracking();
+    notifyListeners();
+  }
+
+  /// Select all content at root level
+  void selectAll() {
+    if (expression.isEmpty) return;
+
+    final lastNode = expression.last;
+    int lastCharIndex = lastNode is LiteralNode ? lastNode.text.length : 1;
+
+    _selection = SelectionRange(
+      start: const SelectionAnchor(
+        parentId: null,
+        path: null,
+        nodeIndex: 0,
+        charIndex: 0,
+      ),
+      end: SelectionAnchor(
+        parentId: null,
+        path: null,
+        nodeIndex: expression.length - 1,
+        charIndex: lastCharIndex,
+      ),
+    );
+
+    notifyListeners();
+  }
+
+  /// Clear selection
+  void clearSelection() {
+    _selection = null;
+    // _resetHandleTracking();
+    notifyListeners();
+  }
+  // ============== CLIPBOARD OPERATIONS ==============
+
+  /// Copy selected content to clipboard
+  MathClipboard? copySelection() {
+    if (!hasSelection) return null;
+
+    final norm = _selection!.normalized;
+    final siblings = _resolveNodeListForSelection(
+      norm.start.parentId,
+      norm.start.path,
+    );
+    if (siblings == null) return null;
+
+    List<MathNode> copiedNodes = [];
+    String? leadingText;
+    String? trailingText;
+
+    for (
+      int i = norm.start.nodeIndex;
+      i <= norm.end.nodeIndex && i < siblings.length;
+      i++
+    ) {
+      final node = siblings[i];
+
+      if (i == norm.start.nodeIndex && i == norm.end.nodeIndex) {
+        // Single node - partial selection
+        if (node is LiteralNode) {
+          final startIdx = norm.start.charIndex.clamp(0, node.text.length);
+          final endIdx = norm.end.charIndex.clamp(0, node.text.length);
+          final text = node.text.substring(startIdx, endIdx);
+          if (text.isNotEmpty) {
+            leadingText = text;
+          }
+        } else {
+          copiedNodes.add(MathClipboard.deepCopyNode(node));
+        }
+      } else if (i == norm.start.nodeIndex) {
+        // First node
+        if (node is LiteralNode) {
+          final startIdx = norm.start.charIndex.clamp(0, node.text.length);
+          final text = node.text.substring(startIdx);
+          if (text.isNotEmpty) {
+            leadingText = text;
+          }
+        } else {
+          copiedNodes.add(MathClipboard.deepCopyNode(node));
+        }
+      } else if (i == norm.end.nodeIndex) {
+        // Last node
+        if (node is LiteralNode) {
+          final endIdx = norm.end.charIndex.clamp(0, node.text.length);
+          final text = node.text.substring(0, endIdx);
+          if (text.isNotEmpty) {
+            trailingText = text;
+          }
+        } else {
+          copiedNodes.add(MathClipboard.deepCopyNode(node));
+        }
+      } else {
+        // Middle nodes - full copy
+        copiedNodes.add(MathClipboard.deepCopyNode(node));
+      }
+    }
+
+    _clipboard = MathClipboard(
+      nodes: copiedNodes,
+      leadingText: leadingText,
+      trailingText: trailingText,
+    );
+
+    return _clipboard;
+  }
+
+  /// Cut selected content
+  void cutSelection() {
+    if (!hasSelection) return;
+
+    saveStateForUndo();
+    copySelection();
+    deleteSelection();
+  }
+
+  /// Delete selected content
+  void deleteSelection() {
+    if (!hasSelection) return;
+
+    final norm = _selection!.normalized;
+    final siblings = _resolveNodeListForSelection(
+      norm.start.parentId,
+      norm.start.path,
+    );
+    if (siblings == null) return;
+
+    if (norm.start.nodeIndex == norm.end.nodeIndex) {
+      // Same node - just remove characters
+      final node = siblings[norm.start.nodeIndex];
+      if (node is LiteralNode) {
+        final startIdx = norm.start.charIndex.clamp(0, node.text.length);
+        final endIdx = norm.end.charIndex.clamp(0, node.text.length);
+        node.text =
+            node.text.substring(0, startIdx) + node.text.substring(endIdx);
+
+        cursor = EditorCursor(
+          parentId: norm.start.parentId,
+          path: norm.start.path,
+          index: norm.start.nodeIndex,
+          subIndex: startIdx,
+        );
+      }
+    } else {
+      // Multiple nodes
+      final firstNode = siblings[norm.start.nodeIndex];
+      String remainingFromFirst = '';
+      if (firstNode is LiteralNode) {
+        final startIdx = norm.start.charIndex.clamp(0, firstNode.text.length);
+        remainingFromFirst = firstNode.text.substring(0, startIdx);
+      }
+
+      final lastNode = siblings[norm.end.nodeIndex];
+      String remainingFromLast = '';
+      if (lastNode is LiteralNode) {
+        final endIdx = norm.end.charIndex.clamp(0, lastNode.text.length);
+        remainingFromLast = lastNode.text.substring(endIdx);
+      }
+
+      // Remove nodes from end to start
+      for (int i = norm.end.nodeIndex; i > norm.start.nodeIndex; i--) {
+        if (i < siblings.length) {
+          siblings.removeAt(i);
+        }
+      }
+
+      // Update first node
+      if (firstNode is LiteralNode) {
+        firstNode.text = remainingFromFirst + remainingFromLast;
+
+        cursor = EditorCursor(
+          parentId: norm.start.parentId,
+          path: norm.start.path,
+          index: norm.start.nodeIndex,
+          subIndex: remainingFromFirst.length,
+        );
+      }
+    }
+
+    // Ensure there's always at least one node
+    if (siblings.isEmpty) {
+      siblings.add(LiteralNode());
+      cursor = EditorCursor(
+        parentId: norm.start.parentId,
+        path: norm.start.path,
+        index: 0,
+        subIndex: 0,
+      );
+    }
+
+    _selection = null;
+    _structureVersion++;
+    notifyListeners();
+    onResultChanged?.call();
+
+    onCalculate();
+  }
+
+  /// Paste clipboard content at cursor
+  void pasteClipboard() {
+    if (_clipboard == null || _clipboard!.isEmpty) return;
+
+    saveStateForUndo();
+
+    // Delete selection first if any
+    if (hasSelection) {
+      deleteSelection();
+    }
+
+    final siblings = _resolveSiblingList();
+    final currentNode =
+        cursor.index < siblings.length ? siblings[cursor.index] : null;
+
+    if (currentNode is LiteralNode) {
+      final text = currentNode.text;
+      final cursorPos = cursor.subIndex.clamp(0, text.length);
+      final before = text.substring(0, cursorPos);
+      final after = text.substring(cursorPos);
+
+      // Build pasted content
+      String pastedText = '';
+      if (_clipboard!.leadingText != null) {
+        pastedText += _clipboard!.leadingText!;
+      }
+      if (_clipboard!.trailingText != null) {
+        pastedText += _clipboard!.trailingText!;
+      }
+
+      if (_clipboard!.nodes.isEmpty) {
+        // Just text - simple insert
+        currentNode.text = before + pastedText + after;
+        cursor = cursor.copyWith(subIndex: before.length + pastedText.length);
+      } else {
+        // Has complex nodes
+        currentNode.text = before + (_clipboard!.leadingText ?? '');
+
+        int insertIndex = cursor.index + 1;
+
+        // Insert copied nodes
+        for (final node in _clipboard!.nodes) {
+          siblings.insert(insertIndex, MathClipboard.deepCopyNode(node));
+          insertIndex++;
+        }
+
+        // Insert trailing text node
+        final trailingNode = LiteralNode(
+          text: (_clipboard!.trailingText ?? '') + after,
+        );
+        siblings.insert(insertIndex, trailingNode);
+
+        cursor = EditorCursor(
+          parentId: cursor.parentId,
+          path: cursor.path,
+          index: insertIndex,
+          subIndex: (_clipboard!.trailingText ?? '').length,
+        );
+      }
+    }
+
+    _structureVersion++;
+    notifyListeners();
+    onResultChanged?.call();
+
+    onCalculate();
+  }
+
+  // ============== SELECTION HELPERS ==============
+
+  List<MathNode>? _resolveNodeListForSelection(String? parentId, String? path) {
+    if (parentId == null && path == null) {
+      return expression;
+    }
+
+    final parent = _findNode(expression, parentId!);
+    if (parent == null) return null;
+
+    if (parent is FractionNode) {
+      if (path == 'num' || path == 'numerator') return parent.numerator;
+      if (path == 'den' || path == 'denominator') return parent.denominator;
+    } else if (parent is ExponentNode) {
+      if (path == 'base') return parent.base;
+      if (path == 'pow' || path == 'power') return parent.power;
+    } else if (parent is TrigNode) {
+      if (path == 'arg' || path == 'argument') return parent.argument;
+    } else if (parent is RootNode) {
+      if (path == 'index') return parent.index;
+      if (path == 'radicand') return parent.radicand;
+    } else if (parent is LogNode) {
+      if (path == 'base') return parent.base;
+      if (path == 'arg' || path == 'argument') return parent.argument;
+    } else if (parent is ParenthesisNode) {
+      if (path == 'content') return parent.content;
+    } else if (parent is AnsNode) {
+      if (path == 'index') return parent.index;
+    } else if (parent is PermutationNode) {
+      if (path == 'n') return parent.n;
+      if (path == 'r') return parent.r;
+    } else if (parent is CombinationNode) {
+      if (path == 'n') return parent.n;
+      if (path == 'r') return parent.r;
+    }
+
+    return null;
+  }
+
+  bool _isSelectionWordBoundary(String char) {
+    const boundaries = {
+      '+',
+      '-',
+      '×',
+      '·',
+      '÷',
+      '/',
+      '=',
+      '(',
+      ')',
+      ' ',
+      '\u2212',
+    };
+    return boundaries.contains(char);
+  }
+
+  // void _resetHandleTracking() {
+  //   _lastStartCharIndex = null;
+  //   _lastEndCharIndex = null;
+  // }
+
+  double _distanceToRect(Offset point, Rect rect) {
+    double dx = 0, dy = 0;
+    if (point.dx < rect.left) {
+      dx = rect.left - point.dx;
+    } else if (point.dx > rect.right) {
+      dx = point.dx - rect.right;
+    }
+    if (point.dy < rect.top) {
+      dy = rect.top - point.dy;
+    } else if (point.dy > rect.bottom) {
+      dy = point.dy - rect.bottom;
+    }
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  /// Update selection handle during drag - uses same logic as tap for accurate positioning
+  /// Update selection handle during drag - positions exactly where finger is
+  /// Update selection handle during drag - positions exactly where finger is
+  void updateSelectionHandle(bool isStartHandle, Offset localPosition) {
+    if (_selection == null) return;
+    if (_layoutRegistry.isEmpty) return;
+
+    final norm = _selection!.normalized;
+
+    // Find the closest node to the finger position (within the same context)
+    NodeLayoutInfo? closest;
+    double minDistance = double.infinity;
+
+    for (final info in _layoutRegistry.values) {
+      // Only consider nodes in the same context as the selection
+      if (info.parentId != norm.start.parentId ||
+          info.path != norm.start.path) {
+        continue;
+      }
+
+      double dx = 0, dy = 0;
+      if (localPosition.dx < info.rect.left) {
+        dx = info.rect.left - localPosition.dx;
+      } else if (localPosition.dx > info.rect.right) {
+        dx = localPosition.dx - info.rect.right;
+      }
+      if (localPosition.dy < info.rect.top) {
+        dy = info.rect.top - localPosition.dy;
+      } else if (localPosition.dy > info.rect.bottom) {
+        dy = localPosition.dy - info.rect.bottom;
+      }
+      final distance = math.sqrt(dx * dx + dy * dy);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = info;
+      }
+    }
+
+    if (closest == null) return;
+
+    // Calculate exact character position at finger location
+    final text = closest.node.text;
+    final relativeX = localPosition.dx - closest.rect.left;
+
+    int newCharIndex;
+    if (text.isEmpty) {
+      newCharIndex = 0;
+    } else {
+      // Use the ACTUAL RenderParagraph for accurate positioning
+      newCharIndex = _getCharIndexUsingRenderParagraph(closest, relativeX);
+    }
+
+    // Create the new anchor at the finger position
+    final newAnchor = SelectionAnchor(
+      parentId: closest.parentId,
+      path: closest.path,
+      nodeIndex: closest.index,
+      charIndex: newCharIndex,
+    );
+
+    // Update selection, respecting handle constraints
+    SelectionRange? newSelection;
+
+    if (isStartHandle) {
+      if (newAnchor.compareTo(norm.end) < 0) {
+        newSelection = SelectionRange(start: newAnchor, end: norm.end);
+      } else {
+        final clamped = _getAnchorBefore(norm.end);
+        if (clamped != null) {
+          newSelection = SelectionRange(start: clamped, end: norm.end);
+        }
+      }
+    } else {
+      if (newAnchor.compareTo(norm.start) > 0) {
+        newSelection = SelectionRange(start: norm.start, end: newAnchor);
+      } else {
+        final clamped = _getAnchorAfter(norm.start);
+        if (clamped != null) {
+          newSelection = SelectionRange(start: norm.start, end: clamped);
+        }
+      }
+    }
+
+    if (newSelection != null) {
+      _selection = newSelection;
+      notifyListeners();
+    }
+  }
+
+  /// Get character index using the ACTUAL RenderParagraph
+  int _getCharIndexUsingRenderParagraph(NodeLayoutInfo info, double relativeX) {
+    final text = info.node.text;
+
+    if (text.isEmpty) return 0;
+
+    final displayText = MathTextStyle.toDisplayText(text);
+
+    // Use the ACTUAL RenderParagraph if available
+    if (info.renderParagraph != null) {
+      final position = info.renderParagraph!.getPositionForOffset(
+        Offset(relativeX, info.fontSize / 2),
+      );
+      int displayOffset = position.offset.clamp(0, displayText.length);
+      return MathTextStyle.displayToLogicalIndex(text, displayOffset);
+    }
+
+    // Fallback: use MathTextStyle method
+    return MathTextStyle.getCharIndexForOffset(
+      text,
+      relativeX,
+      info.fontSize,
+      info.textScaler,
+    );
+  }
+
+  SelectionAnchor? _getAnchorBefore(SelectionAnchor anchor) {
+    final siblings = _resolveNodeListForSelection(anchor.parentId, anchor.path);
+    if (siblings == null || siblings.isEmpty) return null;
+
+    if (anchor.charIndex > 0) {
+      return anchor.copyWith(charIndex: anchor.charIndex - 1);
+    } else if (anchor.nodeIndex > 0) {
+      final prevNode = siblings[anchor.nodeIndex - 1];
+      final prevLen = prevNode is LiteralNode ? prevNode.text.length : 1;
+      return SelectionAnchor(
+        parentId: anchor.parentId,
+        path: anchor.path,
+        nodeIndex: anchor.nodeIndex - 1,
+        charIndex: prevLen,
+      );
+    }
+    return null;
+  }
+
+  SelectionAnchor? _getAnchorAfter(SelectionAnchor anchor) {
+    final siblings = _resolveNodeListForSelection(anchor.parentId, anchor.path);
+    if (siblings == null || siblings.isEmpty) return null;
+
+    if (anchor.nodeIndex >= siblings.length) return null;
+
+    final currentNode = siblings[anchor.nodeIndex];
+    final currentLen = currentNode is LiteralNode ? currentNode.text.length : 1;
+
+    if (anchor.charIndex < currentLen) {
+      return anchor.copyWith(charIndex: anchor.charIndex + 1);
+    } else if (anchor.nodeIndex < siblings.length - 1) {
+      return SelectionAnchor(
+        parentId: anchor.parentId,
+        path: anchor.path,
+        nodeIndex: anchor.nodeIndex + 1,
+        charIndex: 0,
+      );
+    }
+    return null;
+  }
 }
 
 class MathEditorInline extends StatefulWidget {
   final MathEditorController controller;
   final bool showCursor;
-  final VoidCallback? onFocus; // <-- Add this
+  final VoidCallback? onFocus;
 
   const MathEditorInline({
     super.key,
     required this.controller,
     this.showCursor = true,
-    this.onFocus, // <-- Add this
+    this.onFocus,
   });
 
   @override
-  State<MathEditorInline> createState() => _MathEditorInlineState();
+  State<MathEditorInline> createState() => MathEditorInlineState();
 }
 
-class _MathEditorInlineState extends State<MathEditorInline>
+class MathEditorInlineState extends State<MathEditorInline>
     with SingleTickerProviderStateMixin {
   late AnimationController _cursorBlinkController;
   late Animation<double> _cursorBlinkAnimation;
   final GlobalKey _containerKey = GlobalKey();
   int _lastStructureVersion = -1;
+
+  OverlayEntry? _selectionOverlay;
+
+  // Track double-tap position for paste menu
+  Offset? _doubleTapPosition;
 
   @override
   void initState() {
@@ -4371,17 +4972,25 @@ class _MathEditorInlineState extends State<MathEditorInline>
       begin: 1.0,
       end: 0.0,
     ).animate(_cursorBlinkController);
+
+    widget.controller.setContainerKey(_containerKey);
   }
 
   @override
   void dispose() {
+    _removeSelectionOverlay();
     _cursorBlinkController.dispose();
     super.dispose();
   }
 
   void _handleTap(TapDownDetails details) {
-    // Call onFocus to notify parent that this editor was tapped
-    widget.onFocus?.call(); // <-- Add this line at the beginning
+    widget.onFocus?.call();
+
+    // Clear selection and overlay on tap
+    if (widget.controller.hasSelection || _selectionOverlay != null) {
+      widget.controller.clearSelection();
+      _removeSelectionOverlay();
+    }
 
     final RenderBox? containerBox =
         _containerKey.currentContext?.findRenderObject() as RenderBox?;
@@ -4399,6 +5008,133 @@ class _MathEditorInlineState extends State<MathEditorInline>
     widget.controller.tapAt(localToContainer);
   }
 
+  void _handleDoubleTapDown(TapDownDetails details) {
+    widget.onFocus?.call();
+
+    // Store the position for the paste menu
+    final RenderBox? containerBox =
+        _containerKey.currentContext?.findRenderObject() as RenderBox?;
+    if (containerBox == null) return;
+
+    final RenderBox? gestureBox = context.findRenderObject() as RenderBox?;
+    if (gestureBox == null) return;
+
+    final Offset globalTapPos = gestureBox.localToGlobal(details.localPosition);
+    final Offset localToContainer = containerBox.globalToLocal(globalTapPos);
+
+    _doubleTapPosition = localToContainer;
+
+    // Move cursor to the double-tap position
+    widget.controller.tapAt(localToContainer);
+  }
+
+  void _handleDoubleTap() {
+    // Only show paste menu if clipboard has content
+    if (MathEditorController.clipboard != null &&
+        !MathEditorController.clipboard!.isEmpty) {
+      _showPasteOnlyOverlay();
+    }
+  }
+
+  void _handleLongPress(LongPressStartDetails details) {
+    widget.onFocus?.call();
+
+    final RenderBox? containerBox =
+        _containerKey.currentContext?.findRenderObject() as RenderBox?;
+    if (containerBox == null) return;
+
+    final RenderBox? gestureBox = context.findRenderObject() as RenderBox?;
+    if (gestureBox == null) return;
+
+    final Offset globalPos = gestureBox.localToGlobal(details.localPosition);
+    final Offset localToContainer = containerBox.globalToLocal(globalPos);
+
+    widget.controller.selectAtPosition(localToContainer);
+
+    if (widget.controller.hasSelection) {
+      _showSelectionOverlay();
+    }
+  }
+
+  void _showSelectionOverlay() {
+    _removeSelectionOverlay();
+
+    _selectionOverlay = OverlayEntry(
+      builder:
+          (context) => SelectionOverlayWidget(
+            controller: widget.controller,
+            containerKey: _containerKey,
+            cursorLocalPosition: null,
+            onCopy: _handleCopy,
+            onCut: _handleCut,
+            onPaste: _handlePaste,
+            onDismiss: _handleDismissSelection,
+          ),
+    );
+
+    Overlay.of(context).insert(_selectionOverlay!);
+  }
+
+  void _showPasteOnlyOverlay() {
+    _removeSelectionOverlay();
+
+    _selectionOverlay = OverlayEntry(
+      builder:
+          (context) => SelectionOverlayWidget(
+            controller: widget.controller,
+            containerKey: _containerKey,
+            cursorLocalPosition: _doubleTapPosition,
+            onCopy: null,
+            onCut: null,
+            onPaste: _handlePaste,
+            onDismiss: _handleDismissPasteMenu,
+          ),
+    );
+
+    Overlay.of(context).insert(_selectionOverlay!);
+  }
+
+  void _removeSelectionOverlay() {
+    _selectionOverlay?.remove();
+    _selectionOverlay = null;
+    _doubleTapPosition = null;
+  }
+
+  void _handleCopy() {
+    widget.controller.copySelection();
+    _handleDismissSelection();
+  }
+
+  void _handleCut() {
+    widget.controller.cutSelection();
+    _removeSelectionOverlay();
+  }
+
+  void _handlePaste() {
+    widget.controller.pasteClipboard();
+    _removeSelectionOverlay();
+  }
+
+  void _handleDismissSelection() {
+    widget.controller.clearSelection();
+    _removeSelectionOverlay();
+  }
+
+  void showPasteMenu() {
+    if (MathEditorController.clipboard != null &&
+        !MathEditorController.clipboard!.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _showPasteOnlyOverlay();
+        }
+      });
+    }
+  }
+
+  void _handleDismissPasteMenu() {
+    _removeSelectionOverlay();
+  }
+
   @override
   Widget build(BuildContext context) {
     final textScaler = MediaQuery.textScalerOf(context);
@@ -4411,11 +5147,20 @@ class _MathEditorInlineState extends State<MathEditorInline>
           widget.controller.clearLayoutRegistry();
         }
 
+        if (widget.controller.hasSelection && _selectionOverlay != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _selectionOverlay?.markNeedsBuild();
+          });
+        }
+
         return LayoutBuilder(
           builder: (context, constraints) {
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTapDown: _handleTap,
+              onDoubleTapDown: _handleDoubleTapDown,
+              onDoubleTap: _handleDoubleTap,
+              onLongPressStart: _handleLongPress,
               child: Container(
                 width:
                     constraints.maxWidth.isFinite ? constraints.maxWidth : null,
@@ -5741,53 +6486,6 @@ class MathRenderer extends StatelessWidget {
     }
     return false;
   }
-
-  // /// Build content with placeholder if empty
-  // Widget _buildContentWithPlaceholder({
-  //   required List<MathNode> nodes,
-  //   required String nodeId,
-  //   required String path,
-  //   required double fontSize,
-  //   double? minWidth,
-  //   double? minHeight,
-  // }) {
-  //   final isEmpty = _isContentEmpty(nodes);
-
-  //   Widget content = Row(
-  //     mainAxisSize: MainAxisSize.min,
-  //     children:
-  //         nodes
-  //             .asMap()
-  //             .entries
-  //             .map(
-  //               (e) =>
-  //                   _renderNode(e.value, e.key, nodes, nodeId, path, fontSize),
-  //             )
-  //             .toList(),
-  //   );
-
-  //   if (isEmpty) {
-  //     return GestureDetector(
-  //       onTap: () {
-  //         // Navigate cursor to this empty content
-  //         controller.navigateTo(
-  //           parentId: nodeId,
-  //           path: path,
-  //           index: 0,
-  //           subIndex: 0,
-  //         );
-  //       },
-  //       child: PlaceholderBox(
-  //         fontSize: fontSize,
-  //         minWidth: minWidth ?? fontSize * 0.8,
-  //         minHeight: minHeight ?? fontSize * 0.9,
-  //         child: content,
-  //       ),
-  //     );
-  //   }
-
-  //   return content;
-  // }
 }
 
 class LiteralWidget extends StatefulWidget {
@@ -5870,6 +6568,13 @@ class _LiteralWidgetState extends State<LiteralWidget> {
     final Offset relativePos = rootBox.globalToLocal(globalPos);
     final rect = relativePos & box.size;
 
+    // Get the RenderParagraph from the Text widget
+    RenderParagraph? renderParagraph;
+    final renderObject = _textKey.currentContext?.findRenderObject();
+    if (renderObject is RenderParagraph) {
+      renderParagraph = renderObject;
+    }
+
     widget.controller.registerNodeLayout(
       NodeLayoutInfo(
         rect: rect,
@@ -5879,6 +6584,7 @@ class _LiteralWidgetState extends State<LiteralWidget> {
         index: widget.index,
         fontSize: widget.fontSize,
         textScaler: widget.textScaler,
+        renderParagraph: renderParagraph, // ADD THIS
       ),
     );
   }
@@ -5904,7 +6610,7 @@ class _LiteralWidgetState extends State<LiteralWidget> {
       return offset.dx;
     }
 
-    // Fallback to TextPainter
+    // Fallback to TextPainter (should rarely happen)
     final painter = TextPainter(
       text: TextSpan(
         text: displayText,
@@ -5931,8 +6637,7 @@ class _LiteralWidgetState extends State<LiteralWidget> {
 
     final isEmpty = logicalText.isEmpty;
     final displayText = isEmpty ? "" : MathTextStyle.toDisplayText(logicalText);
-    
-    // Consistent cursor width calculation
+
     final cursorWidth = math.max(2.0, widget.fontSize * 0.06);
 
     double cursorOffset = 0.0;
@@ -5953,24 +6658,21 @@ class _LiteralWidgetState extends State<LiteralWidget> {
           });
         }
 
-        // === FIX: Empty literals always have same size to prevent jumping ===
-        // Previously: SizedBox.shrink() when not active, fontSize*0.5 when active
-        // Now: Always cursorWidth, so activating doesn't change layout
         if (isEmpty) {
           return SizedBox(
             width: cursorWidth,
             height: widget.fontSize,
-            child: showCursor
-                ? Container(
-                    width: cursorWidth,
-                    height: widget.fontSize,
-                    color: Colors.yellowAccent,
-                  )
-                : null,
+            child:
+                showCursor
+                    ? Container(
+                      width: cursorWidth,
+                      height: widget.fontSize,
+                      color: Colors.yellowAccent,
+                    )
+                    : null,
           );
         }
 
-        // Normal rendering for non-empty text (unchanged from your stable version)
         return Stack(
           clipBehavior: Clip.none,
           children: [
@@ -6001,6 +6703,7 @@ class _LiteralWidgetState extends State<LiteralWidget> {
     );
   }
 }
+
 class RadicalSymbolPainter extends CustomPainter {
   final Color color;
   final double strokeWidth;

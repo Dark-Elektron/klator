@@ -78,6 +78,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int count = 0;
+  Map<int, GlobalKey<MathEditorInlineState>> mathEditorKeys = {}; // ADD THIS
   Map<int, TextEditingController> textDisplayControllers = {};
   Map<int, MathEditorController> mathEditorControllers = {};
   Map<int, FocusNode> focusNodes = {};
@@ -189,21 +190,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _initializeWalkthrough();
     });
   }
-
-  // Future<void> _initializeWalkthrough() async {
-  //   if (_walkthroughInitialized) return;
-  //   _walkthroughInitialized = true;
-
-  //   // Delay to ensure everything is ready
-  //   await Future.delayed(const Duration(milliseconds: 300));
-
-  //   if (mounted) {
-  //     await _walkthroughService.initialize();
-  //     debugPrint(
-  //       'Walkthrough initialization complete. Active: ${_walkthroughService.isActive}',
-  //     );
-  //   }
-  // }
 
   void _onWalkthroughChanged() {
     if (mounted) {
@@ -320,8 +306,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     };
 
     textDisplayControllers[index] = TextEditingController();
-
     focusNodes[index] = FocusNode();
+    mathEditorKeys[index] = GlobalKey<MathEditorInlineState>(); // ADD THIS
   }
 
   void _cascadeUpdates(int changedIndex) {
@@ -364,6 +350,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Container _buildExpressionDisplay(int index, AppColors colors) {
     final mathEditorController = mathEditorControllers[index];
     final resController = textDisplayControllers[index];
+    final mathEditorKey = mathEditorKeys[index];
     final bool isFocused = (activeIndex == index);
 
     // Only add keys to the active expression display
@@ -401,11 +388,32 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     }
                   }
                 },
+                onDoubleTapDown: (details) {
+                  setState(() {
+                    activeIndex = index;
+                  });
+
+                  final box = context.findRenderObject() as RenderBox?;
+                  if (box != null) {
+                    final width = box.size.width;
+                    final tapX = details.localPosition.dx;
+
+                    if (tapX < width * 0.4) {
+                      mathEditorController.moveCursorToStart();
+                    } else if (tapX > width * 0.6) {
+                      mathEditorController.moveCursorToEnd();
+                    }
+                  }
+                },
+                onDoubleTap: () {
+                  mathEditorKey?.currentState?.showPasteMenu();
+                },
                 child: Center(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     reverse: true,
                     child: MathEditorInline(
+                      key: mathEditorKey,
                       controller: mathEditorController!,
                       showCursor: isFocused,
                       onFocus: () {
@@ -495,6 +503,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     focusNodes[indexToRemove]?.dispose();
     focusNodes.remove(indexToRemove);
 
+    mathEditorKeys.remove(indexToRemove); // ADD THIS
+
     int newActiveIndex;
     if (activeIndex == indexToRemove) {
       newActiveIndex = indexToRemove > 0 ? indexToRemove - 1 : 0;
@@ -526,6 +536,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     mathEditorControllers.clear();
     textDisplayControllers.clear();
     focusNodes.clear();
+    mathEditorKeys.clear(); // ADD THIS
 
     _createControllers(0);
 
@@ -541,17 +552,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     Map<int, MathEditorController> newMathControllers = {};
     Map<int, TextEditingController> newDisplayControllers = {};
     Map<int, FocusNode> newFocusNodes = {};
+    Map<int, GlobalKey<MathEditorInlineState>> newMathEditorKeys =
+        {}; // ADD THIS
 
     for (int newIndex = 0; newIndex < oldKeys.length; newIndex++) {
       int oldKey = oldKeys[newIndex];
       newMathControllers[newIndex] = mathEditorControllers[oldKey]!;
       newDisplayControllers[newIndex] = textDisplayControllers[oldKey]!;
       newFocusNodes[newIndex] = focusNodes[oldKey]!;
+      newMathEditorKeys[newIndex] = mathEditorKeys[oldKey]!; // ADD THIS
     }
 
     mathEditorControllers = newMathControllers;
     textDisplayControllers = newDisplayControllers;
     focusNodes = newFocusNodes;
+    mathEditorKeys = newMathEditorKeys; // ADD THIS
   }
 
   @override
