@@ -5930,11 +5930,10 @@ class _LiteralWidgetState extends State<LiteralWidget> {
     final showCursor = widget.active && widget.cursorOpacity > 0.5;
 
     final isEmpty = logicalText.isEmpty;
-
-    // Only hide if empty and not active
-    final shouldRenderMinimal = isEmpty && !widget.active;
-
     final displayText = isEmpty ? "" : MathTextStyle.toDisplayText(logicalText);
+    
+    // Consistent cursor width calculation
+    final cursorWidth = math.max(2.0, widget.fontSize * 0.06);
 
     double cursorOffset = 0.0;
 
@@ -5954,31 +5953,24 @@ class _LiteralWidgetState extends State<LiteralWidget> {
           });
         }
 
-        // Render nothing visible for empty non-active literals
-        if (shouldRenderMinimal) {
-          return const SizedBox.shrink();
-        }
-
-        // For empty but active (cursor here), render minimal width container
-        if (isEmpty && widget.active) {
+        // === FIX: Empty literals always have same size to prevent jumping ===
+        // Previously: SizedBox.shrink() when not active, fontSize*0.5 when active
+        // Now: Always cursorWidth, so activating doesn't change layout
+        if (isEmpty) {
           return SizedBox(
-            width: widget.fontSize * 0.5,
-            height: widget.fontSize, // Add height constraint
-            child:
-                showCursor
-                    ? Align(
-                      alignment: Alignment.center,
-                      child: Container(
-                        width: math.max(2.0, widget.fontSize * 0.06),
-                        height: widget.fontSize,
-                        color: Colors.yellowAccent,
-                      ),
-                    )
-                    : null,
+            width: cursorWidth,
+            height: widget.fontSize,
+            child: showCursor
+                ? Container(
+                    width: cursorWidth,
+                    height: widget.fontSize,
+                    color: Colors.yellowAccent,
+                  )
+                : null,
           );
         }
 
-        // Normal rendering for non-empty text
+        // Normal rendering for non-empty text (unchanged from your stable version)
         return Stack(
           clipBehavior: Clip.none,
           children: [
@@ -5999,7 +5991,7 @@ class _LiteralWidgetState extends State<LiteralWidget> {
                 top: 0,
                 bottom: 0,
                 child: Container(
-                  width: math.max(2.0, widget.fontSize * 0.06),
+                  width: cursorWidth,
                   color: Colors.yellowAccent,
                 ),
               ),
@@ -6009,7 +6001,6 @@ class _LiteralWidgetState extends State<LiteralWidget> {
     );
   }
 }
-
 class RadicalSymbolPainter extends CustomPainter {
   final Color color;
   final double strokeWidth;

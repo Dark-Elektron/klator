@@ -103,46 +103,45 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _walkthroughInitialized = false;
 
   // Walkthrough target keys
-final GlobalKey _expressionKey = GlobalKey();
-final GlobalKey _resultKey = GlobalKey();
-final GlobalKey _ansIndexKey = GlobalKey();
-final GlobalKey _basicKeypadKey = GlobalKey();
-final GlobalKey _basicKeypadHandleKey = GlobalKey();
-final GlobalKey _commandButtonKey = GlobalKey();
-final GlobalKey _scientificKeypadKey = GlobalKey();
-final GlobalKey _numberKeypadKey = GlobalKey();
-final GlobalKey _extrasKeypadKey = GlobalKey();
-final GlobalKey _mainKeypadAreaKey = GlobalKey();
-final GlobalKey _settingsButtonKey = GlobalKey();  // NEW
-
+  final GlobalKey _expressionKey = GlobalKey();
+  final GlobalKey _resultKey = GlobalKey();
+  final GlobalKey _ansIndexKey = GlobalKey();
+  final GlobalKey _basicKeypadKey = GlobalKey();
+  final GlobalKey _basicKeypadHandleKey = GlobalKey();
+  final GlobalKey _commandButtonKey = GlobalKey();
+  final GlobalKey _scientificKeypadKey = GlobalKey();
+  final GlobalKey _numberKeypadKey = GlobalKey();
+  final GlobalKey _extrasKeypadKey = GlobalKey();
+  final GlobalKey _mainKeypadAreaKey = GlobalKey();
+  final GlobalKey _settingsButtonKey = GlobalKey(); // NEW
 
   // Update the _walkthroughTargets getter:
 
-Map<String, GlobalKey> get _walkthroughTargets => {
-  'expression_area': _expressionKey,
-  'result_area': _resultKey,
-  'ans_index': _ansIndexKey,
-  'basic_keypad': _basicKeypadHandleKey,
-  'command_button': _commandButtonKey,
-  // Mobile keypad steps
-  'number_keypad': _mainKeypadAreaKey,
-  'scientific_keypad': _mainKeypadAreaKey,
-  'extras_keypad': _mainKeypadAreaKey,
-  'swipe_right_scientific': _mainKeypadAreaKey,
-  'swipe_left_number': _mainKeypadAreaKey,
-  'swipe_left_extras': _mainKeypadAreaKey,
-  'swipe_right_back': _mainKeypadAreaKey,
-  'settings_button': _settingsButtonKey,  // NEW
-  // Tablet keypad steps
-  'tablet_keypads_visible': _mainKeypadAreaKey,
-  'tablet_swipe_left_extras': _mainKeypadAreaKey,
-  'tablet_extras_visible': _mainKeypadAreaKey,
-  'tablet_swipe_right_back': _mainKeypadAreaKey,
-  'tablet_settings_button': _settingsButtonKey,  // NEW
-  // Common
-  'main_keypad_area': _mainKeypadAreaKey,
-  'complete': _mainKeypadAreaKey,
-};
+  Map<String, GlobalKey> get _walkthroughTargets => {
+    'expression_area': _expressionKey,
+    'result_area': _resultKey,
+    'ans_index': _ansIndexKey,
+    'basic_keypad': _basicKeypadHandleKey,
+    'command_button': _commandButtonKey,
+    // Mobile keypad steps
+    'number_keypad': _mainKeypadAreaKey,
+    'scientific_keypad': _mainKeypadAreaKey,
+    'extras_keypad': _mainKeypadAreaKey,
+    'swipe_right_scientific': _mainKeypadAreaKey,
+    'swipe_left_number': _mainKeypadAreaKey,
+    'swipe_left_extras': _mainKeypadAreaKey,
+    'swipe_right_back': _mainKeypadAreaKey,
+    'settings_button': _settingsButtonKey, // NEW
+    // Tablet keypad steps
+    'tablet_keypads_visible': _mainKeypadAreaKey,
+    'tablet_swipe_left_extras': _mainKeypadAreaKey,
+    'tablet_extras_visible': _mainKeypadAreaKey,
+    'tablet_swipe_right_back': _mainKeypadAreaKey,
+    'tablet_settings_button': _settingsButtonKey, // NEW
+    // Common
+    'main_keypad_area': _mainKeypadAreaKey,
+    'complete': _mainKeypadAreaKey,
+  };
 
   Future<void> _initializeWalkthrough() async {
     if (_walkthroughInitialized) return;
@@ -330,6 +329,11 @@ Map<String, GlobalKey> get _walkthroughTargets => {
     _isUpdating = true;
 
     try {
+      // ADD THIS LINE - Update the current cell's display first!
+      mathEditorControllers[changedIndex]?.updateAnswer(
+        textDisplayControllers[changedIndex],
+      );
+
       List<int> keys = mathEditorControllers.keys.toList()..sort();
 
       for (int key in keys) {
@@ -600,31 +604,31 @@ Map<String, GlobalKey> get _walkthroughTargets => {
                   bool isLandscape =
                       mediaQuery.orientation == Orientation.landscape;
 
-return CalculatorKeypad(
-  screenWidth: screenWidth,
-  isLandscape: isLandscape,
-  colors: colors,
-  activeIndex: activeIndex,
-  mathEditorControllers: mathEditorControllers,
-  textDisplayControllers: textDisplayControllers,
-  settingsProvider: _settingsProvider!,
-  onUpdateMathEditor: updateMathEditor,
-  onAddDisplay: _addDisplay,
-  onRemoveDisplay: _removeDisplay,
-  onClearAllDisplays: _clearAllDisplays,
-  countVariablesInExpressions: countVariablesInExpressions,
-  onSetState: () => setState(() {}),
-  // Walkthrough
-  walkthroughService: _walkthroughService,
-  basicKeypadKey: _basicKeypadKey,
-  basicKeypadHandleKey: _basicKeypadHandleKey,
-  scientificKeypadKey: _scientificKeypadKey,
-  numberKeypadKey: _numberKeypadKey,
-  extrasKeypadKey: _extrasKeypadKey,
-  commandButtonKey: _commandButtonKey,
-  mainKeypadAreaKey: _mainKeypadAreaKey,
-  settingsButtonKey: _settingsButtonKey,  // NEW
-);
+                  return CalculatorKeypad(
+                    screenWidth: screenWidth,
+                    isLandscape: isLandscape,
+                    colors: colors,
+                    activeIndex: activeIndex,
+                    mathEditorControllers: mathEditorControllers,
+                    textDisplayControllers: textDisplayControllers,
+                    settingsProvider: _settingsProvider!,
+                    onUpdateMathEditor: updateMathEditor,
+                    onAddDisplay: _addDisplay,
+                    onRemoveDisplay: _removeDisplay,
+                    onClearAllDisplays: _clearAllDisplays,
+                    countVariablesInExpressions: countVariablesInExpressions,
+                    onSetState: () => setState(() {}),
+                    // Walkthrough
+                    walkthroughService: _walkthroughService,
+                    basicKeypadKey: _basicKeypadKey,
+                    basicKeypadHandleKey: _basicKeypadHandleKey,
+                    scientificKeypadKey: _scientificKeypadKey,
+                    numberKeypadKey: _numberKeypadKey,
+                    extrasKeypadKey: _extrasKeypadKey,
+                    commandButtonKey: _commandButtonKey,
+                    mainKeypadAreaKey: _mainKeypadAreaKey,
+                    settingsButtonKey: _settingsButtonKey, // NEW
+                  );
                 },
               ),
             ],
