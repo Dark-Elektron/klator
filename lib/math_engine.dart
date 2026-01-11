@@ -41,7 +41,6 @@ class MathSolverNew {
 
       // Need at least as many equations as variables
       if (allVariables.length > equations.length) {
-        // print('DEBUG: ${allVariables.length} variables but only ${equations.length} equations');
         return null; // Not enough equations
       }
 
@@ -135,8 +134,6 @@ class MathSolverNew {
     // Find all unique variables in the equation
     Set<String> variables = _findVariables(equation);
 
-    // print('DEBUG: Found variables: $variables');
-
     // If no variables, just evaluate the expression
     if (variables.isEmpty) {
       return evaluate('${equation.replaceAll('=', '-(')})');
@@ -145,9 +142,6 @@ class MathSolverNew {
     // If more than one variable, return null or the original equation
     // (needs more equations to solve)
     if (variables.length > 1) {
-      // print(
-      //   'DEBUG: Multiple variables found (${variables.length}), cannot solve single equation',
-      // );
       return null; // Or return equation to show it as-is
     }
 

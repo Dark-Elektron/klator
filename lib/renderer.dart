@@ -639,15 +639,21 @@ class MathEditorController extends ChangeNotifier {
   void _setCursorInNodeAtOffset(NodeLayoutInfo info, double globalX) {
     final text = info.node.text;
     final relativeX = globalX - info.rect.left;
-    int newSubIndex =
-        text.isNotEmpty
-            ? MathTextStyle.getCharIndexForOffset(
-              text,
-              relativeX,
-              info.fontSize,
-              info.textScaler,
-            )
-            : 0;
+    int newSubIndex;
+    if (text.isEmpty) {
+      newSubIndex = 0;
+    } else if (info.renderParagraph != null) {
+      // Prefer using the actual RenderParagraph captured during layout
+      newSubIndex = _getCharIndexUsingRenderParagraph(info, relativeX);
+    } else {
+      // Fallback to the text-measure method
+      newSubIndex = MathTextStyle.getCharIndexForOffset(
+        text,
+        relativeX,
+        info.fontSize,
+        info.textScaler,
+      );
+    }
     cursor = EditorCursor(
       parentId: info.parentId,
       path: info.path,
@@ -1654,12 +1660,6 @@ class MathEditorController extends ChangeNotifier {
     result = MathSolverNew.solve(expr, ansValues: ansValues) ?? '';
     // Notify that result changed (for cascading updates)
     onResultChanged?.call();
-
-    // if (result != null) {
-    //   print(result);
-    // } else {
-    //   print("Could not solve");
-    // }
   }
 
   void updateAnswer(TextEditingController? textDisplayController) {
@@ -5064,8 +5064,17 @@ class MathEditorInlineState extends State<MathEditorInline>
 
     _doubleTapPosition = localToContainer;
 
-    // Move cursor to the double-tap position
-    widget.controller.tapAt(localToContainer);
+    // Move cursor to the double-tap position. Defer to next frame so
+    // layout registry (registered from child post-frame callbacks) is populated
+    // and we don't accidentally treat the tap as outside bounds.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        widget.controller.tapAt(localToContainer);
+      } catch (e) {
+        // Swallow any errors here; tapAt is best-effort and will be retried
+        // later if needed when the user interacts again.
+      }
+    });
   }
 
   void _handleDoubleTap() {
