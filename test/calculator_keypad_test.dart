@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:klator/keypad.dart';
+import 'package:klator/keypad/keypad.dart';
 import 'package:klator/walkthrough/walkthrough_service.dart';
 import 'package:klator/walkthrough/walkthrough_steps.dart';
-import 'package:klator/settings_provider.dart';
-import 'package:klator/app_colors.dart';
-import 'package:klator/renderer.dart';
+import 'package:klator/settings/settings_provider.dart';
+import 'package:klator/utils/app_colors.dart';
+import 'package:klator/math_renderer/math_editor_controller.dart';
 
 void main() {
   group('CalculatorKeypad', () {

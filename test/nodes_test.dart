@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:klator/renderer.dart';
+import 'package:klator/math_renderer/renderer.dart';
+import 'package:klator/math_renderer/cursor.dart';
 
 void main() {
   group('MathNode - LiteralNode', () {

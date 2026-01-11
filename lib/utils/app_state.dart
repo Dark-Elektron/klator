@@ -1,6 +1,7 @@
-import 'renderer.dart';
+import '../math_renderer/renderer.dart';
 import 'package:flutter/material.dart';
-import 'expression_selection.dart';
+import '../math_renderer/expression_selection.dart';
+import '../math_renderer/math_editor_controller.dart';
 
 /// Represents the state of all cells for app-level undo/redo
 class AppState {

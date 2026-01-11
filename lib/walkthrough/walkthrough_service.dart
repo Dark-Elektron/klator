@@ -46,7 +46,7 @@ class WalkthroughService extends ChangeNotifier {
   void setDeviceMode({required bool isTablet}) {
     if (_isTabletMode != isTablet) {
       _isTabletMode = isTablet;
-      debugPrint('Walkthrough device mode changed: isTablet=$isTablet');
+      // debugPrint('Walkthrough device mode changed: isTablet=$isTablet');
 
       if (_isActive) {
         if (_currentStep >= steps.length) {
@@ -62,8 +62,8 @@ class WalkthroughService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final completed = prefs.getBool(_completedKey);
 
-      debugPrint(
-          'Walkthrough initialize - completed: $completed, isTablet: $_isTabletMode, steps: ${steps.length}');
+      // debugPrint(
+      //     'Walkthrough initialize - completed: $completed, isTablet: $_isTabletMode, steps: ${steps.length}');
 
       if (completed == null || completed == false) {
         _isActive = true;
@@ -73,16 +73,16 @@ class WalkthroughService extends ChangeNotifier {
           onResetKeypad?.call();
         });
 
-        debugPrint('Walkthrough will be shown');
+        // debugPrint('Walkthrough will be shown');
       } else {
         _isActive = false;
-        debugPrint('Walkthrough already completed');
+        // debugPrint('Walkthrough already completed');
       }
 
       _isInitialized = true;
       notifyListeners();
     } catch (e) {
-      debugPrint('Walkthrough initialization error: $e');
+      // debugPrint('Walkthrough initialization error: $e');
       _isActive = true;
       _currentStep = 0;
       _isInitialized = true;
@@ -100,15 +100,15 @@ class WalkthroughService extends ChangeNotifier {
     });
 
     notifyListeners();
-    debugPrint(
-        'Walkthrough started manually (tablet: $_isTabletMode, steps: ${steps.length})');
+    // debugPrint(
+    //     'Walkthrough started manually (tablet: $_isTabletMode, steps: ${steps.length})');
   }
 
   void nextStep() {
     if (_currentStep < steps.length - 1) {
       _currentStep++;
-      debugPrint(
-          'Walkthrough step: $_currentStep/${steps.length} - ${steps[_currentStep].id}');
+      // debugPrint(
+      //     'Walkthrough step: $_currentStep/${steps.length} - ${steps[_currentStep].id}');
       notifyListeners();
     } else {
       completeWalkthrough();
@@ -130,21 +130,21 @@ class WalkthroughService extends ChangeNotifier {
             : _mobileSwipeStepPages[step.id];
 
         if (expectedPage != null && onNavigateToKeypadPage != null) {
-          debugPrint('Navigating keypad to page $expectedPage for step ${step.id}');
+          // debugPrint('Navigating keypad to page $expectedPage for step ${step.id}');
           WidgetsBinding.instance.addPostFrameCallback((_) {
             onNavigateToKeypadPage!(expectedPage);
           });
         }
       }
 
-      debugPrint(
-          'Walkthrough step: $_currentStep/${steps.length} - ${step.id}');
+      // debugPrint(
+      //     'Walkthrough step: $_currentStep/${steps.length} - ${step.id}');
       notifyListeners();
     }
   }
 
   void skipWalkthrough() {
-    debugPrint('Walkthrough skipped');
+    // debugPrint('Walkthrough skipped');
     completeWalkthrough();
   }
 
@@ -155,7 +155,7 @@ class WalkthroughService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_completedKey, true);
-      debugPrint('Walkthrough completed and saved');
+      // debugPrint('Walkthrough completed and saved');
     } catch (e) {
       debugPrint('Error saving walkthrough completion: $e');
     }
@@ -164,7 +164,7 @@ class WalkthroughService extends ChangeNotifier {
   }
 
   Future<void> resetWalkthrough() async {
-    debugPrint('Resetting walkthrough...');
+    // debugPrint('Resetting walkthrough...');
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -182,15 +182,15 @@ class WalkthroughService extends ChangeNotifier {
     });
 
     notifyListeners();
-    debugPrint(
-        'Walkthrough reset complete (tablet: $_isTabletMode, steps: ${steps.length})');
+    // debugPrint(
+    //     'Walkthrough reset complete (tablet: $_isTabletMode, steps: ${steps.length})');
   }
 
   Future<void> forceClear() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_completedKey);
-      debugPrint('Walkthrough data force cleared');
+      // debugPrint('Walkthrough data force cleared');
     } catch (e) {
       debugPrint('Error clearing walkthrough: $e');
     }
@@ -202,11 +202,11 @@ class WalkthroughService extends ChangeNotifier {
     if (!_isActive) return;
 
     final step = currentStepData;
-    debugPrint(
-        'Walkthrough: User action=$action, Step=${step.id}, Requires=${step.requiredAction}');
+    // debugPrint(
+    //     'Walkthrough: User action=$action, Step=${step.id}, Requires=${step.requiredAction}');
 
     if (step.requiresAction && step.requiredAction == action) {
-      debugPrint('Walkthrough: Action matched! Moving to next step.');
+      // debugPrint('Walkthrough: Action matched! Moving to next step.');
       nextStep();
     }
   }
