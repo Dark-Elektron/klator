@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'math_engine.dart';
-import 'renderer.dart';
+import '../math_engine/math_engine.dart';
+import '../math_renderer/renderer.dart';
 
 enum NumberFormat {
   automatic, // Scientific only for very large/small numbers

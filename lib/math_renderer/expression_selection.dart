@@ -1,8 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-
-// Import your node definitions - adjust path as needed
 import 'package:flutter/rendering.dart';
+import 'math_editor_controller.dart';
 import 'renderer.dart';
 
 // ============== SELECTION DATA CLASSES ==============
@@ -31,11 +30,7 @@ class SelectionAnchor {
   }
 
   @override
-  int get hashCode =>
-      parentId.hashCode ^
-      path.hashCode ^
-      nodeIndex.hashCode ^
-      charIndex.hashCode;
+  int get hashCode => Object.hash(parentId, path, nodeIndex, charIndex);
 
   SelectionAnchor copyWith({
     String? parentId,
@@ -51,17 +46,9 @@ class SelectionAnchor {
     );
   }
 
-  bool sameContext(SelectionAnchor other) {
-    return parentId == other.parentId && path == other.path;
-  }
-
-  int compareTo(SelectionAnchor other) {
-    if (!sameContext(other)) return 0;
-    if (nodeIndex != other.nodeIndex) {
-      return nodeIndex.compareTo(other.nodeIndex);
-    }
-    return charIndex.compareTo(other.charIndex);
-  }
+  @override
+  String toString() =>
+      'Anchor(parent: $parentId, path: $path, node: $nodeIndex, char: $charIndex)';
 }
 
 class SelectionRange {
@@ -71,13 +58,24 @@ class SelectionRange {
   const SelectionRange({required this.start, required this.end});
 
   bool get isEmpty => start == end;
-  bool get isValid => start.sameContext(end);
 
   SelectionRange get normalized {
-    if (start.compareTo(end) <= 0) return this;
+    int cmp;
+    if (start.nodeIndex != end.nodeIndex) {
+      cmp = start.nodeIndex.compareTo(end.nodeIndex);
+    } else {
+      cmp = start.charIndex.compareTo(end.charIndex);
+    }
+
+    if (cmp <= 0) return this;
     return SelectionRange(start: end, end: start);
   }
+
+  @override
+  String toString() => 'SelectionRange(start: $start, end: $end)';
 }
+
+// ============== CLIPBOARD ==============
 
 class MathClipboard {
   final List<MathNode> nodes;
@@ -150,13 +148,12 @@ class MathClipboard {
   }
 }
 
-/// Information about selection bounds
+// ============== SELECTION OVERLAY WIDGET ==============
 
-/// Combined overlay for selection menu, handles, AND highlight
 class SelectionOverlayWidget extends StatefulWidget {
   final MathEditorController controller;
   final GlobalKey containerKey;
-  final Offset? cursorLocalPosition;
+  final Offset? cursorLocalPosition; // Keep this for compatibility
   final VoidCallback? onCopy;
   final VoidCallback? onCut;
   final VoidCallback? onPaste;
@@ -166,14 +163,13 @@ class SelectionOverlayWidget extends StatefulWidget {
     super.key,
     required this.controller,
     required this.containerKey,
-    this.cursorLocalPosition,
+    this.cursorLocalPosition, // Keep this parameter
     this.onCopy,
     this.onCut,
     this.onPaste,
     required this.onDismiss,
   });
 
-  // Helper to determine if this is paste-only mode
   bool get isPasteOnlyMode =>
       onCopy == null && onCut == null && onPaste != null;
 
@@ -183,65 +179,34 @@ class SelectionOverlayWidget extends StatefulWidget {
 
 class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
   static const double _menuOffset = 12.0;
+  static const double _handleSize = 18.0;
 
-  void _collectAllNodeIds(MathNode node, Set<String> ids) {
-    ids.add(node.id);
+  // ============== BOUNDING BOX HELPERS ==============
 
-    if (node is FractionNode) {
-      for (var n in node.numerator) {
-        _collectAllNodeIds(n, ids);
-      }
-      for (var n in node.denominator) {
-        _collectAllNodeIds(n, ids);
-      }
-    } else if (node is ExponentNode) {
-      for (var n in node.base) {
-        _collectAllNodeIds(n, ids);
-      }
-      for (var n in node.power) {
-        _collectAllNodeIds(n, ids);
-      }
-    } else if (node is TrigNode) {
-      for (var n in node.argument) {
-        _collectAllNodeIds(n, ids);
-      }
-    } else if (node is RootNode) {
-      for (var n in node.index) {
-        _collectAllNodeIds(n, ids);
-      }
-      for (var n in node.radicand) {
-        _collectAllNodeIds(n, ids);
-      }
-    } else if (node is LogNode) {
-      for (var n in node.base) {
-        _collectAllNodeIds(n, ids);
-      }
-      for (var n in node.argument) {
-        _collectAllNodeIds(n, ids);
-      }
-    } else if (node is ParenthesisNode) {
-      for (var n in node.content) {
-        _collectAllNodeIds(n, ids);
-      }
-    } else if (node is PermutationNode) {
-      for (var n in node.n) {
-        _collectAllNodeIds(n, ids);
-      }
-      for (var n in node.r) {
-        _collectAllNodeIds(n, ids);
-      }
-    } else if (node is CombinationNode) {
-      for (var n in node.n) {
-        _collectAllNodeIds(n, ids);
-      }
-      for (var n in node.r) {
-        _collectAllNodeIds(n, ids);
-      }
-    } else if (node is AnsNode) {
-      for (var n in node.index) {
-        _collectAllNodeIds(n, ids);
+  Set<String> _collectAllNodeIds(MathNode node) {
+    final ids = <String>{node.id};
+
+    final childLists = _getChildLists(node);
+    for (final list in childLists) {
+      for (final child in list) {
+        ids.addAll(_collectAllNodeIds(child));
       }
     }
+
+    return ids;
+  }
+
+  List<List<MathNode>> _getChildLists(MathNode node) {
+    if (node is FractionNode) return [node.numerator, node.denominator];
+    if (node is ExponentNode) return [node.base, node.power];
+    if (node is TrigNode) return [node.argument];
+    if (node is RootNode) return [node.index, node.radicand];
+    if (node is LogNode) return [node.base, node.argument];
+    if (node is ParenthesisNode) return [node.content];
+    if (node is PermutationNode) return [node.n, node.r];
+    if (node is CombinationNode) return [node.n, node.r];
+    if (node is AnsNode) return [node.index];
+    return [];
   }
 
   List<MathNode>? _getSiblingList(String? parentId, String? path) {
@@ -285,39 +250,17 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
     for (final node in nodes) {
       if (node.id == id) return node;
 
-      MathNode? found;
-      if (node is FractionNode) {
-        found =
-            _findNodeById(node.numerator, id) ??
-            _findNodeById(node.denominator, id);
-      } else if (node is ExponentNode) {
-        found = _findNodeById(node.base, id) ?? _findNodeById(node.power, id);
-      } else if (node is TrigNode) {
-        found = _findNodeById(node.argument, id);
-      } else if (node is RootNode) {
-        found =
-            _findNodeById(node.index, id) ?? _findNodeById(node.radicand, id);
-      } else if (node is LogNode) {
-        found =
-            _findNodeById(node.base, id) ?? _findNodeById(node.argument, id);
-      } else if (node is ParenthesisNode) {
-        found = _findNodeById(node.content, id);
-      } else if (node is PermutationNode) {
-        found = _findNodeById(node.n, id) ?? _findNodeById(node.r, id);
-      } else if (node is CombinationNode) {
-        found = _findNodeById(node.n, id) ?? _findNodeById(node.r, id);
-      } else if (node is AnsNode) {
-        found = _findNodeById(node.index, id);
+      final childLists = _getChildLists(node);
+      for (final list in childLists) {
+        final found = _findNodeById(list, id);
+        if (found != null) return found;
       }
-
-      if (found != null) return found;
     }
     return null;
   }
 
-  Rect? _getFullNodeBounds(MathNode node) {
-    Set<String> nodeIds = {};
-    _collectAllNodeIds(node, nodeIds);
+  Rect? _getNodeBounds(MathNode node) {
+    final nodeIds = _collectAllNodeIds(node);
 
     double minX = double.infinity;
     double maxX = double.negativeInfinity;
@@ -337,112 +280,15 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
     return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
-  _SelectionInfo? _getSelectionInfo() {
-    final selection = widget.controller.selection;
-    if (selection == null || selection.isEmpty) return null;
-
-    final containerBox =
-        widget.containerKey.currentContext?.findRenderObject() as RenderBox?;
-    if (containerBox == null) return null;
-
-    final norm = selection.normalized;
-
-    final siblings = _getSiblingList(norm.start.parentId, norm.start.path);
-    if (siblings == null) return null;
-
-    double minY = double.infinity;
-    double maxY = double.negativeInfinity;
-    double startX = double.infinity;
-    double endX = double.negativeInfinity;
-
-    for (
-      int i = norm.start.nodeIndex;
-      i <= norm.end.nodeIndex && i < siblings.length;
-      i++
-    ) {
-      final node = siblings[i];
-      final nodeBounds = _getFullNodeBounds(node);
-
-      if (nodeBounds == null) continue;
-
-      minY = math.min(minY, nodeBounds.top);
-      maxY = math.max(maxY, nodeBounds.bottom);
-
-      if (i == norm.start.nodeIndex) {
-        if (node is LiteralNode) {
-          NodeLayoutInfo? info;
-          for (final layoutInfo in widget.controller.layoutRegistry.values) {
-            if (layoutInfo.node.id == node.id) {
-              info = layoutInfo;
-              break;
-            }
-          }
-
-          if (info != null) {
-            final offsetX = _getCursorOffsetUsingRenderParagraph(
-              info,
-              norm.start.charIndex,
-            );
-            startX = info.rect.left + offsetX;
-          }
-        } else {
-          startX = nodeBounds.left;
-        }
-      }
-
-      if (i == norm.end.nodeIndex) {
-        if (node is LiteralNode) {
-          NodeLayoutInfo? info;
-          for (final layoutInfo in widget.controller.layoutRegistry.values) {
-            if (layoutInfo.node.id == node.id) {
-              info = layoutInfo;
-              break;
-            }
-          }
-
-          if (info != null) {
-            final offsetX = _getCursorOffsetUsingRenderParagraph(
-              info,
-              norm.end.charIndex,
-            );
-            endX = info.rect.left + offsetX;
-          }
-        } else {
-          endX = nodeBounds.right;
-        }
-      }
-
-      if (i > norm.start.nodeIndex && i < norm.end.nodeIndex) {
-        startX = math.min(startX, nodeBounds.left);
-        endX = math.max(endX, nodeBounds.right);
-      }
+  NodeLayoutInfo? _findLayoutInfo(MathNode node) {
+    for (final info in widget.controller.layoutRegistry.values) {
+      if (info.node.id == node.id) return info;
     }
-
-    if (minY == double.infinity || startX == double.infinity) return null;
-
-    if (endX <= startX) {
-      endX = startX + 2;
-    }
-
-    final globalTopLeft = containerBox.localToGlobal(Offset(startX, minY));
-    final globalBottomRight = containerBox.localToGlobal(Offset(endX, maxY));
-
-    return _SelectionInfo(
-      bounds: Rect.fromLTRB(
-        globalTopLeft.dx,
-        globalTopLeft.dy,
-        globalBottomRight.dx,
-        globalBottomRight.dy,
-      ),
-    );
+    return null;
   }
 
-  double _getCursorOffsetUsingRenderParagraph(
-    NodeLayoutInfo info,
-    int charIndex,
-  ) {
+  double _getCursorOffset(NodeLayoutInfo info, int charIndex) {
     final text = info.node.text;
-
     if (text.isEmpty || charIndex <= 0) return 0.0;
 
     final displayText = MathTextStyle.toDisplayText(text);
@@ -459,11 +305,10 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
       return offset.dx;
     }
 
+    // Fallback
     final textSpan = TextSpan(
       text: displayText,
-      style: MathTextStyle.getStyle(
-        info.fontSize,
-      ).copyWith(color: Colors.white),
+      style: MathTextStyle.getStyle(info.fontSize),
     );
     final renderParagraph = RenderParagraph(
       textSpan,
@@ -471,7 +316,6 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
       textScaler: info.textScaler,
     );
     renderParagraph.layout(const BoxConstraints());
-
     final offset = renderParagraph.getOffsetForCaret(
       TextPosition(offset: displayIndex),
       Rect.zero,
@@ -480,18 +324,123 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
     return offset.dx;
   }
 
-  void _onHandleDrag(bool isStart, Offset globalPosition) {
+  // ============== SELECTION BOUNDS CALCULATION ==============
+
+  _SelectionBounds? _calculateSelectionBounds() {
+    final selection = widget.controller.selection;
+    if (selection == null || selection.isEmpty) return null;
+
     final containerBox =
         widget.containerKey.currentContext?.findRenderObject() as RenderBox?;
-    if (containerBox == null) return;
+    if (containerBox == null) return null;
 
-    final localPos = containerBox.globalToLocal(globalPosition);
+    final norm = selection.normalized;
+    final siblings = _getSiblingList(norm.start.parentId, norm.start.path);
+    if (siblings == null || siblings.isEmpty) return null;
 
-    widget.controller.updateSelectionHandle(isStart, localPos);
-    setState(() {});
+    final startNodeIdx = norm.start.nodeIndex.clamp(0, siblings.length - 1);
+    final endNodeIdx = norm.end.nodeIndex.clamp(0, siblings.length - 1);
+
+    double minY = double.infinity;
+    double maxY = double.negativeInfinity;
+    double startX = double.infinity;
+    double endX = double.negativeInfinity;
+
+    bool foundAny = false;
+
+    for (int i = startNodeIdx; i <= endNodeIdx; i++) {
+      if (i >= siblings.length) break;
+
+      final node = siblings[i];
+      final nodeBounds = _getNodeBounds(node);
+      if (nodeBounds == null) continue;
+
+      foundAny = true;
+      minY = math.min(minY, nodeBounds.top);
+      maxY = math.max(maxY, nodeBounds.bottom);
+
+      if (i == startNodeIdx && i == endNodeIdx) {
+        // Single node selection
+        if (node is LiteralNode) {
+          final info = _findLayoutInfo(node);
+          if (info != null) {
+            final startOffset = _getCursorOffset(info, norm.start.charIndex);
+            final endOffset = _getCursorOffset(info, norm.end.charIndex);
+            startX = info.rect.left + startOffset;
+            endX = info.rect.left + endOffset;
+          } else {
+            startX = nodeBounds.left;
+            endX = nodeBounds.right;
+          }
+        } else {
+          // Composite node - full bounds
+          startX = nodeBounds.left;
+          endX = nodeBounds.right;
+        }
+      } else if (i == startNodeIdx) {
+        // First node in multi-node selection
+        if (node is LiteralNode && norm.start.charIndex > 0) {
+          final info = _findLayoutInfo(node);
+          if (info != null) {
+            startX =
+                info.rect.left + _getCursorOffset(info, norm.start.charIndex);
+          } else {
+            startX = nodeBounds.left;
+          }
+        } else {
+          startX = nodeBounds.left;
+        }
+        endX = math.max(endX, nodeBounds.right);
+      } else if (i == endNodeIdx) {
+        // Last node
+        startX = math.min(startX, nodeBounds.left);
+        if (node is LiteralNode) {
+          final info = _findLayoutInfo(node);
+          if (info != null) {
+            final effectiveEndChar = norm.end.charIndex.clamp(
+              0,
+              node.text.length,
+            );
+            endX = math.max(
+              endX,
+              info.rect.left + _getCursorOffset(info, effectiveEndChar),
+            );
+          } else {
+            endX = math.max(endX, nodeBounds.right);
+          }
+        } else {
+          endX = math.max(endX, nodeBounds.right);
+        }
+      } else {
+        // Middle nodes - full width
+        startX = math.min(startX, nodeBounds.left);
+        endX = math.max(endX, nodeBounds.right);
+      }
+    }
+
+    if (!foundAny || minY == double.infinity || startX == double.infinity) {
+      return null;
+    }
+
+    // Ensure minimum width
+    if (endX <= startX) {
+      endX = startX + 4;
+    }
+
+    // Convert to global coordinates
+    final globalTopLeft = containerBox.localToGlobal(Offset(startX, minY));
+    final globalBottomRight = containerBox.localToGlobal(Offset(endX, maxY));
+
+    return _SelectionBounds(
+      rect: Rect.fromLTRB(
+        globalTopLeft.dx,
+        globalTopLeft.dy,
+        globalBottomRight.dx,
+        globalBottomRight.dy,
+      ),
+    );
   }
 
-  /// Get cursor bounds in GLOBAL coordinates (same format as selection bounds)
   Rect? _getCursorGlobalBounds() {
     final containerBox =
         widget.containerKey.currentContext?.findRenderObject() as RenderBox?;
@@ -499,37 +448,17 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
 
     final cursor = widget.controller.cursor;
 
-    // Find the node at cursor position in layout registry
     for (final info in widget.controller.layoutRegistry.values) {
       if (info.parentId == cursor.parentId &&
           info.path == cursor.path &&
           info.index == cursor.index) {
-        // Calculate cursor X position within the node
         double cursorX;
         if (info.node.text.isEmpty) {
           cursorX = info.rect.left;
-        } else if (info.renderParagraph != null) {
-          final displayText = MathTextStyle.toDisplayText(info.node.text);
-          final displayIndex = MathTextStyle.logicalToDisplayIndex(
-            info.node.text,
-            cursor.subIndex,
-          ).clamp(0, displayText.length);
-          final offset = info.renderParagraph!.getOffsetForCaret(
-            TextPosition(offset: displayIndex),
-            Rect.zero,
-          );
-          cursorX = info.rect.left + offset.dx;
         } else {
-          final offset = MathTextStyle.getCursorOffset(
-            info.node.text,
-            cursor.subIndex,
-            info.fontSize,
-            info.textScaler,
-          );
-          cursorX = info.rect.left + offset;
+          cursorX = info.rect.left + _getCursorOffset(info, cursor.subIndex);
         }
 
-        // Convert LOCAL coordinates to GLOBAL coordinates
         final globalTopLeft = containerBox.localToGlobal(
           Offset(cursorX, info.rect.top),
         );
@@ -549,49 +478,69 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
     return null;
   }
 
+  // ============== HANDLE DRAG ==============
+
+  void _onHandleDragStart(bool isStart) {
+    widget.controller.startHandleDrag(isStart);
+  }
+
+  void _onHandleDragUpdate(bool isStart, Offset globalPosition) {
+    final containerBox =
+        widget.containerKey.currentContext?.findRenderObject() as RenderBox?;
+    if (containerBox == null) return;
+
+    final localPos = containerBox.globalToLocal(globalPosition);
+    widget.controller.updateSelectionHandle(isStart, localPos);
+
+    setState(() {});
+  }
+
+  void _onHandleDragEnd() {
+    widget.controller.endHandleDrag();
+  }
+
+  // ============== BUILD ==============
+
   @override
   Widget build(BuildContext context) {
-    final selectionInfo = _getSelectionInfo();
+    final selectionBounds = _calculateSelectionBounds();
     final hasSelection = widget.controller.hasSelection;
     final screenSize = MediaQuery.of(context).size;
     final hasClipboard =
         MathEditorController.clipboard != null &&
         !MathEditorController.clipboard!.isEmpty;
 
-    // Check if this is paste-only mode (double-tap menu)
     final isPasteOnlyMode = widget.onCopy == null && widget.onCut == null;
 
-    // Calculate menu center position
+    // Calculate menu position - use expression top, not selection top
     double menuCenterX;
     double menuTopY;
 
-    if (hasSelection && selectionInfo != null) {
-      menuCenterX = selectionInfo.bounds.center.dx;
-      menuTopY = selectionInfo.bounds.top - 55 - _menuOffset;
+    if (hasSelection && selectionBounds != null) {
+      menuCenterX = selectionBounds.rect.center.dx;
+
+      // Get the top of the entire expression/context, not just the selection
+      final expressionTop = _getExpressionTop();
+      menuTopY = (expressionTop ?? selectionBounds.rect.top) - 55 - _menuOffset;
     } else {
       final cursorBounds = _getCursorGlobalBounds();
-
       if (cursorBounds != null) {
         menuCenterX = cursorBounds.center.dx;
-        menuTopY = cursorBounds.top - 55 - _menuOffset;
+        final expressionTop = _getExpressionTop();
+        menuTopY = (expressionTop ?? cursorBounds.top) - 55 - _menuOffset;
       } else {
         menuCenterX = screenSize.width / 2;
         menuTopY = 100;
       }
     }
 
-    // Clamp positions to keep menu on screen
+    // Clamp menu position to screen
     menuTopY = menuTopY.clamp(8.0, screenSize.height - 100);
     menuCenterX = menuCenterX.clamp(80.0, screenSize.width - 80.0);
 
-    const double lineWidth = 2.0;
-    const double lineHeight = 6.0;
-    const double dropSize = 18.0;
-
     return Stack(
       children: [
-        // Tap anywhere to dismiss - ONLY for paste-only mode (double-tap menu)
-        // For selection mode, dismissal is handled by tapping on the expression area
+        // Tap to dismiss (paste-only mode)
         if (isPasteOnlyMode)
           Positioned.fill(
             child: GestureDetector(
@@ -602,16 +551,16 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
           ),
 
         // Selection highlight
-        if (hasSelection && selectionInfo != null)
+        if (hasSelection && selectionBounds != null)
           Positioned(
-            left: selectionInfo.bounds.left,
-            top: selectionInfo.bounds.top,
-            width: selectionInfo.bounds.width,
-            height: selectionInfo.bounds.height,
+            left: selectionBounds.rect.left,
+            top: selectionBounds.rect.top,
+            width: selectionBounds.rect.width,
+            height: selectionBounds.rect.height,
             child: IgnorePointer(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.yellow.withValues(alpha: 0.35),
+                  color: Colors.yellow.withOpacity(0.35),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -619,32 +568,34 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
           ),
 
         // Selection handles
-        if (hasSelection && selectionInfo != null) ...[
+        if (hasSelection && selectionBounds != null) ...[
+          // Left (start) handle
           Positioned(
-            left: selectionInfo.bounds.left - dropSize,
-            top: selectionInfo.bounds.bottom,
+            left: selectionBounds.rect.left - _handleSize,
+            top: selectionBounds.rect.bottom,
             child: _SelectionHandle(
               isStart: true,
-              lineWidth: lineWidth,
-              lineHeight: lineHeight,
-              dropSize: dropSize,
-              onDrag: (globalPos) => _onHandleDrag(true, globalPos),
+              size: _handleSize,
+              onDragStart: () => _onHandleDragStart(true),
+              onDragUpdate: (pos) => _onHandleDragUpdate(true, pos),
+              onDragEnd: _onHandleDragEnd,
             ),
           ),
+          // Right (end) handle
           Positioned(
-            left: selectionInfo.bounds.right,
-            top: selectionInfo.bounds.bottom,
+            left: selectionBounds.rect.right,
+            top: selectionBounds.rect.bottom,
             child: _SelectionHandle(
               isStart: false,
-              lineWidth: lineWidth,
-              lineHeight: lineHeight,
-              dropSize: dropSize,
-              onDrag: (globalPos) => _onHandleDrag(false, globalPos),
+              size: _handleSize,
+              onDragStart: () => _onHandleDragStart(false),
+              onDragUpdate: (pos) => _onHandleDragUpdate(false, pos),
+              onDragEnd: _onHandleDragEnd,
             ),
           ),
         ],
 
-        // Floating menu - centered on menuCenterX
+        // Menu
         Positioned(
           top: menuTopY,
           left: menuCenterX,
@@ -660,125 +611,176 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
       ],
     );
   }
+
+  /// Get the top Y coordinate of the entire expression or current composite node
+  double? _getExpressionTop() {
+    final containerBox =
+        widget.containerKey.currentContext?.findRenderObject() as RenderBox?;
+    if (containerBox == null) return null;
+
+    final selection = widget.controller.selection;
+
+    // Find the minimum Y across all relevant nodes
+    double minY = double.infinity;
+
+    if (selection != null) {
+      final norm = selection.normalized;
+
+      // If we're inside a composite node, use that node's top
+      if (norm.start.parentId != null) {
+        // Find the root composite that contains this selection
+        String? rootCompositeId = _findRootComposite(norm.start.parentId);
+        if (rootCompositeId != null) {
+          final bounds = _getCompositeBounds(rootCompositeId);
+          if (bounds != null) {
+            final globalTop = containerBox.localToGlobal(Offset(0, bounds.top));
+            return globalTop.dy;
+          }
+        }
+      }
+    }
+
+    // Fallback: use the top of all layout items
+    for (final info in widget.controller.layoutRegistry.values) {
+      minY = math.min(minY, info.rect.top);
+    }
+
+    if (minY == double.infinity) return null;
+
+    final globalTop = containerBox.localToGlobal(Offset(0, minY));
+    return globalTop.dy;
+  }
+
+  /// Find the root-level composite node that contains the given node
+  String? _findRootComposite(String? nodeId) {
+    if (nodeId == null) return null;
+
+    String? current = nodeId;
+    String? rootComposite;
+
+    while (current != null) {
+      final info = widget.controller.complexNodeMap[current];
+      if (info == null) break;
+
+      if (info.parentId == null) {
+        // This is at root level
+        rootComposite = current;
+        break;
+      }
+
+      rootComposite = current;
+      current = info.parentId;
+    }
+
+    return rootComposite;
+  }
+
+  /// Get bounds of a composite node
+  Rect? _getCompositeBounds(String nodeId) {
+    final node = _findNodeById(widget.controller.expression, nodeId);
+    if (node == null) return null;
+    return _getNodeBounds(node);
+  }
 }
 
-class _SelectionInfo {
-  final Rect bounds;
-  _SelectionInfo({required this.bounds});
+// ============== HELPER CLASSES ==============
+
+class _SelectionBounds {
+  final Rect rect;
+
+  _SelectionBounds({required this.rect});
 }
 
 class _SelectionHandle extends StatelessWidget {
   final bool isStart;
-  final double lineWidth;
-  final double lineHeight;
-  final double dropSize;
-  final Function(Offset globalPosition) onDrag;
+  final double size;
+  final VoidCallback onDragStart;
+  final Function(Offset globalPosition) onDragUpdate;
+  final VoidCallback onDragEnd;
 
   const _SelectionHandle({
     required this.isStart,
-    required this.lineWidth,
-    required this.lineHeight,
-    required this.dropSize,
-    required this.onDrag,
+    required this.size,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
   });
 
   @override
   Widget build(BuildContext context) {
-    const double touchPadding = 12.0;
+    const double touchPadding = 16.0;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onPanStart: (details) {
-        onDrag(details.globalPosition);
+        onDragStart();
+        onDragUpdate(details.globalPosition);
       },
       onPanUpdate: (details) {
-        onDrag(details.globalPosition);
+        onDragUpdate(details.globalPosition);
       },
+      onPanEnd: (_) => onDragEnd(),
+      onPanCancel: onDragEnd,
       child: Container(
-        width: dropSize + touchPadding,
-        height: lineHeight + dropSize + touchPadding,
+        width: size + touchPadding,
+        height: size + touchPadding,
         color: Colors.transparent,
         child: CustomPaint(
-          size: Size(
-            dropSize + touchPadding,
-            lineHeight + dropSize + touchPadding,
-          ),
-          painter: _WaterDropHandlePainter(
-            isStart: isStart,
-            lineWidth: lineWidth,
-            lineHeight: lineHeight,
-            dropSize: dropSize,
-            touchPadding: touchPadding,
-          ),
+          size: Size(size + touchPadding, size + touchPadding),
+          painter: _HandlePainter(isStart: isStart, size: size),
         ),
       ),
     );
   }
 }
 
-class _WaterDropHandlePainter extends CustomPainter {
+class _HandlePainter extends CustomPainter {
   final bool isStart;
-  final double lineWidth;
-  final double lineHeight;
-  final double dropSize;
-  final double touchPadding;
+  final double size;
 
-  _WaterDropHandlePainter({
-    required this.isStart,
-    required this.lineWidth,
-    required this.lineHeight,
-    required this.dropSize,
-    required this.touchPadding,
-  });
+  _HandlePainter({required this.isStart, required this.size});
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paint(Canvas canvas, Size canvasSize) {
     final paint =
         Paint()
           ..color = Colors.yellowAccent
           ..style = PaintingStyle.fill;
 
-    final double r = dropSize / 2;
+    final double r = size / 2;
 
     if (isStart) {
-      final double shapeRight = dropSize;
-
+      // Left handle - teardrop pointing up-right
       final path = Path();
-      path.moveTo(shapeRight, 0);
-      path.lineTo(shapeRight, r);
+      path.moveTo(size, 0);
+      path.lineTo(size, r);
       path.arcToPoint(
         Offset(r, 0),
         radius: Radius.circular(r),
         clockwise: true,
         largeArc: true,
       );
-      path.lineTo(shapeRight, 0);
       path.close();
       canvas.drawPath(path, paint);
     } else {
-      final double shapeLeft = 0.0;
-      final double dropCenterX = shapeLeft + r;
-
+      // Right handle - teardrop pointing up-left
       final path = Path();
-      path.moveTo(shapeLeft, 0);
-      path.lineTo(shapeLeft, r);
+      path.moveTo(0, 0);
+      path.lineTo(0, r);
       path.arcToPoint(
-        Offset(dropCenterX, 0),
+        Offset(r, 0),
         radius: Radius.circular(r),
         clockwise: false,
         largeArc: true,
       );
-      path.lineTo(shapeLeft, 0);
       path.close();
       canvas.drawPath(path, paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _WaterDropHandlePainter oldDelegate) {
-    return isStart != oldDelegate.isStart ||
-        lineWidth != oldDelegate.lineWidth ||
-        lineHeight != oldDelegate.lineHeight ||
-        dropSize != oldDelegate.dropSize;
+  bool shouldRepaint(covariant _HandlePainter oldDelegate) {
+    return isStart != oldDelegate.isStart || size != oldDelegate.size;
   }
 }
 
@@ -806,11 +808,11 @@ class _SelectionMenu extends StatelessWidget {
             if (onCut != null)
               _MenuButton(icon: Icons.cut, label: 'Cut', onTap: onCut!),
             if (onCopy != null) ...[
-              if (onCut != null) _MenuDivider(),
+              if (onCut != null) const _MenuDivider(),
               _MenuButton(icon: Icons.copy, label: 'Copy', onTap: onCopy!),
             ],
             if (onPaste != null) ...[
-              if (onCopy != null || onCut != null) _MenuDivider(),
+              if (onCopy != null || onCut != null) const _MenuDivider(),
               _MenuButton(icon: Icons.paste, label: 'Paste', onTap: onPaste!),
             ],
           ],
@@ -855,6 +857,8 @@ class _MenuButton extends StatelessWidget {
 }
 
 class _MenuDivider extends StatelessWidget {
+  const _MenuDivider();
+
   @override
   Widget build(BuildContext context) {
     return Container(width: 1, height: 30, color: Colors.grey[600]);

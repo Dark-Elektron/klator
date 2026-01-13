@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:klator/math_engine.dart';
+import 'package:klator/math_engine/math_engine.dart';
 
 void main() {
   group('MathSolverNew - Basic Evaluation', () {

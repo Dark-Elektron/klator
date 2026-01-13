@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'renderer.dart';
+import '../math_renderer/renderer.dart';
 
 class MathExpressionSerializer {
   // Unicode characters used in the editor

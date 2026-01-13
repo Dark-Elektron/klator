@@ -1,7 +1,7 @@
 // cell_persistence.dart
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'math_expression_serializer.dart';
+import '../math_engine/math_expression_serializer.dart';
 import 'renderer.dart';
 
 class CellData {

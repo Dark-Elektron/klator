@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:klator/help.dart';
-import 'package:klator/utils.dart';
+import 'package:klator/utils/utils.dart';
 import 'buttons.dart';
-import 'settings.dart';
-import 'settings_provider.dart';
-import 'renderer.dart';
-import 'app_colors.dart';
+import '../settings/settings.dart';
+import '../settings/settings_provider.dart';
+import '../utils/app_colors.dart';
 import 'dart:async';
-import 'walkthrough/walkthrough_service.dart';
-import 'walkthrough/walkthrough_steps.dart';
+import '../walkthrough/walkthrough_service.dart';
+import '../walkthrough/walkthrough_steps.dart';
+import '../math_renderer/math_editor_controller.dart';
 
 /// Custom ScrollPhysics that restricts swipe direction
 class DirectionalScrollPhysics extends ScrollPhysics {
@@ -1242,17 +1242,18 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         }
-        if (index == 5) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertCharacter(_buttonsR[index]);
-              widget.onUpdateMathEditor();
-            },
-            buttonText: _buttonsR[index],
-            color: Colors.white,
-            textColor: Colors.grey,
-          );
-        } else if (index == 6) {
+        // if (index == 5) {
+        //   return MyButton(
+        //     buttontapped: () {
+        //       _activeController?.insertCharacter(_buttonsR[index]);
+        //       widget.onUpdateMathEditor();
+        //     },
+        //     buttonText: _buttonsR[index],
+        //     color: Colors.white,
+        //     textColor: Colors.grey,
+        //   );
+        // } else 
+        if (index == 6) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('!');

@@ -1,5 +1,5 @@
 import 'dart:math';
-import 'settings_provider.dart';
+import '../settings/settings_provider.dart';
 
 /// Math solver for expressions from the new math renderer
 

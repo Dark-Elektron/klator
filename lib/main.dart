@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:klator/constants.dart';
+import 'package:klator/utils/constants.dart';
 import 'package:provider/provider.dart';
-import 'settings_provider.dart';
-import 'renderer.dart';
-import 'app_colors.dart';
-import 'cell_persistence_service.dart';
-import 'math_expression_serializer.dart';
+import 'settings/settings_provider.dart';
+import 'math_renderer/renderer.dart';
+import 'utils/app_colors.dart';
+import 'math_renderer/cell_persistence_service.dart';
+import 'math_engine/math_expression_serializer.dart';
 import 'dart:async';
-import 'keypad.dart';
+import 'keypad/keypad.dart';
 import 'walkthrough/walkthrough_service.dart';
 import 'walkthrough/walkthrough_overlay.dart';
-import 'app_state.dart';
-import 'expression_selection.dart';
+import 'utils/app_state.dart';
+import 'math_renderer/expression_selection.dart';
+import 'math_renderer/math_editor_controller.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -384,6 +386,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               opacity: isVisible ? 1.0 : 0.0,
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
+                onTapDown: (details) {
+                  // Clear selection when tapping anywhere in this area
+                  mathEditorController.clearSelection();
+                  mathEditorKey?.currentState?.clearOverlay();
+                },
                 onTapUp: (details) {
                   setState(() {
                     activeIndex = index;
@@ -712,73 +719,85 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           backgroundColor: colors.displayBackground,
         ),
         backgroundColor: colors.displayBackground,
-        body: SafeArea(
-          child: Column(
-            children: <Widget>[
-              Expanded(
-                child: ListView.builder(
-                  reverse: true,
-                  padding: EdgeInsets.zero,
-                  itemCount: count,
-                  itemBuilder: (context, index) {
-                    List<int> keys =
-                        mathEditorControllers.keys.toList()..sort();
-                    int reversedIndex = keys.length - 1 - index;
+        body: Stack(
+          children: [
+            // SVG Background
+            Positioned.fill(
+              child: SvgPicture.asset(
+                colors.backgroundImage,
+                fit: BoxFit.cover,
+              ),
+            ),
+            SafeArea(
+              child: Column(
+                children: <Widget>[
+                  Expanded(
+                    child: ListView.builder(
+                      reverse: true,
+                      padding: EdgeInsets.zero,
+                      itemCount: count,
+                      itemBuilder: (context, index) {
+                        List<int> keys =
+                            mathEditorControllers.keys.toList()..sort();
+                        int reversedIndex = keys.length - 1 - index;
 
-                    if (reversedIndex >= 0 && reversedIndex < keys.length) {
-                      return Padding(
-                        padding: EdgeInsets.only(top: 5),
-                        child: _buildExpressionDisplay(
-                          keys[reversedIndex],
-                          colors,
-                        ),
+                        if (reversedIndex >= 0 && reversedIndex < keys.length) {
+                          return Padding(
+                            padding: EdgeInsets.only(top: 5),
+                            child: _buildExpressionDisplay(
+                              keys[reversedIndex],
+                              colors,
+                            ),
+                          );
+                        }
+                        return SizedBox.shrink();
+                      },
+                    ),
+                  ),
+                  Builder(
+                    builder: (context) {
+                      final mediaQuery = MediaQuery.of(context);
+                      double screenWidth = mediaQuery.size.width;
+                      bool isLandscape =
+                          mediaQuery.orientation == Orientation.landscape;
+
+                      return CalculatorKeypad(
+                        screenWidth: screenWidth,
+                        isLandscape: isLandscape,
+                        colors: colors,
+                        activeIndex: activeIndex,
+                        mathEditorControllers: mathEditorControllers,
+                        textDisplayControllers: textDisplayControllers,
+                        settingsProvider: _settingsProvider!,
+                        onUpdateMathEditor: updateMathEditor,
+                        onAddDisplay: _addDisplay,
+                        onRemoveDisplay: _removeDisplay,
+                        onClearAllDisplays: _clearAllDisplays,
+                        countVariablesInExpressions:
+                            countVariablesInExpressions,
+                        onSetState: () => setState(() {}),
+                        onClearSelectionOverlay: _clearAllSelectionOverlays,
+                        canUndoAppState: canUndoAppState,
+                        canRedoAppState: canRedoAppState,
+                        onUndoAppState: _undoAppState,
+                        onRedoAppState: _redoAppState,
+                        // Walkthrough
+                        walkthroughService: _walkthroughService,
+                        basicKeypadKey: _basicKeypadKey,
+                        basicKeypadHandleKey: _basicKeypadHandleKey,
+                        scientificKeypadKey: _scientificKeypadKey,
+                        numberKeypadKey: _numberKeypadKey,
+                        extrasKeypadKey: _extrasKeypadKey,
+                        commandButtonKey: _commandButtonKey,
+                        mainKeypadAreaKey: _mainKeypadAreaKey,
+                        settingsButtonKey: _settingsButtonKey,
                       );
-                    }
-                    return SizedBox.shrink();
-                  },
-                ),
+                    },
+                  ),
+                ],
               ),
-              Builder(
-                builder: (context) {
-                  final mediaQuery = MediaQuery.of(context);
-                  double screenWidth = mediaQuery.size.width;
-                  bool isLandscape =
-                      mediaQuery.orientation == Orientation.landscape;
-
-                  return CalculatorKeypad(
-                    screenWidth: screenWidth,
-                    isLandscape: isLandscape,
-                    colors: colors,
-                    activeIndex: activeIndex,
-                    mathEditorControllers: mathEditorControllers,
-                    textDisplayControllers: textDisplayControllers,
-                    settingsProvider: _settingsProvider!,
-                    onUpdateMathEditor: updateMathEditor,
-                    onAddDisplay: _addDisplay,
-                    onRemoveDisplay: _removeDisplay,
-                    onClearAllDisplays: _clearAllDisplays,
-                    countVariablesInExpressions: countVariablesInExpressions,
-                    onSetState: () => setState(() {}),
-                    onClearSelectionOverlay: _clearAllSelectionOverlays,
-                    canUndoAppState: canUndoAppState,
-                    canRedoAppState: canRedoAppState,
-                    onUndoAppState: _undoAppState,
-                    onRedoAppState: _redoAppState,
-                    // Walkthrough
-                    walkthroughService: _walkthroughService,
-                    basicKeypadKey: _basicKeypadKey,
-                    basicKeypadHandleKey: _basicKeypadHandleKey,
-                    scientificKeypadKey: _scientificKeypadKey,
-                    numberKeypadKey: _numberKeypadKey,
-                    extrasKeypadKey: _extrasKeypadKey,
-                    commandButtonKey: _commandButtonKey,
-                    mainKeypadAreaKey: _mainKeypadAreaKey,
-                    settingsButtonKey: _settingsButtonKey,
-                  );
-                },
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

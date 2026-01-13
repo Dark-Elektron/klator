@@ -1,4 +1,6 @@
 import 'renderer.dart';
+import 'math_editor_controller.dart';
+import 'cursor.dart';
 
 /// Handles wrapping selected content in various node types
 class SelectionWrapper {

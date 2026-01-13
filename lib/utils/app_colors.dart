@@ -11,6 +11,7 @@ class AppColors {
   final Color keypadBackground;
   final Color keypadButton;
   final Color keypadButtonText;
+  final String backgroundImage; // Add this
 
   const AppColors({
     required this.displayBackground,
@@ -23,6 +24,7 @@ class AppColors {
     required this.keypadBackground,
     required this.keypadButton,
     required this.keypadButtonText,
+    required this.backgroundImage, // Add this
   });
 
   // Light theme colors
@@ -37,6 +39,7 @@ class AppColors {
     keypadBackground: Color(0xFFE0E0E0),
     keypadButton: Colors.white,
     keypadButtonText: Colors.black,
+    backgroundImage: 'assets/imgs/background_light.svg',
   );
 
   // Dark theme colors
@@ -51,6 +54,7 @@ class AppColors {
     keypadBackground: Color(0xFF121212),
     keypadButton: Color(0xFF2C2C2C),
     keypadButtonText: Colors.white,
+    backgroundImage: 'assets/imgs/background_dark.svg',
   );
 
   // Helper to get colors based on context

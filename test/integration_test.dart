@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:klator/math_engine.dart';
-import 'package:klator/math_expression_serializer.dart';
-import 'package:klator/renderer.dart';
+import 'package:klator/math_engine/math_engine.dart';
+import 'package:klator/math_engine/math_expression_serializer.dart';
+import 'package:klator/math_renderer/renderer.dart';
 
 void main() {
   group('Integration - Expression to Result', () {
