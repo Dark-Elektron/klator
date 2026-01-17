@@ -12,7 +12,7 @@ class SelectionManager {
   bool _isDragging = false;
   bool _isDraggingStartHandle = false;
   SelectionAnchor? _fixedAnchor;
-  
+
   // Context tracking
   String? _contextParentId;
   String? _contextPath;
@@ -20,15 +20,15 @@ class SelectionManager {
   bool _isBlockMode = false;
 
   // Bounds cache - separate content bounds from visual bounds
-  final Map<String, Rect> _contentBoundsCache = {};  // Just the content
-  final Map<String, Rect> _visualBoundsCache = {};   // Including visual elements
+  final Map<String, Rect> _contentBoundsCache = {}; // Just the content
+  final Map<String, Rect> _visualBoundsCache = {}; // Including visual elements
 
   // Handle offset compensation
-  static const double _handleYOffset = 30.0;  // Handles hang below selection
-  
+  static const double _handleYOffset = 30.0; // Handles hang below selection
+
   // Config
-  static const double _exitPadding = 15.0;
-  static const double _reentryPadding = 5.0;
+  // static const double _exitPadding = 15.0;
+  static const double _reentryPadding = 15.0;
 
   SelectionManager(this.controller);
 
@@ -44,23 +44,15 @@ class SelectionManager {
     _fixedAnchor = isStartHandle ? selection.end : selection.start;
     _contextParentId = selection.start.parentId;
     _contextPath = selection.start.path;
-    
+
     // Determine if we're in block mode (single composite selected)
     _selectedCompositeId = _getSingleSelectedCompositeId(selection);
     _isBlockMode = _selectedCompositeId != null;
 
     _rebuildBoundsCache();
-    
-    debugPrint('=== START DRAG ===');
-    debugPrint('  isStartHandle: $isStartHandle');
-    debugPrint('  fixedAnchor: $_fixedAnchor');
-    debugPrint('  context: $_contextParentId / $_contextPath');
-    debugPrint('  isBlockMode: $_isBlockMode');
-    debugPrint('  selectedComposite: $_selectedCompositeId');
   }
 
   void endDrag() {
-    debugPrint('=== END DRAG ===');
     _isDragging = false;
     _isDraggingStartHandle = false;
     _fixedAnchor = null;
@@ -78,14 +70,10 @@ class SelectionManager {
 
     // Compensate for handle position
     final position = _adjustForHandle(rawPosition);
-    
-    debugPrint('--- updateDrag raw=$rawPosition adjusted=$position ---');
-    debugPrint('  isBlockMode: $_isBlockMode, selectedComposite: $_selectedCompositeId');
 
     // CASE 1: In block mode - check for re-entry
     if (_isBlockMode && _selectedCompositeId != null) {
       if (_tryReentry(position)) {
-        debugPrint('  >>> RE-ENTERED composite');
         return;
       }
       // Update selection while in block mode
@@ -96,7 +84,6 @@ class SelectionManager {
     // CASE 2: Inside a context - check for exit
     if (_contextParentId != null) {
       if (_shouldExit(position)) {
-        debugPrint('  >>> EXITING context');
         _performExit();
         return;
       }
@@ -104,7 +91,6 @@ class SelectionManager {
       // Check for sibling switch
       final siblingPath = _checkSiblingSwitch(position);
       if (siblingPath != null) {
-        debugPrint('  >>> SWITCHING to sibling: $siblingPath');
         _performSiblingSwitch(siblingPath, position);
         return;
       }
@@ -120,7 +106,7 @@ class SelectionManager {
     // Find nearest literal
     NodeLayoutInfo? bestLiteral;
     double bestDist = double.infinity;
-    
+
     for (final info in controller.layoutRegistry.values) {
       final dist = _distanceToRect(position, info.rect);
       if (dist < bestDist) {
@@ -148,26 +134,31 @@ class SelectionManager {
     _isBlockMode = false;
     _selectedCompositeId = null;
 
-    controller.setSelection(SelectionRange(
-      start: SelectionAnchor(
-        parentId: bestLiteral.parentId,
-        path: bestLiteral.path,
-        nodeIndex: bestLiteral.index,
-        charIndex: start,
+    controller.setSelection(
+      SelectionRange(
+        start: SelectionAnchor(
+          parentId: bestLiteral.parentId,
+          path: bestLiteral.path,
+          nodeIndex: bestLiteral.index,
+          charIndex: start,
+        ),
+        end: SelectionAnchor(
+          parentId: bestLiteral.parentId,
+          path: bestLiteral.path,
+          nodeIndex: bestLiteral.index,
+          charIndex: end,
+        ),
       ),
-      end: SelectionAnchor(
-        parentId: bestLiteral.parentId,
-        path: bestLiteral.path,
-        nodeIndex: bestLiteral.index,
-        charIndex: end,
-      ),
-    ));
+    );
   }
 
   // ============== RE-ENTRY ==============
 
   bool _tryReentry(Offset position) {
     if (_selectedCompositeId == null) return false;
+
+    // We allow re-entry even during dragging to permit refining selections
+    // by dragging handles back into composite nodes.
 
     // Use content bounds for re-entry (not visual bounds)
     final node = _findNodeById(_selectedCompositeId!);
@@ -176,9 +167,10 @@ class SelectionManager {
     // Get the content bounds of sub-contexts
     final contexts = _getChildContexts(node);
     for (final ctx in contexts) {
-      final ctxBounds = _contentBoundsCache['$_selectedCompositeId:${ctx.path}'];
+      final ctxBounds =
+          _contentBoundsCache['$_selectedCompositeId:${ctx.path}'];
       if (ctxBounds == null) continue;
-      
+
       // Check if position is within this context's bounds (with small padding)
       final expandedBounds = Rect.fromLTRB(
         ctxBounds.left - _reentryPadding,
@@ -186,10 +178,8 @@ class SelectionManager {
         ctxBounds.right + _reentryPadding,
         ctxBounds.bottom + _reentryPadding,
       );
-      
+
       if (expandedBounds.contains(position)) {
-        debugPrint('    _tryReentry: entering ${ctx.path} at $position (bounds: $ctxBounds)');
-        
         // Perform re-entry into this context
         _contextParentId = _selectedCompositeId;
         _contextPath = ctx.path;
@@ -218,19 +208,26 @@ class SelectionManager {
         }
 
         // Create selection at position
-        final literal = _findLiteralInContext(position, _contextParentId, _contextPath);
+        final literal = _findLiteralInContext(
+          position,
+          _contextParentId,
+          _contextPath,
+        );
         if (literal != null && _fixedAnchor != null) {
           final charIdx = _getCharIndex(literal, position);
-          _createAndSetSelection(_fixedAnchor!, SelectionAnchor(
-            parentId: literal.parentId,
-            path: literal.path,
-            nodeIndex: literal.index,
-            charIndex: charIdx,
-          ));
+          _createAndSetSelection(
+            _fixedAnchor!,
+            SelectionAnchor(
+              parentId: literal.parentId,
+              path: literal.path,
+              nodeIndex: literal.index,
+              charIndex: charIdx,
+            ),
+          );
         } else {
           _selectEntireContext(_contextParentId, _contextPath);
         }
-        
+
         return true;
       }
     }
@@ -246,27 +243,44 @@ class SelectionManager {
     // Get the CONTENT bounds of current context (not visual bounds)
     final contextKey = '$_contextParentId:$_contextPath';
     final contentBounds = _contentBoundsCache[contextKey];
-    
     if (contentBounds == null) {
-      debugPrint('    _shouldExit: no content bounds for $contextKey');
       return false;
     }
 
-    // Check if position is outside content bounds (with padding)
-    final exitBounds = Rect.fromLTRB(
-      contentBounds.left - _exitPadding,
-      contentBounds.top - _exitPadding,
-      contentBounds.right + _exitPadding,
-      contentBounds.bottom + _exitPadding,
-    );
+    // CHECK: Visual Bounds Logic
+    // If we have visual bounds for the parent container, we use them as the primary truth.
+    final parentVisualBounds = _visualBoundsCache[_contextParentId];
+    if (parentVisualBounds != null) {
+      // 1. If we are OUTSIDE the parent's visual bounds, we definitely exit.
+      // (This fixes the "stuck in padding" issue)
+      if (!parentVisualBounds.contains(position)) {
+        return true;
+      }
 
-    final shouldExit = !exitBounds.contains(position);
-    
-    if (shouldExit) {
-      debugPrint('    _shouldExit: YES - position $position outside exit bounds $exitBounds');
+      // 2. We are INSIDE the parent's visual bounds.
+      // Check if we are in the "structure" (brackets, etc.) rather than the content.
+      final innerContentBounds = Rect.fromLTRB(
+        contentBounds.left - 2,
+        contentBounds.top - 2,
+        contentBounds.right + 2,
+        contentBounds.bottom + 2,
+      );
+
+      if (!innerContentBounds.contains(position)) {
+        // _checkSiblingSwitch handles moving to other contexts.
+        // This check is: Am I hitting the container?
+
+        // We should verify we aren't in a sibling's content bounds.
+        // Check if we stumbled into a sibling first?
+        // REMOVED Sibling Check: If we hit the frame, we prioritize EXIT to select the parent.
+        // This allows dragging from Base -> Power to select the whole ExponentNode.
+        // The user can click to select specific sibling components.
+
+        return true; // Hit the frame -> Exit
+      }
     }
-    
-    return shouldExit;
+
+    return false;
   }
 
   void _performExit() {
@@ -285,7 +299,7 @@ class SelectionManager {
     if (parent == null) return null;
 
     final siblingPaths = _getSiblingPaths(parent);
-    
+
     for (final path in siblingPaths) {
       if (path == _contextPath) continue;
 
@@ -309,7 +323,7 @@ class SelectionManager {
 
   void _performSiblingSwitch(String newPath, Offset position) {
     _contextPath = newPath;
-    
+
     final siblings = _getSiblings(_contextParentId, _contextPath);
     if (siblings == null || siblings.isEmpty) return;
 
@@ -321,15 +335,22 @@ class SelectionManager {
       charIndex: 0,
     );
 
-    final literal = _findLiteralInContext(position, _contextParentId, _contextPath);
+    final literal = _findLiteralInContext(
+      position,
+      _contextParentId,
+      _contextPath,
+    );
     if (literal != null && _fixedAnchor != null) {
       final charIdx = _getCharIndex(literal, position);
-      _createAndSetSelection(_fixedAnchor!, SelectionAnchor(
-        parentId: literal.parentId,
-        path: literal.path,
-        nodeIndex: literal.index,
-        charIndex: charIdx,
-      ));
+      _createAndSetSelection(
+        _fixedAnchor!,
+        SelectionAnchor(
+          parentId: literal.parentId,
+          path: literal.path,
+          nodeIndex: literal.index,
+          charIndex: charIdx,
+        ),
+      );
     } else {
       _selectEntireContext(_contextParentId, _contextPath);
     }
@@ -339,19 +360,33 @@ class SelectionManager {
 
   void _updateBlockModeSelection(Offset position) {
     if (_fixedAnchor == null || _selectedCompositeId == null) return;
-    
+
+    // Check if we should exit THIS context (escalate further up)
+    // The current context for block selection is the parent of the block.
+    // e.g. Exponent > Parenthesis. Context is Exponent. Parenthesis is Block.
+    // If we drag outside Exponent, we should select Exponent.
+    if (_shouldExit(position)) {
+      _performExit();
+      return;
+    }
+
     final info = controller.complexNodeMap[_selectedCompositeId!];
     if (info == null) return;
-    
+
     final siblings = _getSiblings(info.parentId, info.path);
     if (siblings == null) return;
-    
+
     // Find target node at position
-    final targetInfo = _findTargetNodeAtPosition(position, info.parentId, info.path, siblings);
+    final targetInfo = _findTargetNodeAtPosition(
+      position,
+      info.parentId,
+      info.path,
+      siblings,
+    );
     if (targetInfo == null) return;
-    
+
     SelectionAnchor movingAnchor;
-    
+
     if (targetInfo.index == info.index) {
       // Same composite - determine which edge
       final bounds = _visualBoundsCache[_selectedCompositeId!];
@@ -391,27 +426,28 @@ class SelectionManager {
         );
       }
     }
-    
-    debugPrint('  _updateBlockModeSelection: fixed=$_fixedAnchor, moving=$movingAnchor');
+
     _createAndSetSelection(_fixedAnchor!, movingAnchor);
   }
 
   void _updateSelectionInContext(Offset position) {
     if (_fixedAnchor == null) {
-      debugPrint('  _updateSelection: no fixedAnchor');
       return;
     }
 
     final siblings = _getSiblings(_contextParentId, _contextPath);
     if (siblings == null || siblings.isEmpty) {
-      debugPrint('  _updateSelection: no siblings');
       return;
     }
 
     // Find target node at position
-    final targetInfo = _findTargetNodeAtPosition(position, _contextParentId, _contextPath, siblings);
+    final targetInfo = _findTargetNodeAtPosition(
+      position,
+      _contextParentId,
+      _contextPath,
+      siblings,
+    );
     if (targetInfo == null) {
-      debugPrint('  _updateSelection: no target found');
       return;
     }
 
@@ -443,7 +479,6 @@ class SelectionManager {
       );
     }
 
-    debugPrint('  _updateSelection: fixed=$_fixedAnchor, moving=$movingAnchor');
     _createAndSetSelection(_fixedAnchor!, movingAnchor);
   }
 
@@ -460,7 +495,7 @@ class SelectionManager {
       final node = siblings[i];
       Rect? bounds;
       NodeLayoutInfo? layoutInfo;
-      
+
       if (node is LiteralNode) {
         for (final info in controller.layoutRegistry.values) {
           if (info.node.id == node.id) {
@@ -472,9 +507,9 @@ class SelectionManager {
       } else {
         bounds = _visualBoundsCache[node.id];
       }
-      
+
       if (bounds == null) continue;
-      
+
       final dist = _distanceToRect(position, bounds);
       if (dist < bestDist) {
         bestDist = dist;
@@ -492,7 +527,6 @@ class SelectionManager {
 
   void _createAndSetSelection(SelectionAnchor a1, SelectionAnchor a2) {
     if (a1.parentId != a2.parentId || a1.path != a2.path) {
-      debugPrint('    _createAndSetSelection: context mismatch');
       return;
     }
 
@@ -500,7 +534,8 @@ class SelectionManager {
     if (siblings == null || siblings.isEmpty) return;
 
     // Determine order
-    bool a1First = a1.nodeIndex < a2.nodeIndex ||
+    bool a1First =
+        a1.nodeIndex < a2.nodeIndex ||
         (a1.nodeIndex == a2.nodeIndex && a1.charIndex <= a2.charIndex);
 
     int startNode, endNode, startChar, endChar;
@@ -538,24 +573,60 @@ class SelectionManager {
       if (node is LiteralNode) {
         final minC = math.min(startChar, endChar);
         final maxC = math.max(startChar, endChar);
-        controller.setSelection(SelectionRange(
-          start: SelectionAnchor(parentId: a1.parentId, path: a1.path, nodeIndex: startNode, charIndex: minC),
-          end: SelectionAnchor(parentId: a1.parentId, path: a1.path, nodeIndex: endNode, charIndex: maxC),
-        ));
+        controller.setSelection(
+          SelectionRange(
+            start: SelectionAnchor(
+              parentId: a1.parentId,
+              path: a1.path,
+              nodeIndex: startNode,
+              charIndex: minC,
+            ),
+            end: SelectionAnchor(
+              parentId: a1.parentId,
+              path: a1.path,
+              nodeIndex: endNode,
+              charIndex: maxC,
+            ),
+          ),
+        );
         return;
       } else {
-        controller.setSelection(SelectionRange(
-          start: SelectionAnchor(parentId: a1.parentId, path: a1.path, nodeIndex: startNode, charIndex: 0),
-          end: SelectionAnchor(parentId: a1.parentId, path: a1.path, nodeIndex: endNode, charIndex: 1),
-        ));
+        controller.setSelection(
+          SelectionRange(
+            start: SelectionAnchor(
+              parentId: a1.parentId,
+              path: a1.path,
+              nodeIndex: startNode,
+              charIndex: 0,
+            ),
+            end: SelectionAnchor(
+              parentId: a1.parentId,
+              path: a1.path,
+              nodeIndex: endNode,
+              charIndex: 1,
+            ),
+          ),
+        );
         return;
       }
     }
 
-    controller.setSelection(SelectionRange(
-      start: SelectionAnchor(parentId: a1.parentId, path: a1.path, nodeIndex: startNode, charIndex: startChar),
-      end: SelectionAnchor(parentId: a1.parentId, path: a1.path, nodeIndex: endNode, charIndex: endChar),
-    ));
+    controller.setSelection(
+      SelectionRange(
+        start: SelectionAnchor(
+          parentId: a1.parentId,
+          path: a1.path,
+          nodeIndex: startNode,
+          charIndex: startChar,
+        ),
+        end: SelectionAnchor(
+          parentId: a1.parentId,
+          path: a1.path,
+          nodeIndex: endNode,
+          charIndex: endChar,
+        ),
+      ),
+    );
   }
 
   // ============== COMPOSITE SELECTION ==============
@@ -563,7 +634,6 @@ class SelectionManager {
   void _selectCompositeBlock(String compositeId) {
     final info = controller.complexNodeMap[compositeId];
     if (info == null) {
-      debugPrint('    _selectCompositeBlock: no info for $compositeId');
       return;
     }
 
@@ -579,12 +649,22 @@ class SelectionManager {
       charIndex: _isDraggingStartHandle ? 1 : 0,
     );
 
-    controller.setSelection(SelectionRange(
-      start: SelectionAnchor(parentId: info.parentId, path: info.path, nodeIndex: info.index, charIndex: 0),
-      end: SelectionAnchor(parentId: info.parentId, path: info.path, nodeIndex: info.index, charIndex: 1),
-    ));
-
-    debugPrint('  _selectCompositeBlock: selected $compositeId');
+    controller.setSelection(
+      SelectionRange(
+        start: SelectionAnchor(
+          parentId: info.parentId,
+          path: info.path,
+          nodeIndex: info.index,
+          charIndex: 0,
+        ),
+        end: SelectionAnchor(
+          parentId: info.parentId,
+          path: info.path,
+          nodeIndex: info.index,
+          charIndex: 1,
+        ),
+      ),
+    );
   }
 
   void _selectEntireContext(String? parentId, String? path) {
@@ -594,10 +674,22 @@ class SelectionManager {
     final lastNode = siblings.last;
     final endChar = lastNode is LiteralNode ? lastNode.text.length : 1;
 
-    controller.setSelection(SelectionRange(
-      start: SelectionAnchor(parentId: parentId, path: path, nodeIndex: 0, charIndex: 0),
-      end: SelectionAnchor(parentId: parentId, path: path, nodeIndex: siblings.length - 1, charIndex: endChar),
-    ));
+    controller.setSelection(
+      SelectionRange(
+        start: SelectionAnchor(
+          parentId: parentId,
+          path: path,
+          nodeIndex: 0,
+          charIndex: 0,
+        ),
+        end: SelectionAnchor(
+          parentId: parentId,
+          path: path,
+          nodeIndex: siblings.length - 1,
+          charIndex: endChar,
+        ),
+      ),
+    );
   }
 
   // ============== BOUNDS CACHE ==============
@@ -616,22 +708,28 @@ class SelectionManager {
     for (final node in controller.expression) {
       _buildBoundsForNode(node);
     }
-    
-    debugPrint('  --- Content Bounds ---');
-    _contentBoundsCache.forEach((k, v) => debugPrint('    $k: $v'));
-    debugPrint('  --- Visual Bounds ---');
-    _visualBoundsCache.forEach((k, v) => debugPrint('    $k: $v'));
   }
 
   void _buildBoundsForNode(MathNode node) {
     if (node is LiteralNode) return;
 
     // Compute content bounds (just the literals inside)
-    final contentBounds = _computeCompositeBounds(node, includeVisualPadding: false);
+    final contentBounds = _computeCompositeBounds(
+      node,
+      includeVisualPadding: false,
+    );
     if (contentBounds != null) {
-      // Store as visual bounds too, but add padding
-      final visualBounds = _computeCompositeBounds(node, includeVisualPadding: true);
-      _visualBoundsCache[node.id] = visualBounds ?? contentBounds;
+      // Use registered visual bounds if available, otherwise fallback to padded content
+      final registered = controller.complexNodeMap[node.id];
+      if (registered != null && registered.rect != Rect.zero) {
+        _visualBoundsCache[node.id] = registered.rect;
+      } else {
+        final visualBounds = _computeCompositeBounds(
+          node,
+          includeVisualPadding: true,
+        );
+        _visualBoundsCache[node.id] = visualBounds ?? contentBounds;
+      }
     }
 
     // Compute context bounds for children
@@ -661,13 +759,28 @@ class SelectionManager {
       }
     }
 
+    // Also include complex nodes in this context
+    for (final info in controller.complexNodeMap.values) {
+      if (info.parentId == parentId &&
+          info.path == path &&
+          info.rect != Rect.zero) {
+        minX = math.min(minX, info.rect.left);
+        maxX = math.max(maxX, info.rect.right);
+        minY = math.min(minY, info.rect.top);
+        maxY = math.max(maxY, info.rect.bottom);
+      }
+    }
+
     if (minX == double.infinity) return null;
     return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
-  Rect? _computeCompositeBounds(MathNode node, {required bool includeVisualPadding}) {
+  Rect? _computeCompositeBounds(
+    MathNode node, {
+    required bool includeVisualPadding,
+  }) {
     final ids = <String>{};
-    _collectDescendantLiteralIds(node, ids);
+    _collectDescendantIds(node, ids);
 
     double minX = double.infinity, maxX = double.negativeInfinity;
     double minY = double.infinity, maxY = double.negativeInfinity;
@@ -681,13 +794,24 @@ class SelectionManager {
       }
     }
 
+    // Also check complex node map for descendants
+    // (A composite node's ID is in the descendant set)
+    for (final info in controller.complexNodeMap.values) {
+      if (ids.contains(info.node.id) && info.rect != Rect.zero) {
+        minX = math.min(minX, info.rect.left);
+        maxX = math.max(maxX, info.rect.right);
+        minY = math.min(minY, info.rect.top);
+        maxY = math.max(maxY, info.rect.bottom);
+      }
+    }
+
     if (minX == double.infinity) return null;
 
     if (includeVisualPadding) {
       final pad = _getVisualPadding(node);
       return Rect.fromLTRB(minX - pad, minY - pad, maxX + pad, maxY + pad);
     }
-    
+
     return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
@@ -700,14 +824,11 @@ class SelectionManager {
     return 4.0;
   }
 
-  void _collectDescendantLiteralIds(MathNode node, Set<String> ids) {
-    if (node is LiteralNode) {
-      ids.add(node.id);
-      return;
-    }
+  void _collectDescendantIds(MathNode node, Set<String> ids) {
+    ids.add(node.id);
     for (final list in _getAllChildLists(node)) {
       for (final child in list) {
-        _collectDescendantLiteralIds(child, ids);
+        _collectDescendantIds(child, ids);
       }
     }
   }
@@ -717,23 +838,27 @@ class SelectionManager {
   String? _getSingleSelectedCompositeId(SelectionRange selection) {
     final norm = selection.normalized;
     if (norm.start.nodeIndex != norm.end.nodeIndex) return null;
-    
+
     final siblings = _getSiblings(norm.start.parentId, norm.start.path);
     if (siblings == null) return null;
-    
+
     final idx = norm.start.nodeIndex;
     if (idx >= siblings.length) return null;
-    
+
     final node = siblings[idx];
     if (node is LiteralNode) return null;
-    
+
     if (norm.start.charIndex == 0 && norm.end.charIndex == 1) {
       return node.id;
     }
     return null;
   }
 
-  NodeLayoutInfo? _findLiteralInContext(Offset position, String? parentId, String? path) {
+  NodeLayoutInfo? _findLiteralInContext(
+    Offset position,
+    String? parentId,
+    String? path,
+  ) {
     NodeLayoutInfo? best;
     double bestDist = double.infinity;
 
@@ -758,11 +883,21 @@ class SelectionManager {
 
     if (info.renderParagraph != null) {
       final displayText = MathTextStyle.toDisplayText(text);
-      final pos = info.renderParagraph!.getPositionForOffset(Offset(relX, info.fontSize / 2));
-      return MathTextStyle.displayToLogicalIndex(text, pos.offset.clamp(0, displayText.length));
+      final pos = info.renderParagraph!.getPositionForOffset(
+        Offset(relX, info.fontSize / 2),
+      );
+      return MathTextStyle.displayToLogicalIndex(
+        text,
+        pos.offset.clamp(0, displayText.length),
+      );
     }
 
-    return MathTextStyle.getCharIndexForOffset(text, relX, info.fontSize, info.textScaler);
+    return MathTextStyle.getCharIndexForOffset(
+      text,
+      relX,
+      info.fontSize,
+      info.textScaler,
+    );
   }
 
   (int, int) _findWordBounds(String text, int charIndex) {
@@ -771,8 +906,12 @@ class SelectionManager {
     int start = charIndex.clamp(0, text.length);
     int end = charIndex.clamp(0, text.length);
 
-    while (start > 0 && !_isWordBoundary(text[start - 1])) start--;
-    while (end < text.length && !_isWordBoundary(text[end])) end++;
+    while (start > 0 && !_isWordBoundary(text[start - 1])) {
+      start--;
+    }
+    while (end < text.length && !_isWordBoundary(text[end])) {
+      end++;
+    }
 
     if (charIndex < text.length && _isWordBoundary(text[charIndex])) {
       start = charIndex;
@@ -780,8 +919,11 @@ class SelectionManager {
     }
 
     if (start == end && text.isNotEmpty) {
-      if (charIndex < text.length) end = charIndex + 1;
-      else if (charIndex > 0) start = charIndex - 1;
+      if (charIndex < text.length) {
+        end = charIndex + 1;
+      } else if (charIndex > 0) {
+        start = charIndex - 1;
+      }
     }
 
     return (start, end);
@@ -893,15 +1035,33 @@ class SelectionManager {
 
   double _distanceToRect(Offset p, Rect r) {
     double dx = 0, dy = 0;
-    if (p.dx < r.left) dx = r.left - p.dx;
-    else if (p.dx > r.right) dx = p.dx - r.right;
-    if (p.dy < r.top) dy = r.top - p.dy;
-    else if (p.dy > r.bottom) dy = p.dy - r.bottom;
+    if (p.dx < r.left) {
+      dx = r.left - p.dx;
+    } else if (p.dx > r.right) {
+      dx = p.dx - r.right;
+    }
+    if (p.dy < r.top) {
+      dy = r.top - p.dy;
+    } else if (p.dy > r.bottom) {
+      dy = p.dy - r.bottom;
+    }
     return math.sqrt(dx * dx + dy * dy);
   }
 
   bool _isWordBoundary(String c) {
-    return {'+', '-', '×', '·', '÷', '/', '=', '(', ')', ' ', '\u2212'}.contains(c);
+    return {
+      '+',
+      '-',
+      '×',
+      '·',
+      '÷',
+      '/',
+      '=',
+      '(',
+      ')',
+      ' ',
+      '\u2212',
+    }.contains(c);
   }
 }
 
@@ -924,20 +1084,3 @@ class _TargetNodeInfo {
     this.layoutInfo,
   });
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

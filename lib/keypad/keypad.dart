@@ -153,7 +153,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     '.',
     'x',
     '/',
-    'C',
+    'CE',
     '\u232B',
   ];
 
@@ -176,7 +176,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     '0',
     '.',
     '\u1D07',
-    'C',
+    'CE',
     'EN',
   ];
 
@@ -206,9 +206,9 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
   final List<String> _buttonsR = [
     '',
     '',
-    '\u238F',
     '\u238C',
-    '\u27F2',
+    '\u238C',
+    '\u2327',
     'i',
     'x!',
     'nPr',
@@ -280,8 +280,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
 
   /// Navigate keypad to a specific page (used by walkthrough back button)
   void _navigateToKeypadPage(int page) {
-    debugPrint('=== _navigateToKeypadPage called with page: $page ===');
-    debugPrint('Current keypad index before: $_currentKeypadIndex');
 
     if (_keypadController != null && _keypadController!.hasClients) {
       // Set flag to bypass directional physics during programmatic navigation
@@ -305,7 +303,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           });
 
       _currentKeypadIndex = page;
-      debugPrint('Navigating to page: $page');
     } else {
       debugPrint('Could not navigate - controller null or no clients');
     }
@@ -318,10 +315,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     } else {
       targetPage = 1;
     }
-
-    debugPrint(
-      'Resetting keypad to page $targetPage (pagesPerView: $_lastPagesPerView)',
-    );
 
     if (_keypadController != null && _keypadController!.hasClients) {
       // Set flag to bypass directional physics during programmatic navigation
@@ -441,9 +434,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           direction = WalkthroughAction.swipeRight;
         }
         widget.walkthroughService.onUserAction(direction);
-        debugPrint(
-          'Keypad page changed by user: $newIndex, Direction: $direction',
-        );
       } else {
         debugPrint('Keypad page changed programmatically: $newIndex');
       }
@@ -593,6 +583,21 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                   decoration: BoxDecoration(
                     color: widget.colors.containerBackground,
                     borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: 0.2,
+                        ), // Shadow color with transparency
+                        spreadRadius:
+                            2, // How much the shadow grows bigger than the box
+                        blurRadius:
+                            7, // How soft the edges are (higher = softer)
+                        offset: Offset(
+                          0,
+                          0,
+                        ), // X, Y position (0,3 means slightly downwards)
+                      ),
+                    ],
                   ),
                 ),
                 Expanded(
@@ -715,7 +720,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           return MyButton(
             buttontapped: _handleEnter,
             buttonText: '\u2318',
-            color: Colors.white,
+            color: Colors.blueGrey,
             textColor: Colors.black,
           );
         } else if (buttonText == '\u232B') {
@@ -1096,7 +1101,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u002B',
-            color: Colors.white,
+            color: const Color.fromARGB(234, 255, 255, 255),
             textColor: Colors.black,
           );
         } else if (index == 9) {
@@ -1106,7 +1111,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u2212',
-            color: Colors.white,
+            color: const Color.fromARGB(234, 255, 255, 255),
             textColor: Colors.black,
           );
         } else if (index == 13) {
@@ -1118,7 +1123,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u00D7',
-            color: Colors.white,
+            color: const Color.fromARGB(234, 255, 255, 255),
             textColor: Colors.black,
           );
         } // Division button (index 14)
@@ -1133,7 +1138,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: '\u00F7',
-            color: Colors.white,
+            color: const Color.fromARGB(234, 255, 255, 255),
             textColor: Colors.black,
           );
         } else if (index == 17) {
@@ -1163,7 +1168,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             child: MyButton(
               buttontapped: _handleEnter,
               buttonText: '\u2318',
-              color: Colors.white,
+              color: Colors.blueGrey,
               textColor: Colors.black,
             ),
           );
@@ -1232,6 +1237,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             buttonText: _buttonsR[index],
             color: canRedo ? Colors.white : Colors.grey[300]!,
             textColor: canRedo ? Colors.black : Colors.grey,
+            mirror: true,
           );
         }
         if (index == 4) {
@@ -1252,7 +1258,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         //     color: Colors.white,
         //     textColor: Colors.grey,
         //   );
-        // } else 
+        // } else
         if (index == 6) {
           return MyButton(
             buttontapped: () {

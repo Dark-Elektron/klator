@@ -1,653 +1,22 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../utils/constants.dart';
 import 'package:flutter/rendering.dart';
-import 'expression_selection.dart';
+import '../utils/constants.dart';
 import 'math_editor_controller.dart';
-import 'cursor.dart';
 import 'placeholder_box.dart';
 
-abstract class MathNode {
-  final String id;
-  MathNode() : id = math.Random().nextInt(1 << 31).toString();
-}
-
-class LiteralNode extends MathNode {
-  String text;
-  LiteralNode({this.text = ""});
-}
-
-class FractionNode extends MathNode {
-  List<MathNode> numerator;
-  List<MathNode> denominator;
-  FractionNode({List<MathNode>? num, List<MathNode>? den})
-    : numerator = num ?? [LiteralNode()],
-      denominator = den ?? [LiteralNode()];
-}
-
-class ExponentNode extends MathNode {
-  List<MathNode> base;
-  List<MathNode> power;
-  ExponentNode({List<MathNode>? base, List<MathNode>? power})
-    : base = base ?? [LiteralNode()],
-      power = power ?? [LiteralNode()];
-}
-
-class LogNode extends MathNode {
-  List<MathNode> base; // The subscript (n in log_n)
-  List<MathNode> argument; // What we're taking log of
-  bool isNaturalLog; // If true, it's ln (no base shown)
-
-  LogNode({
-    List<MathNode>? base,
-    List<MathNode>? argument,
-    this.isNaturalLog = false,
-  }) : base = base ?? [LiteralNode(text: "10")],
-       argument = argument ?? [LiteralNode()];
-}
-
-class TrigNode extends MathNode {
-  final String function; // sin, cos, tan, asin, acos, atan, log, ln
-  List<MathNode> argument;
-  TrigNode({required this.function, List<MathNode>? argument})
-    : argument = argument ?? [LiteralNode()];
-}
-
-class RootNode extends MathNode {
-  List<MathNode> index; // The n in ⁿ√
-  List<MathNode> radicand; // What's under the root
-  final bool isSquareRoot; // If true, don't show index (it's 2)
-  RootNode({
-    List<MathNode>? index,
-    List<MathNode>? radicand,
-    this.isSquareRoot = false,
-  }) : index = index ?? [LiteralNode(text: isSquareRoot ? "2" : "")],
-       radicand = radicand ?? [LiteralNode()];
-}
-
-class PermutationNode extends MathNode {
-  List<MathNode> n; // Top number
-  List<MathNode> r; // Bottom number
-  PermutationNode({List<MathNode>? n, List<MathNode>? r})
-    : n = n ?? [LiteralNode()],
-      r = r ?? [LiteralNode()];
-}
-
-class CombinationNode extends MathNode {
-  List<MathNode> n; // Top number
-  List<MathNode> r; // Bottom number
-  CombinationNode({List<MathNode>? n, List<MathNode>? r})
-    : n = n ?? [LiteralNode()],
-      r = r ?? [LiteralNode()];
-}
-
-class NewlineNode extends MathNode {
-  NewlineNode() : super();
-}
-
-class ParenthesisNode extends MathNode {
-  List<MathNode> content;
-  ParenthesisNode({List<MathNode>? content})
-    : content = content ?? [LiteralNode()];
-}
-
-class AnsNode extends MathNode {
-  List<MathNode> index; // The reference number (0, 1, 2, etc.)
-
-  AnsNode({List<MathNode>? index}) : index = index ?? [LiteralNode()];
-}
-
-class MathTextStyle {
-  static const String plusSign = '\u002B';
-  static const String minusSign = '\u2212';
-  static const String equalsSign = '=';
-
-  static const String multiplyDot = '\u00B7';
-  static const String multiplyTimes = '\u00D7';
-
-  static String _multiplySign = '\u00D7';
-
-  static String get multiplySign => _multiplySign;
-
-  static void setMultiplySign(String sign) {
-    _multiplySign = sign;
-  }
-
-  static const Set<String> _allMultiplySigns = {multiplyDot, multiplyTimes};
-
-  static const Set<String> _paddedOperators = {
-    plusSign,
-    minusSign,
-    multiplyDot,
-    multiplyTimes,
-    equalsSign,
-  };
-
-  static bool _isPaddedOperator(String char) {
-    return _paddedOperators.contains(char);
-  }
-
-  static bool _isMultiplySign(String char) {
-    return _allMultiplySigns.contains(char);
-  }
-
-  static TextStyle getStyle(double fontSize) {
-    return TextStyle(
-      fontSize: fontSize,
-      height: 1.0,
-      fontFamily: FONTFAMILY,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
-  }
-
-  static String toDisplayText(String text) {
-    if (text.isEmpty) return text;
-    final buffer = StringBuffer();
-    for (int i = 0; i < text.length; i++) {
-      final char = text[i];
-
-      String displayChar = char;
-      if (_isMultiplySign(char)) {
-        displayChar = _multiplySign;
-      }
-
-      if (_isPaddedOperator(char)) {
-        if (i == 0) {
-          buffer.write('$displayChar ');
-        } else {
-          buffer.write(' $displayChar ');
-        }
-      } else {
-        buffer.write(displayChar);
-      }
-    }
-    return buffer.toString();
-  }
-
-  static double measureText(
-    String text,
-    double fontSize,
-    TextScaler textScaler,
-  ) {
-    if (text.isEmpty) return 0.0;
-    final displayText = toDisplayText(text);
-
-    final textSpan = TextSpan(text: displayText, style: getStyle(fontSize));
-    final renderParagraph = RenderParagraph(
-      textSpan,
-      textDirection: TextDirection.ltr,
-      textScaler: textScaler,
-    );
-    renderParagraph.layout(const BoxConstraints());
-
-    final width = renderParagraph.size.width;
-    renderParagraph.dispose();
-    return width;
-  }
-
-  static int _logicalToDisplayIndex(String text, int logicalIndex) {
-    int displayIndex = 0;
-    final clampedIndex = logicalIndex.clamp(0, text.length);
-
-    for (int i = 0; i < clampedIndex; i++) {
-      final char = text[i];
-      if (_isPaddedOperator(char)) {
-        if (i == 0) {
-          displayIndex += 2; // char + trailing space
-        } else {
-          displayIndex += 3; // space + char + space
-        }
-      } else {
-        displayIndex += 1;
-      }
-    }
-
-    return displayIndex;
-  }
-
-  static double getCursorOffset(
-    String text,
-    int charIndex,
-    double fontSize,
-    TextScaler textScaler,
-  ) {
-    if (text.isEmpty || charIndex <= 0) return 0.0;
-
-    final displayText = toDisplayText(text);
-    final displayIndex = _logicalToDisplayIndex(
-      text,
-      charIndex,
-    ).clamp(0, displayText.length);
-
-    final textSpan = TextSpan(text: displayText, style: getStyle(fontSize));
-    final renderParagraph = RenderParagraph(
-      textSpan,
-      textDirection: TextDirection.ltr,
-      textScaler: textScaler,
-    );
-
-    renderParagraph.layout(const BoxConstraints());
-
-    final offset = renderParagraph.getOffsetForCaret(
-      TextPosition(offset: displayIndex),
-      Rect.zero,
-    );
-
-    renderParagraph.dispose();
-    return offset.dx;
-  }
-
-  static int getCharIndexForOffset(
-    String text,
-    double xOffset,
-    double fontSize,
-    TextScaler textScaler,
-  ) {
-    if (text.isEmpty) return 0;
-
-    final displayText = toDisplayText(text);
-
-    final textSpan = TextSpan(text: displayText, style: getStyle(fontSize));
-    final renderParagraph = RenderParagraph(
-      textSpan,
-      textDirection: TextDirection.ltr,
-      textScaler: textScaler,
-    );
-
-    renderParagraph.layout(const BoxConstraints());
-
-    final position = renderParagraph.getPositionForOffset(
-      Offset(xOffset, fontSize / 2),
-    );
-
-    renderParagraph.dispose();
-
-    int displayOffset = position.offset.clamp(0, displayText.length);
-    return displayToLogicalIndex(text, displayOffset);
-  }
-
-  static int displayToLogicalIndex(String text, int displayIndex) {
-    if (displayIndex <= 0) return 0;
-
-    int displayPos = 0;
-
-    for (int logical = 0; logical < text.length; logical++) {
-      final char = text[logical];
-      int charWidth;
-
-      if (_isPaddedOperator(char)) {
-        charWidth = (logical == 0) ? 2 : 3;
-      } else {
-        charWidth = 1;
-      }
-
-      final prevDisplayPos = displayPos;
-      displayPos += charWidth;
-
-      if (displayIndex <= displayPos) {
-        if (_isPaddedOperator(char)) {
-          final midpoint = prevDisplayPos + ((logical == 0) ? 1 : 2);
-          if (displayIndex <= midpoint) {
-            return logical;
-          } else {
-            return logical + 1;
-          }
-        }
-        return logical + 1;
-      }
-    }
-
-    return text.length;
-  }
-
-  static int logicalToDisplayIndex(String text, int logicalIndex) {
-    return _logicalToDisplayIndex(text, logicalIndex);
-  }
-}
-
-class MathEditorInline extends StatefulWidget {
-  final MathEditorController controller;
-  final bool showCursor;
-  final VoidCallback? onFocus;
-
-  const MathEditorInline({
-    super.key,
-    required this.controller,
-    this.showCursor = true,
-    this.onFocus,
-  });
-
-  @override
-  State<MathEditorInline> createState() => MathEditorInlineState();
-}
-
-class MathEditorInlineState extends State<MathEditorInline>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _cursorBlinkController;
-  late Animation<double> _cursorBlinkAnimation;
-  final GlobalKey _containerKey = GlobalKey();
-  int _lastStructureVersion = -1;
-
-  OverlayEntry? _selectionOverlay;
-
-  // Track double-tap position for paste menu
-
-  Offset? _doubleTapPosition;
-  Offset? _lastTapDownPosition; // Add this
-
-  @override
-  void initState() {
-    super.initState();
-    _cursorBlinkController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    )..repeat(reverse: true);
-    _cursorBlinkAnimation = Tween<double>(
-      begin: 1.0,
-      end: 0.0,
-    ).animate(_cursorBlinkController);
-
-    widget.controller.setContainerKey(_containerKey);
-    widget.controller.onSelectionCleared = _onSelectionCleared;
-  }
-
-  void _onSelectionCleared() {
-    debugPrint('=== _onSelectionCleared callback fired ===');
-    if (mounted) {
-      _removeSelectionOverlay();
-    }
-  }
-
-  @override
-  void dispose() {
-    _removeSelectionOverlay();
-    _cursorBlinkController.dispose();
-    widget.controller.onSelectionCleared = null;
-    super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(covariant MathEditorInline oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.onSelectionCleared = null;
-      widget.controller.onSelectionCleared = _onSelectionCleared;
-      widget.controller.setContainerKey(_containerKey);
-    }
-  }
-
-  void _handlePointerDown(PointerDownEvent event) {
-    debugPrint('=== _handlePointerDown ===');
-    widget.onFocus?.call();
-
-    // Always try to clear selection on pointer down
-    if (widget.controller.hasSelection) {
-      debugPrint('Has selection, clearing...');
-      widget.controller.clearSelection();
-    }
-
-    // Also directly remove overlay in case callback didn't work
-    if (_selectionOverlay != null) {
-      debugPrint('Has overlay, removing...');
-      _removeSelectionOverlay();
-    }
-  }
-
-  void _handleTapDown(TapDownDetails details) {
-    _lastTapDownPosition = details.localPosition;
-  }
-
-  void _handleTap() {
-    _processTap();
-  }
-
-  void _handleTapUp(TapUpDetails details) {
-    if (_lastTapDownPosition != null) {
-      _lastTapDownPosition = details.localPosition;
-      _processTap();
-    }
-  }
-
-  void _processTap() {
-    if (_lastTapDownPosition == null) return;
-
-    final RenderBox? containerBox =
-        _containerKey.currentContext?.findRenderObject() as RenderBox?;
-    if (containerBox == null) {
-      widget.controller.tapAt(_lastTapDownPosition!);
-      _lastTapDownPosition = null;
-      return;
-    }
-
-    final RenderBox? gestureBox = context.findRenderObject() as RenderBox?;
-    if (gestureBox == null) {
-      widget.controller.tapAt(_lastTapDownPosition!);
-      _lastTapDownPosition = null;
-      return;
-    }
-
-    final Offset globalTapPos = gestureBox.localToGlobal(_lastTapDownPosition!);
-    final Offset localToContainer = containerBox.globalToLocal(globalTapPos);
-    widget.controller.tapAt(localToContainer);
-
-    _lastTapDownPosition = null;
-  }
-
-  void _handleDoubleTapDown(TapDownDetails details) {
-    widget.onFocus?.call();
-
-    final RenderBox? containerBox =
-        _containerKey.currentContext?.findRenderObject() as RenderBox?;
-    if (containerBox == null) return;
-
-    final RenderBox? gestureBox = context.findRenderObject() as RenderBox?;
-    if (gestureBox == null) return;
-
-    final Offset globalTapPos = gestureBox.localToGlobal(details.localPosition);
-    final Offset localToContainer = containerBox.globalToLocal(globalTapPos);
-
-    _doubleTapPosition = localToContainer;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        widget.controller.tapAt(localToContainer);
-      }
-    });
-  }
-
-  void _handleDoubleTap() {
-    if (MathEditorController.clipboard != null &&
-        !MathEditorController.clipboard!.isEmpty) {
-      _showPasteOnlyOverlay();
-    }
-  }
-
-  void _handleLongPress(LongPressStartDetails details) {
-    widget.onFocus?.call();
-
-    final RenderBox? containerBox =
-        _containerKey.currentContext?.findRenderObject() as RenderBox?;
-    if (containerBox == null) return;
-
-    final RenderBox? gestureBox = context.findRenderObject() as RenderBox?;
-    if (gestureBox == null) return;
-
-    final Offset globalPos = gestureBox.localToGlobal(details.localPosition);
-    final Offset localToContainer = containerBox.globalToLocal(globalPos);
-
-    widget.controller.selectAtPosition(localToContainer);
-
-    if (widget.controller.hasSelection) {
-      _showSelectionOverlay();
-    }
-  }
-
-  void _showSelectionOverlay() {
-    _removeSelectionOverlay();
-
-    _selectionOverlay = OverlayEntry(
-      builder:
-          (context) => SelectionOverlayWidget(
-            controller: widget.controller,
-            containerKey: _containerKey,
-            cursorLocalPosition: null,
-            onCopy: _handleCopy,
-            onCut: _handleCut,
-            onPaste: _handlePaste,
-            onDismiss: _handleDismissSelection,
-          ),
-    );
-
-    Overlay.of(context).insert(_selectionOverlay!);
-  }
-
-  void _showPasteOnlyOverlay() {
-    _removeSelectionOverlay();
-
-    _selectionOverlay = OverlayEntry(
-      builder:
-          (context) => SelectionOverlayWidget(
-            controller: widget.controller,
-            containerKey: _containerKey,
-            cursorLocalPosition: _doubleTapPosition,
-            onCopy: null,
-            onCut: null,
-            onPaste: _handlePaste,
-            onDismiss: _handleDismissPasteMenu,
-          ),
-    );
-
-    Overlay.of(context).insert(_selectionOverlay!);
-  }
-
-  void _removeSelectionOverlay() {
-    debugPrint('=== _removeSelectionOverlay called ===');
-    _selectionOverlay?.remove();
-    _selectionOverlay = null;
-    _doubleTapPosition = null;
-  }
-
-  void _handleCopy() {
-    widget.controller.copySelection();
-    _handleDismissSelection();
-  }
-
-  void _handleCut() {
-    widget.controller.cutSelection();
-    _removeSelectionOverlay();
-  }
-
-  void _handlePaste() {
-    widget.controller.pasteClipboard();
-    _removeSelectionOverlay();
-  }
-
-  void _handleDismissSelection() {
-    widget.controller.clearSelection();
-    _removeSelectionOverlay();
-  }
-
-  void showPasteMenu() {
-    if (MathEditorController.clipboard != null &&
-        !MathEditorController.clipboard!.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _showPasteOnlyOverlay();
-        }
-      });
-    }
-  }
-
-  void _handleDismissPasteMenu() {
-    _removeSelectionOverlay();
-  }
-
-  void clearOverlay() {
-    _removeSelectionOverlay();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final textScaler = MediaQuery.textScalerOf(context);
-
-    return ListenableBuilder(
-      listenable: widget.controller,
-      builder: (context, _) {
-        if (_lastStructureVersion != widget.controller.structureVersion) {
-          _lastStructureVersion = widget.controller.structureVersion;
-          widget.controller.clearLayoutRegistry();
-        }
-
-        if (widget.controller.hasSelection && _selectionOverlay != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _selectionOverlay?.markNeedsBuild();
-          });
-        }
-
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            return Listener(
-              behavior: HitTestBehavior.opaque,
-              onPointerDown: _handlePointerDown,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: _handleTapDown,
-                onTap: _handleTap,
-                onTapUp: _handleTapUp,
-                onDoubleTapDown: _handleDoubleTapDown,
-                onDoubleTap: _handleDoubleTap,
-                onLongPressStart: _handleLongPress,
-                child: Container(
-                  // Fill the entire available width
-                  width:
-                      constraints.maxWidth.isFinite
-                          ? constraints.maxWidth
-                          : null,
-                  // Add minimum height to ensure tappable area
-                  constraints: BoxConstraints(
-                    minHeight: 40, // Minimum tappable height
-                  ),
-                  alignment: Alignment.center,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: KeyedSubtree(
-                      key: _containerKey,
-                      child: AnimatedBuilder(
-                        animation: _cursorBlinkAnimation,
-                        builder: (context, _) {
-                          return MathRenderer(
-                            expression: widget.controller.expression,
-                            cursor: widget.controller.cursor,
-                            cursorOpacity:
-                                widget.showCursor
-                                    ? _cursorBlinkAnimation.value
-                                    : 0.0,
-                            rootKey: _containerKey,
-                            controller: widget.controller,
-                            structureVersion:
-                                widget.controller.structureVersion,
-                            textScaler: textScaler,
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  // Add this method for low-level pointer handling (more reliable on tablets)
-}
-
+// Re-export all related modules for backward compatibility
+export 'math_nodes.dart';
+export 'math_text_style.dart';
+export 'math_editor_widgets.dart';
+
+// Import the modules we depend on
+import 'math_nodes.dart';
+import 'math_text_style.dart';
+
+/// Renders a math expression tree as Flutter widgets.
 class MathRenderer extends StatelessWidget {
   final List<MathNode> expression;
-  final EditorCursor cursor;
-  final double cursorOpacity;
   final GlobalKey rootKey;
   final MathEditorController controller;
   final int structureVersion;
@@ -656,15 +25,11 @@ class MathRenderer extends StatelessWidget {
   const MathRenderer({
     super.key,
     required this.expression,
-    required this.cursor,
-    required this.cursorOpacity,
     required this.rootKey,
     required this.controller,
     required this.structureVersion,
     required this.textScaler,
   });
-
-  static const double _nodePadding = 0.0;
 
   @override
   Widget build(BuildContext context) {
@@ -684,20 +49,11 @@ class MathRenderer extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
-                children:
-                    lineInfo.nodes.asMap().entries.map((e) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2.0),
-                        child: _renderNode(
-                          e.value,
-                          lineInfo.startIndex + e.key, // Use global index
-                          expression, // Pass full expression for sibling reference
-                          null,
-                          null,
-                          FONTSIZE,
-                        ),
-                      );
-                    }).toList(),
+                children: _renderNodeList(
+                  lineInfo.nodes,
+                  lineInfo.startIndex,
+                  fontSize: FONTSIZE,
+                ),
               ),
             );
           }).toList(),
@@ -735,6 +91,50 @@ class MathRenderer extends StatelessWidget {
     return lines;
   }
 
+  /// Helper to render a list of nodes with consistent padding.
+  List<Widget> _renderNodeList(
+    List<MathNode> nodes,
+    int startIndex, {
+    required double fontSize,
+    String? parentId,
+    String? path,
+  }) {
+    return nodes.asMap().entries.map((e) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 1.5,
+        ), // Standardized gap
+        child: _renderNode(
+          e.value,
+          startIndex + e.key,
+          nodes,
+          parentId,
+          path,
+          fontSize,
+        ),
+      );
+    }).toList();
+  }
+
+  Widget _wrapComposite({
+    required Widget child,
+    required MathNode node,
+    required int index,
+    required String? parentId,
+    required String? path,
+  }) {
+    return _ComplexNodeWrapper(
+      node: node,
+      index: index,
+      parentId: parentId,
+      path: path,
+      controller: controller,
+      rootKey: rootKey,
+      structureVersion: structureVersion,
+      child: child,
+    );
+  }
+
   Widget _renderNode(
     MathNode node,
     int index,
@@ -749,18 +149,10 @@ class MathRenderer extends StatelessWidget {
     }
 
     if (node is LiteralNode) {
-      final active =
-          cursor.parentId == parentId &&
-          cursor.path == path &&
-          cursor.index == index;
       return LiteralWidget(
         key: ValueKey('${node.id}_$structureVersion'),
         node: node,
-        active: active,
-        cursorOpacity: cursorOpacity,
-        subIndex: cursor.subIndex,
         fontSize: fontSize,
-        isLast: index == siblings.length - 1,
         parentId: parentId,
         path: path,
         index: index,
@@ -775,8 +167,11 @@ class MathRenderer extends StatelessWidget {
       final bool numEmpty = _isContentEmpty(node.numerator);
       final bool denEmpty = _isContentEmpty(node.denominator);
 
-      return Padding(
-        padding: const EdgeInsets.only(right: _nodePadding),
+      return _wrapComposite(
+        node: node,
+        index: index,
+        parentId: parentId,
+        path: path,
         child: IntrinsicWidth(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -797,41 +192,25 @@ class MathRenderer extends StatelessWidget {
                       minHeight: fontSize * 0.8,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        children:
-                            node.numerator
-                                .asMap()
-                                .entries
-                                .map(
-                                  (e) => _renderNode(
-                                    e.value,
-                                    e.key,
-                                    node.numerator,
-                                    node.id,
-                                    'num',
-                                    fontSize,
-                                  ),
-                                )
-                                .toList(),
+                        children: _renderNodeList(
+                          node.numerator,
+                          0,
+                          fontSize: fontSize,
+                          parentId: node.id,
+                          path: 'num',
+                        ),
                       ),
                     ),
                   )
                   : Row(
                     mainAxisSize: MainAxisSize.min,
-                    children:
-                        node.numerator
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.numerator,
-                                node.id,
-                                'num',
-                                fontSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.numerator,
+                      0,
+                      fontSize: fontSize,
+                      parentId: node.id,
+                      path: 'num',
+                    ),
                   ),
 
               // Fraction line
@@ -858,41 +237,25 @@ class MathRenderer extends StatelessWidget {
                       minHeight: fontSize * 0.8,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        children:
-                            node.denominator
-                                .asMap()
-                                .entries
-                                .map(
-                                  (e) => _renderNode(
-                                    e.value,
-                                    e.key,
-                                    node.denominator,
-                                    node.id,
-                                    'den',
-                                    fontSize,
-                                  ),
-                                )
-                                .toList(),
+                        children: _renderNodeList(
+                          node.denominator,
+                          0,
+                          fontSize: fontSize,
+                          parentId: node.id,
+                          path: 'den',
+                        ),
                       ),
                     ),
                   )
                   : Row(
                     mainAxisSize: MainAxisSize.min,
-                    children:
-                        node.denominator
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.denominator,
-                                node.id,
-                                'den',
-                                fontSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.denominator,
+                      0,
+                      fontSize: fontSize,
+                      parentId: node.id,
+                      path: 'den',
+                    ),
                   ),
             ],
           ),
@@ -902,7 +265,16 @@ class MathRenderer extends StatelessWidget {
 
     if (node is ExponentNode) {
       final double powerSize = fontSize * 0.8;
-      final double powerRaise = fontSize * 0.35;
+
+      // Check if base is "tall" (like parenthesis, fraction, etc.)
+      // If tall, we align exponent to the TOP.
+      // If short (literals), we align to the BOTTOM (baseline-ish).
+      final bool isTallBase = _isTallContent(node.base);
+
+      // Raise factor depends on alignment
+      // final double powerRaise = isTallBase ? fontSize * 0.1 : fontSize * 0.35;
+      final CrossAxisAlignment alignment =
+          isTallBase ? CrossAxisAlignment.start : CrossAxisAlignment.end;
 
       final bool baseEmpty = _isContentEmpty(node.base);
       final bool powerEmpty = _isContentEmpty(node.power);
@@ -924,43 +296,27 @@ class MathRenderer extends StatelessWidget {
                   minHeight: fontSize * 0.9,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children:
-                        node.base
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.base,
-                                node.id,
-                                'base',
-                                fontSize,
-                              ),
-                            )
-                            .toList(),
+                    crossAxisAlignment: alignment,
+                    children: _renderNodeList(
+                      node.base,
+                      0,
+                      fontSize: fontSize,
+                      parentId: node.id,
+                      path: 'base',
+                    ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children:
-                    node.base
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.base,
-                            node.id,
-                            'base',
-                            fontSize,
-                          ),
-                        )
-                        .toList(),
+                crossAxisAlignment: alignment,
+                children: _renderNodeList(
+                  node.base,
+                  0,
+                  fontSize: fontSize,
+                  parentId: node.id,
+                  path: 'base',
+                ),
               );
 
       // Build power widget
@@ -980,61 +336,54 @@ class MathRenderer extends StatelessWidget {
                   minHeight: powerSize * 0.7,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children:
-                        node.power
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.power,
-                                node.id,
-                                'pow',
-                                powerSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.power,
+                      0,
+                      fontSize: powerSize,
+                      parentId: node.id,
+                      path: 'pow',
+                    ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                children:
-                    node.power
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.power,
-                            node.id,
-                            'pow',
-                            powerSize,
-                          ),
-                        )
-                        .toList(),
+                children: _renderNodeList(
+                  node.power,
+                  0,
+                  fontSize: powerSize,
+                  parentId: node.id,
+                  path: 'pow',
+                ),
               );
 
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          // Base
-          baseWidget,
-          // Power - raised using Transform
-          Transform.translate(
-            offset: Offset(0, -powerRaise),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: fontSize * 0.15,
-                vertical: fontSize * 0.1,
-              ),
+      return _wrapComposite(
+        node: node,
+        index: index,
+        parentId: parentId,
+        path: path,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Base
+            // If the base is short, we push it down to let the power sit higher
+            // relative to the baseline.
+            Padding(
+              padding: EdgeInsets.only(top: isTallBase ? 0 : powerSize * 0.4),
+              child: baseWidget,
+            ),
+
+            // Power
+            // For tall bases (parenthesis, fractions), the power sits at the top.
+            // For short bases, it sits above the base.
+            // By using Padding on the base, we avoid Transform, ensuring correct bounds.
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: fontSize * 0.1),
               child: powerWidget,
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
@@ -1058,69 +407,59 @@ class MathRenderer extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
-                    children:
-                        node.content
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.content,
-                                node.id,
-                                'content',
-                                fontSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.content,
+                      0,
+                      fontSize: fontSize,
+                      parentId: node.id,
+                      path: 'content',
+                    ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
-                children:
-                    node.content
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.content,
-                            node.id,
-                            'content',
-                            fontSize,
-                          ),
-                        )
-                        .toList(),
+                children: _renderNodeList(
+                  node.content,
+                  0,
+                  fontSize: fontSize,
+                  parentId: node.id,
+                  path: 'content',
+                ),
               );
 
-      return IntrinsicHeight(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ScalableParenthesis(
-              isOpening: true,
-              fontSize: fontSize,
-              color: Colors.white,
-              textScaler: textScaler,
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: fontSize * 0.15,
-                vertical: fontSize * 0.1,
+      return _wrapComposite(
+        node: node,
+        index: index,
+        parentId: parentId,
+        path: path,
+        child: IntrinsicHeight(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ScalableParenthesis(
+                isOpening: true,
+                fontSize: fontSize,
+                color: Colors.white,
+                textScaler: textScaler,
               ),
-              child: contentWidget,
-            ),
-            ScalableParenthesis(
-              isOpening: false,
-              fontSize: fontSize,
-              color: Colors.white,
-              textScaler: textScaler,
-            ),
-          ],
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: fontSize * 0.15,
+                  vertical: fontSize * 0.1,
+                ),
+                child: contentWidget,
+              ),
+              ScalableParenthesis(
+                isOpening: false,
+                fontSize: fontSize,
+                color: Colors.white,
+                textScaler: textScaler,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1146,52 +485,39 @@ class MathRenderer extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
-                    children:
-                        node.argument
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.argument,
-                                node.id,
-                                'arg',
-                                fontSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.argument,
+                      0,
+                      fontSize: fontSize,
+                      parentId: node.id,
+                      path: 'arg',
+                    ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
-                children:
-                    node.argument
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.argument,
-                            node.id,
-                            'arg',
-                            fontSize,
-                          ),
-                        )
-                        .toList(),
+                children: _renderNodeList(
+                  node.argument,
+                  0,
+                  fontSize: fontSize,
+                  parentId: node.id,
+                  path: "arg",
+                ),
               );
 
-      return Padding(
-        padding: const EdgeInsets.only(right: _nodePadding),
+      return _wrapComposite(
+        node: node,
+        index: index,
+        parentId: parentId,
+        path: path,
         child: IntrinsicHeight(
           child: Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Function name (sin, cos, etc.)
+              // Function name (sin, cos, etc.
               Text(
                 node.function,
                 style: MathTextStyle.getStyle(
@@ -1257,41 +583,25 @@ class MathRenderer extends StatelessWidget {
                   minHeight: fontSize * 0.9,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children:
-                        node.radicand
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.radicand,
-                                node.id,
-                                'radicand',
-                                fontSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.radicand,
+                      0,
+                      fontSize: fontSize,
+                      parentId: node.id,
+                      path: 'radicand',
+                    ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                children:
-                    node.radicand
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.radicand,
-                            node.id,
-                            'radicand',
-                            fontSize,
-                          ),
-                        )
-                        .toList(),
+                children: _renderNodeList(
+                  node.radicand,
+                  0,
+                  fontSize: fontSize,
+                  parentId: node.id,
+                  path: 'radicand',
+                ),
               );
 
       // Build index widget for nth roots
@@ -1313,46 +623,33 @@ class MathRenderer extends StatelessWidget {
                     minHeight: indexSize * 0.7,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
-                      children:
-                          node.index
-                              .asMap()
-                              .entries
-                              .map(
-                                (e) => _renderNode(
-                                  e.value,
-                                  e.key,
-                                  node.index,
-                                  node.id,
-                                  'index',
-                                  indexSize,
-                                ),
-                              )
-                              .toList(),
+                      children: _renderNodeList(
+                        node.index,
+                        0,
+                        fontSize: indexSize,
+                        parentId: node.id,
+                        path: "index",
+                      ),
                     ),
                   ),
                 )
                 : Row(
                   mainAxisSize: MainAxisSize.min,
-                  children:
-                      node.index
-                          .asMap()
-                          .entries
-                          .map(
-                            (e) => _renderNode(
-                              e.value,
-                              e.key,
-                              node.index,
-                              node.id,
-                              'index',
-                              indexSize,
-                            ),
-                          )
-                          .toList(),
+                  children: _renderNodeList(
+                    node.index,
+                    0,
+                    fontSize: indexSize,
+                    parentId: node.id,
+                    path: 'index',
+                  ),
                 );
       }
 
-      return Padding(
-        padding: const EdgeInsets.only(right: _nodePadding),
+      return _wrapComposite(
+        node: node,
+        index: index,
+        parentId: parentId,
+        path: path,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -1435,41 +732,25 @@ class MathRenderer extends StatelessWidget {
                     minHeight: baseSize * 0.7,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
-                      children:
-                          node.base
-                              .asMap()
-                              .entries
-                              .map(
-                                (e) => _renderNode(
-                                  e.value,
-                                  e.key,
-                                  node.base,
-                                  node.id,
-                                  'base',
-                                  baseSize,
-                                ),
-                              )
-                              .toList(),
+                      children: _renderNodeList(
+                        node.base,
+                        0,
+                        fontSize: baseSize,
+                        parentId: node.id,
+                        path: 'base',
+                      ),
                     ),
                   ),
                 )
                 : Row(
                   mainAxisSize: MainAxisSize.min,
-                  children:
-                      node.base
-                          .asMap()
-                          .entries
-                          .map(
-                            (e) => _renderNode(
-                              e.value,
-                              e.key,
-                              node.base,
-                              node.id,
-                              'base',
-                              baseSize,
-                            ),
-                          )
-                          .toList(),
+                  children: _renderNodeList(
+                    node.base,
+                    0,
+                    fontSize: baseSize,
+                    parentId: node.id,
+                    path: 'base',
+                  ),
                 );
       }
 
@@ -1491,46 +772,33 @@ class MathRenderer extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
-                    children:
-                        node.argument
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.argument,
-                                node.id,
-                                'arg',
-                                fontSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.argument,
+                      0,
+                      fontSize: fontSize,
+                      parentId: node.id,
+                      path: 'arg',
+                    ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
-                children:
-                    node.argument
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.argument,
-                            node.id,
-                            'arg',
-                            fontSize,
-                          ),
-                        )
-                        .toList(),
+                children: _renderNodeList(
+                  node.argument,
+                  0,
+                  fontSize: fontSize,
+                  parentId: node.id,
+                  path: "arg",
+                ),
               );
 
-      return Padding(
-        padding: const EdgeInsets.only(right: _nodePadding),
+      return _wrapComposite(
+        node: node,
+        index: index,
+        parentId: parentId,
+        path: path,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -1544,18 +812,14 @@ class MathRenderer extends StatelessWidget {
               textScaler: textScaler,
             ),
 
-            // Subscript base - uses Transform for vertical offset only
-            // Width is still part of layout flow
+            // Subscript base - layout-aware positioning
             if (!node.isNaturalLog && baseWidget != null)
-              Transform.translate(
-                offset: Offset(0, fontSize * 0.6), // Vertical subscript offset
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    left: fontSize * 0.02, // Small gap after "log"
-                    right: fontSize * 0.08, // Gap before parentheses
-                  ),
-                  child: baseWidget,
+              Padding(
+                padding: EdgeInsets.only(
+                  left: 1,
+                  top: fontSize * 0.5, // Base offset for subscript
                 ),
+                child: baseWidget,
               ),
 
             // Small gap for natural log
@@ -1617,41 +881,25 @@ class MathRenderer extends StatelessWidget {
                   minHeight: smallSize * 0.7,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children:
-                        node.n
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.n,
-                                node.id,
-                                'n',
-                                smallSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.n,
+                      0,
+                      fontSize: smallSize,
+                      parentId: node.id,
+                      path: "n",
+                    ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                children:
-                    node.n
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.n,
-                            node.id,
-                            'n',
-                            smallSize,
-                          ),
-                        )
-                        .toList(),
+                children: _renderNodeList(
+                  node.n,
+                  0,
+                  fontSize: smallSize,
+                  parentId: node.id,
+                  path: "n",
+                ),
               );
 
       // Build r widget (bottom/subscript)
@@ -1671,50 +919,37 @@ class MathRenderer extends StatelessWidget {
                   minHeight: smallSize * 0.7,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children:
-                        node.r
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.r,
-                                node.id,
-                                'r',
-                                smallSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.r,
+                      0,
+                      fontSize: smallSize,
+                      parentId: node.id,
+                      path: "r",
+                    ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                children:
-                    node.r
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.r,
-                            node.id,
-                            'r',
-                            smallSize,
-                          ),
-                        )
-                        .toList(),
+                children: _renderNodeList(
+                  node.r,
+                  0,
+                  fontSize: smallSize,
+                  parentId: node.id,
+                  path: "r",
+                ),
               );
 
-      return Padding(
-        padding: const EdgeInsets.only(right: _nodePadding),
+      return _wrapComposite(
+        node: node,
+        index: index,
+        parentId: parentId,
+        path: path,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // n (superscript position)
+            // n (superscript position
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [nWidget, SizedBox(height: fontSize * 0.8)],
@@ -1760,41 +995,25 @@ class MathRenderer extends StatelessWidget {
                   minHeight: smallSize * 0.7,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children:
-                        node.n
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.n,
-                                node.id,
-                                'n',
-                                smallSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.n,
+                      0,
+                      fontSize: smallSize,
+                      parentId: node.id,
+                      path: "n",
+                    ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                children:
-                    node.n
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.n,
-                            node.id,
-                            'n',
-                            smallSize,
-                          ),
-                        )
-                        .toList(),
+                children: _renderNodeList(
+                  node.n,
+                  0,
+                  fontSize: smallSize,
+                  parentId: node.id,
+                  path: "n",
+                ),
               );
 
       // Build r widget (bottom/subscript)
@@ -1814,50 +1033,37 @@ class MathRenderer extends StatelessWidget {
                   minHeight: smallSize * 0.7,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children:
-                        node.r
-                            .asMap()
-                            .entries
-                            .map(
-                              (e) => _renderNode(
-                                e.value,
-                                e.key,
-                                node.r,
-                                node.id,
-                                'r',
-                                smallSize,
-                              ),
-                            )
-                            .toList(),
+                    children: _renderNodeList(
+                      node.r,
+                      0,
+                      fontSize: smallSize,
+                      parentId: node.id,
+                      path: "r",
+                    ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                children:
-                    node.r
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.r,
-                            node.id,
-                            'r',
-                            smallSize,
-                          ),
-                        )
-                        .toList(),
+                children: _renderNodeList(
+                  node.r,
+                  0,
+                  fontSize: smallSize,
+                  parentId: node.id,
+                  path: "r",
+                ),
               );
 
-      return Padding(
-        padding: const EdgeInsets.only(right: _nodePadding),
+      return _wrapComposite(
+        node: node,
+        index: index,
+        parentId: parentId,
+        path: path,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // n (superscript position)
+            // n (superscript position
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [nWidget, SizedBox(height: fontSize * 1)],
@@ -1881,8 +1087,11 @@ class MathRenderer extends StatelessWidget {
     }
 
     if (node is AnsNode) {
-      return Padding(
-        padding: const EdgeInsets.only(right: _nodePadding),
+      return _wrapComposite(
+        node: node,
+        index: index,
+        parentId: parentId,
+        path: path,
         child: IntrinsicHeight(
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1900,21 +1109,13 @@ class MathRenderer extends StatelessWidget {
               // Index - same size as regular text
               Row(
                 mainAxisSize: MainAxisSize.min,
-                children:
-                    node.index
-                        .asMap()
-                        .entries
-                        .map(
-                          (e) => _renderNode(
-                            e.value,
-                            e.key,
-                            node.index,
-                            node.id,
-                            'index',
-                            fontSize, // <-- Same size, not smaller
-                          ),
-                        )
-                        .toList(),
+                children: _renderNodeList(
+                  node.index,
+                  0,
+                  fontSize: fontSize,
+                  parentId: node.id,
+                  path: 'index',
+                ),
               ),
             ],
           ),
@@ -1933,15 +1134,27 @@ class MathRenderer extends StatelessWidget {
     }
     return false;
   }
+
+  /// Check if content contains tall nodes that should trigger top-alignment for exponents
+  bool _isTallContent(List<MathNode> nodes) {
+    if (nodes.isEmpty) return false;
+    for (final node in nodes) {
+      if (node is ParenthesisNode ||
+          node is FractionNode ||
+          node is RootNode ||
+          node is PermutationNode ||
+          node is CombinationNode) {
+        return true;
+      }
+    }
+    return false;
+  }
 }
 
+/// Widget for rendering a literal text node.
 class LiteralWidget extends StatefulWidget {
   final LiteralNode node;
-  final bool active;
-  final double cursorOpacity;
-  final int subIndex;
   final double fontSize;
-  final bool isLast;
   final String? parentId;
   final String? path;
   final int index;
@@ -1953,11 +1166,7 @@ class LiteralWidget extends StatefulWidget {
   const LiteralWidget({
     super.key,
     required this.node,
-    required this.active,
-    required this.cursorOpacity,
-    required this.subIndex,
     required this.fontSize,
-    required this.isLast,
     required this.parentId,
     required this.path,
     required this.index,
@@ -1978,9 +1187,7 @@ class _LiteralWidgetState extends State<LiteralWidget> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _reportLayoutIfNeeded(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reportLayout());
   }
 
   @override
@@ -1988,18 +1195,12 @@ class _LiteralWidgetState extends State<LiteralWidget> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.structureVersion != widget.structureVersion ||
         oldWidget.node.id != widget.node.id ||
-        oldWidget.node.text != widget.node.text ||
-        oldWidget.parentId != widget.parentId ||
-        oldWidget.path != widget.path ||
-        oldWidget.index != widget.index ||
-        oldWidget.fontSize != widget.fontSize) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _reportLayoutIfNeeded(),
-      );
+        oldWidget.node.text != widget.node.text) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reportLayout());
     }
   }
 
-  void _reportLayoutIfNeeded() {
+  void _reportLayout() {
     if (!mounted) return;
     if (_lastReportedVersion == widget.structureVersion) return;
     _lastReportedVersion = widget.structureVersion;
@@ -2011,11 +1212,10 @@ class _LiteralWidgetState extends State<LiteralWidget> {
         widget.rootKey.currentContext?.findRenderObject() as RenderBox?;
     if (rootBox == null) return;
 
-    final Offset globalPos = box.localToGlobal(Offset.zero);
-    final Offset relativePos = rootBox.globalToLocal(globalPos);
+    final globalPos = box.localToGlobal(Offset.zero);
+    final relativePos = rootBox.globalToLocal(globalPos);
     final rect = relativePos & box.size;
 
-    // Get the RenderParagraph from the Text widget
     RenderParagraph? renderParagraph;
     final renderObject = _textKey.currentContext?.findRenderObject();
     if (renderObject is RenderParagraph) {
@@ -2031,126 +1231,36 @@ class _LiteralWidgetState extends State<LiteralWidget> {
         index: widget.index,
         fontSize: widget.fontSize,
         textScaler: widget.textScaler,
-        renderParagraph: renderParagraph, // ADD THIS
+        renderParagraph: renderParagraph,
       ),
     );
-  }
-
-  double _getCursorOffsetFromRenderParagraph(
-    String logicalText,
-    String displayText,
-  ) {
-    if (logicalText.isEmpty || widget.subIndex <= 0) return 0.0;
-
-    final displayIndex = MathTextStyle.logicalToDisplayIndex(
-      logicalText,
-      widget.subIndex,
-    ).clamp(0, displayText.length);
-
-    // Try to get RenderParagraph from the Text widget
-    final renderObject = _textKey.currentContext?.findRenderObject();
-    if (renderObject is RenderParagraph) {
-      final offset = renderObject.getOffsetForCaret(
-        TextPosition(offset: displayIndex),
-        Rect.zero,
-      );
-      return offset.dx;
-    }
-
-    // Fallback to TextPainter (should rarely happen)
-    final painter = TextPainter(
-      text: TextSpan(
-        text: displayText,
-        style: MathTextStyle.getStyle(
-          widget.fontSize,
-        ).copyWith(color: Colors.white),
-      ),
-      textDirection: TextDirection.ltr,
-      textScaler: widget.textScaler,
-    )..layout();
-
-    final offset = painter.getOffsetForCaret(
-      TextPosition(offset: displayIndex),
-      Rect.zero,
-    );
-    painter.dispose();
-    return offset.dx;
   }
 
   @override
   Widget build(BuildContext context) {
-    final logicalText = widget.node.text;
-    final showCursor = widget.active && widget.cursorOpacity > 0.5;
+    final text = widget.node.text;
 
-    final isEmpty = logicalText.isEmpty;
-    final displayText = isEmpty ? "" : MathTextStyle.toDisplayText(logicalText);
+    if (text.isEmpty) {
+      return SizedBox(
+        width: math.max(2.0, widget.fontSize * 0.06),
+        height: widget.fontSize,
+      );
+    }
 
-    final cursorWidth = math.max(2.0, widget.fontSize * 0.06);
+    final displayText = MathTextStyle.toDisplayText(text);
 
-    double cursorOffset = 0.0;
-
-    return StatefulBuilder(
-      builder: (context, setInnerState) {
-        if (showCursor && !isEmpty) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            final newOffset = _getCursorOffsetFromRenderParagraph(
-              logicalText,
-              displayText,
-            );
-            if (newOffset != cursorOffset && mounted) {
-              setInnerState(() {
-                cursorOffset = newOffset;
-              });
-            }
-          });
-        }
-
-        if (isEmpty) {
-          return SizedBox(
-            width: cursorWidth,
-            height: widget.fontSize,
-            child:
-                showCursor
-                    ? Container(
-                      width: cursorWidth,
-                      height: widget.fontSize,
-                      color: Colors.yellowAccent,
-                    )
-                    : null,
-          );
-        }
-
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Text(
-              key: _textKey,
-              displayText,
-              style: MathTextStyle.getStyle(
-                widget.fontSize,
-              ).copyWith(color: Colors.white),
-              textScaler: widget.textScaler,
-            ),
-            if (showCursor)
-              Positioned(
-                left: _getCursorOffsetFromRenderParagraph(
-                  logicalText,
-                  displayText,
-                ),
-                top: 0,
-                bottom: 0,
-                child: Container(
-                  width: cursorWidth,
-                  color: Colors.yellowAccent,
-                ),
-              ),
-          ],
-        );
-      },
+    return Text(
+      key: _textKey,
+      displayText,
+      style: MathTextStyle.getStyle(
+        widget.fontSize,
+      ).copyWith(color: Colors.white),
+      textScaler: widget.textScaler,
     );
   }
 }
 
+/// Custom painter for the radical (square root) symbol.
 class RadicalSymbolPainter extends CustomPainter {
   final Color color;
   final double strokeWidth;
@@ -2200,6 +1310,80 @@ class RadicalSymbolPainter extends CustomPainter {
   }
 }
 
+/// Wrapper for composite nodes to register their layout bounds
+class _ComplexNodeWrapper extends StatefulWidget {
+  final Widget child;
+  final MathNode node;
+  final int index;
+  final String? parentId;
+  final String? path;
+  final MathEditorController controller;
+  final GlobalKey rootKey;
+  final int structureVersion;
+
+  const _ComplexNodeWrapper({
+    required this.child,
+    required this.node,
+    required this.index,
+    required this.parentId,
+    required this.path,
+    required this.controller,
+    required this.rootKey,
+    required this.structureVersion,
+  });
+
+  @override
+  State<_ComplexNodeWrapper> createState() => _ComplexNodeWrapperState();
+}
+
+class _ComplexNodeWrapperState extends State<_ComplexNodeWrapper> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _register());
+  }
+
+  @override
+  void didUpdateWidget(covariant _ComplexNodeWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.structureVersion != widget.structureVersion ||
+        oldWidget.node.id != widget.node.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _register());
+    }
+  }
+
+  void _register() {
+    if (!mounted) return;
+
+    final RenderBox? box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return;
+
+    final RenderBox? rootBox =
+        widget.rootKey.currentContext?.findRenderObject() as RenderBox?;
+    if (rootBox == null) return;
+
+    final globalPos = box.localToGlobal(Offset.zero);
+    final relativePos = rootBox.globalToLocal(globalPos);
+    final rect = relativePos & box.size;
+
+    widget.controller.registerComplexNodeLayout(
+      ComplexNodeInfo(
+        node: widget.node,
+        parentId: widget.parentId,
+        path: widget.path,
+        index: widget.index,
+        rect: rect,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
+  }
+}
+
+/// A scalable parenthesis widget that grows with content height.
 class ScalableParenthesis extends StatelessWidget {
   final bool isOpening;
   final double fontSize;
@@ -2230,6 +1414,7 @@ class ScalableParenthesis extends StatelessWidget {
   }
 }
 
+/// Custom painter for parenthesis curves.
 class ParenthesisPainter extends CustomPainter {
   final bool isOpening;
   final Color color;
@@ -2294,15 +1479,18 @@ class ComplexNodeInfo {
   final String? parentId;
   final String? path;
   final int index;
+  final Rect rect;
 
   ComplexNodeInfo({
     required this.node,
     required this.parentId,
     required this.path,
     required this.index,
+    required this.rect,
   });
 }
 
+/// Layout information for a literal node, used for cursor positioning.
 class NodeLayoutInfo {
   final Rect rect;
   final LiteralNode node;
@@ -2311,7 +1499,12 @@ class NodeLayoutInfo {
   final int index;
   final double fontSize;
   final TextScaler textScaler;
-  final RenderParagraph? renderParagraph; // ADD THIS
+  final RenderParagraph? renderParagraph;
+
+  // Cached display text - computed once
+  String? _displayText;
+  String get displayText =>
+      _displayText ??= MathTextStyle.toDisplayText(node.text);
 
   NodeLayoutInfo({
     required this.rect,
@@ -2321,10 +1514,9 @@ class NodeLayoutInfo {
     required this.index,
     required this.fontSize,
     required this.textScaler,
-    this.renderParagraph, // ADD THIS
+    this.renderParagraph,
   });
 }
-
 
 /// Helper class to track line info
 class _LineInfo {
@@ -2334,4 +1526,109 @@ class _LineInfo {
   _LineInfo({required this.nodes, required this.startIndex});
 }
 
+/// Overlay widget for rendering the blinking cursor.
+class CursorOverlay extends SingleChildRenderObjectWidget {
+  final CursorPaintNotifier notifier;
+  final Animation<double> blinkAnimation;
+  final bool showCursor;
 
+  const CursorOverlay({
+    super.key,
+    required super.child,
+    required this.notifier,
+    required this.blinkAnimation,
+    required this.showCursor,
+  });
+
+  @override
+  RenderCursorOverlay createRenderObject(BuildContext context) {
+    return RenderCursorOverlay(
+      notifier: notifier,
+      blinkAnimation: blinkAnimation,
+      showCursor: showCursor,
+    );
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderCursorOverlay renderObject,
+  ) {
+    renderObject
+      ..notifier = notifier
+      ..blinkAnimation = blinkAnimation
+      ..showCursor = showCursor;
+  }
+}
+
+/// Render object for the cursor overlay.
+class RenderCursorOverlay extends RenderProxyBox {
+  RenderCursorOverlay({
+    required CursorPaintNotifier notifier,
+    required Animation<double> blinkAnimation,
+    required bool showCursor,
+  }) : _notifier = notifier,
+       _blinkAnimation = blinkAnimation,
+       _showCursor = showCursor {
+    _notifier.onNeedsPaint = markNeedsPaint;
+    _blinkAnimation.addListener(markNeedsPaint);
+  }
+
+  CursorPaintNotifier _notifier;
+  set notifier(CursorPaintNotifier value) {
+    if (_notifier == value) return;
+    _notifier.onNeedsPaint = null;
+    _notifier = value;
+    _notifier.onNeedsPaint = markNeedsPaint;
+    markNeedsPaint();
+  }
+
+  Animation<double> _blinkAnimation;
+  set blinkAnimation(Animation<double> value) {
+    if (_blinkAnimation == value) return;
+    _blinkAnimation.removeListener(markNeedsPaint);
+    _blinkAnimation = value;
+    _blinkAnimation.addListener(markNeedsPaint);
+    markNeedsPaint();
+  }
+
+  bool _showCursor;
+  set showCursor(bool value) {
+    if (_showCursor == value) return;
+    _showCursor = value;
+    markNeedsPaint();
+  }
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    // Restore the callback when re-attached
+    _notifier.onNeedsPaint = markNeedsPaint;
+    _blinkAnimation.addListener(markNeedsPaint);
+  }
+
+  @override
+  void detach() {
+    _notifier.onNeedsPaint = null;
+    _blinkAnimation.removeListener(markNeedsPaint);
+    super.detach();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    // Paint child first (the math expression)
+    super.paint(context, offset);
+
+    // Paint cursor on top
+    if (_showCursor &&
+        _blinkAnimation.value >= 0.5 &&
+        _notifier.rect != Rect.zero) {
+      final paint =
+          Paint()
+            ..color = Colors.yellowAccent
+            ..style = PaintingStyle.fill;
+
+      context.canvas.drawRect(_notifier.rect.shift(offset), paint);
+    }
+  }
+}

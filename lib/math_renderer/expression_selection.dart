@@ -260,6 +260,12 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
   }
 
   Rect? _getNodeBounds(MathNode node) {
+    // Check if this is a complex node with registered bounds
+    final complexInfo = widget.controller.complexNodeMap[node.id];
+    if (complexInfo != null) {
+      return complexInfo.rect;
+    }
+
     final nodeIds = _collectAllNodeIds(node);
 
     double minX = double.infinity;
@@ -560,7 +566,7 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
             child: IgnorePointer(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.yellow.withOpacity(0.35),
+                  color: Colors.yellow.withValues(alpha: 0.35),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),

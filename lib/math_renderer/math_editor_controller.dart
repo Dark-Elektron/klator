@@ -10,7 +10,16 @@ import 'cursor.dart';
 
 class MathEditorController extends ChangeNotifier {
   List<MathNode> expression = [LiteralNode()];
-  EditorCursor cursor = const EditorCursor();
+  EditorCursor get cursor => _cursorNotifier.value;
+
+  // Cache for faster repeated taps
+  NodeLayoutInfo? _lastTappedNode;
+
+  set cursor(EditorCursor value) {
+    if (_cursorNotifier.value != value) {
+      _cursorNotifier.value = value;
+    }
+  }
 
   VoidCallback? onSelectionCleared;
   final Map<String, NodeLayoutInfo> _layoutRegistry = {};
@@ -40,8 +49,25 @@ class MathEditorController extends ChangeNotifier {
   bool get canRedo => _redoStack.isNotEmpty;
 
   late final SelectionWrapper selectionWrapper;
+  final ValueNotifier<EditorCursor> _cursorNotifier = ValueNotifier(
+    const EditorCursor(),
+  );
+
+  ValueNotifier<EditorCursor> get cursorListenable => _cursorNotifier;
+
+  // Add this field
+  final Map<String, NodeLayoutInfo> _layoutIndex = {};
+  final CursorPaintNotifier cursorPaintNotifier = CursorPaintNotifier();
+
   MathEditorController() {
     selectionWrapper = SelectionWrapper(this);
+  }
+
+  @override
+  void dispose() {
+    _cursorNotifier.dispose();
+    cursorPaintNotifier.dispose(); // Add this line
+    super.dispose();
   }
 
   // Method to refresh display when settings change
@@ -149,19 +175,96 @@ class MathEditorController extends ChangeNotifier {
         char == MathTextStyle.minusSign;
   }
 
-  void clearLayoutRegistry() => _layoutRegistry.clear();
+  String _makeLayoutKey(String? parentId, String? path, int index) {
+    return '${parentId ?? 'root'}:${path ?? 'root'}:$index';
+  }
 
-  void registerNodeLayout(NodeLayoutInfo info) =>
-      _layoutRegistry[info.node.id] = info;
+  void registerNodeLayout(NodeLayoutInfo info) {
+    _layoutRegistry[info.node.id] = info;
+    _layoutIndex[_makeLayoutKey(info.parentId, info.path, info.index)] = info;
+
+    _tryUpdateCursorRectFor(info);
+  }
+
+  void registerComplexNodeLayout(ComplexNodeInfo info) {
+    _complexNodeMap[info.node.id] = info;
+  }
+
+  void clearLayoutRegistry() {
+    _layoutRegistry.clear();
+    _layoutIndex.clear();
+    _complexNodeMap.clear();
+    _lastTappedNode = null; // Clear cache
+  }
+
+  void _tryUpdateCursorRectFor(NodeLayoutInfo info) {
+    final cursor = _cursorNotifier.value;
+
+    if (info.parentId != cursor.parentId ||
+        info.path != cursor.path ||
+        info.index != cursor.index) {
+      return;
+    }
+
+    final text = info.node.text;
+    final charIndex = cursor.subIndex.clamp(0, text.length);
+    double cursorX;
+
+    if (text.isEmpty) {
+      cursorX = info.rect.left;
+    } else {
+      if (info.renderParagraph != null && info.renderParagraph!.attached) {
+        final displayIndex = MathTextStyle.logicalToDisplayIndex(
+          text,
+          charIndex,
+        );
+        final displayText = MathTextStyle.toDisplayText(text);
+        final offset = info.renderParagraph!.getOffsetForCaret(
+          TextPosition(offset: displayIndex.clamp(0, displayText.length)),
+          Rect.zero,
+        );
+        cursorX = info.rect.left + offset.dx;
+      } else {
+        cursorX =
+            info.rect.left +
+            MathTextStyle.getCursorOffset(
+              text,
+              charIndex,
+              info.fontSize,
+              info.textScaler,
+            );
+      }
+    }
+
+    cursorPaintNotifier.updateRectDirect(
+      Rect.fromLTWH(cursorX, info.rect.top, 2, info.rect.height),
+    );
+  }
+
+  double getContentWidth() {
+    if (_layoutRegistry.isEmpty) return 0;
+
+    double minX = double.infinity;
+    double maxX = double.negativeInfinity;
+
+    for (final info in _layoutRegistry.values) {
+      minX = math.min(minX, info.rect.left);
+      maxX = math.max(maxX, info.rect.right);
+    }
+
+    if (minX == double.infinity) return 0;
+    return maxX - minX;
+  }
 
   static bool _isSerializedDigit(String char) {
     return char.isNotEmpty && '0123456789.'.contains(char);
   }
 
   void _notifyStructureChanged() {
-    _rebuildComplexNodeMap(); // Add this line
     _structureVersion++;
+    _rebuildComplexNodeMap();
     notifyListeners();
+    // Remove any postFrameCallback here - let registerNodeLayout handle cursor rect
   }
 
   void setCursor(EditorCursor c) {
@@ -169,121 +272,214 @@ class MathEditorController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void tapAt(Offset localPos) {
+  void tapAt(Offset position) {
     if (_layoutRegistry.isEmpty) return;
-    double minLeft = double.infinity, maxRight = double.negativeInfinity;
-    NodeLayoutInfo? leftmostNode, rightmostNode;
+
+    // OPTIMIZATION 1: Check last tapped node first
+    NodeLayoutInfo? best;
+    if (_lastTappedNode != null && _lastTappedNode!.rect.contains(position)) {
+      best = _lastTappedNode;
+    }
+
+    // OPTIMIZATION 2: Fast containment check
+    if (best == null) {
+      for (final info in _layoutRegistry.values) {
+        if (info.rect.contains(position)) {
+          best = info;
+          break;
+        }
+      }
+    }
+
+    // OPTIMIZATION 3: Nearest node (only if not inside any node)
+    if (best == null) {
+      double bestDistSq = double.infinity;
+      for (final info in _layoutRegistry.values) {
+        final dx = position.dx - info.rect.center.dx;
+        final dy = position.dy - info.rect.center.dy;
+        final distSq = dx * dx + dy * dy;
+        if (distSq < bestDistSq) {
+          bestDistSq = distSq;
+          best = info;
+        }
+      }
+    }
+
+    if (best == null) return;
+
+    _lastTappedNode = best; // Cache for next tap
+
+    final text = best.node.text;
+    int charIndex;
+    double cursorX;
+
+    if (text.isEmpty) {
+      charIndex = 0;
+      cursorX = best.rect.left;
+    } else {
+      final relativeX = position.dx - best.rect.left;
+
+      // Use RenderParagraph if available (fast path)
+      if (best.renderParagraph != null && best.renderParagraph!.attached) {
+        final pos = best.renderParagraph!.getPositionForOffset(
+          Offset(relativeX, best.fontSize / 2),
+        );
+
+        final displayText = best.displayText;
+        final displayOffset = pos.offset.clamp(0, displayText.length);
+        charIndex = MathTextStyle.displayToLogicalIndex(text, displayOffset);
+
+        final cursorDisplayIndex = MathTextStyle.logicalToDisplayIndex(
+          text,
+          charIndex,
+        );
+        final offset = best.renderParagraph!.getOffsetForCaret(
+          TextPosition(offset: cursorDisplayIndex.clamp(0, displayText.length)),
+          Rect.zero,
+        );
+        cursorX = best.rect.left + offset.dx;
+      } else {
+        // Fallback (slow path - should rarely happen)
+        charIndex = MathTextStyle.getCharIndexForOffset(
+          text,
+          relativeX,
+          best.fontSize,
+          best.textScaler,
+        );
+        cursorX =
+            best.rect.left +
+            MathTextStyle.getCursorOffset(
+              text,
+              charIndex,
+              best.fontSize,
+              best.textScaler,
+            );
+      }
+    }
+
+    // OPTIMIZATION 4: Early exit if cursor unchanged
+    final currentCursor = _cursorNotifier.value;
+    if (currentCursor.parentId == best.parentId &&
+        currentCursor.path == best.path &&
+        currentCursor.index == best.index &&
+        currentCursor.subIndex == charIndex) {
+      return;
+    }
+
+    // Update cursor
+    _cursorNotifier.value = EditorCursor(
+      parentId: best.parentId,
+      path: best.path,
+      index: best.index,
+      subIndex: charIndex,
+    );
+
+    cursorPaintNotifier.updateRectDirect(
+      Rect.fromLTWH(cursorX, best.rect.top, 2, best.rect.height),
+    );
+  }
+
+  void moveCursorToStartWithRect() {
+    if (_layoutRegistry.isEmpty) {
+      return;
+    }
+
+    // Find the leftmost literal node
+    NodeLayoutInfo? leftmostInfo;
+    double minLeft = double.infinity;
 
     for (final info in _layoutRegistry.values) {
       if (info.rect.left < minLeft) {
         minLeft = info.rect.left;
-        leftmostNode = info;
+        leftmostInfo = info;
       }
+    }
+
+    if (leftmostInfo == null) {
+      return;
+    }
+
+    final newCursor = EditorCursor(
+      parentId: leftmostInfo.parentId,
+      path: leftmostInfo.path,
+      index: leftmostInfo.index,
+      subIndex: 0,
+    );
+
+    _cursorNotifier.value = newCursor;
+
+    final newRect = Rect.fromLTWH(
+      leftmostInfo.rect.left,
+      leftmostInfo.rect.top,
+      2,
+      leftmostInfo.rect.height,
+    );
+
+    cursorPaintNotifier.updateRectDirect(newRect);
+  }
+
+  void moveCursorToEndWithRect() {
+    if (_layoutRegistry.isEmpty) return;
+
+    // Find the rightmost literal node
+    NodeLayoutInfo? rightmostInfo;
+    double maxRight = double.negativeInfinity;
+
+    for (final info in _layoutRegistry.values) {
       if (info.rect.right > maxRight) {
         maxRight = info.rect.right;
-        rightmostNode = info;
+        rightmostInfo = info;
       }
     }
 
-    if (localPos.dx < minLeft && leftmostNode != null) {
-      final firstRootNode = _findFirstRootLiteralNode();
-      cursor = EditorCursor(
-        parentId: firstRootNode?.parentId ?? leftmostNode.parentId,
-        path: firstRootNode?.path ?? leftmostNode.path,
-        index: firstRootNode?.index ?? leftmostNode.index,
-        subIndex: 0,
-      );
-      notifyListeners();
-      return;
-    }
+    if (rightmostInfo == null) return;
 
-    if (localPos.dx > maxRight && rightmostNode != null) {
-      final lastRootNode = _findLastRootLiteralNode();
-      cursor = EditorCursor(
-        parentId: lastRootNode?.parentId ?? rightmostNode.parentId,
-        path: lastRootNode?.path ?? rightmostNode.path,
-        index: lastRootNode?.index ?? rightmostNode.index,
-        subIndex:
-            lastRootNode?.node.text.length ?? rightmostNode.node.text.length,
-      );
-      notifyListeners();
-      return;
-    }
+    final text = rightmostInfo.node.text;
+    final charIndex = text.length;
 
-    NodeLayoutInfo? closest;
-    double minDistance = double.infinity;
-
-    for (final info in _layoutRegistry.values) {
-      double dx = 0, dy = 0;
-      if (localPos.dx < info.rect.left) {
-        dx = info.rect.left - localPos.dx;
-      } else if (localPos.dx > info.rect.right) {
-        dx = localPos.dx - info.rect.right;
-      }
-      if (localPos.dy < info.rect.top) {
-        dy = info.rect.top - localPos.dy;
-      } else if (localPos.dy > info.rect.bottom) {
-        dy = localPos.dy - info.rect.bottom;
-      }
-      final distance = math.sqrt(dx * dx + dy * dy);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closest = info;
-      }
-    }
-
-    if (closest != null) _setCursorInNodeAtOffset(closest, localPos.dx);
-  }
-
-  NodeLayoutInfo? _findFirstRootLiteralNode() {
-    NodeLayoutInfo? first;
-    int minIndex = 999999;
-    for (final info in _layoutRegistry.values) {
-      if (info.parentId == null && info.index < minIndex) {
-        minIndex = info.index;
-        first = info;
-      }
-    }
-    return first;
-  }
-
-  NodeLayoutInfo? _findLastRootLiteralNode() {
-    NodeLayoutInfo? last;
-    int maxIndex = -1;
-    for (final info in _layoutRegistry.values) {
-      if (info.parentId == null && info.index > maxIndex) {
-        maxIndex = info.index;
-        last = info;
-      }
-    }
-    return last;
-  }
-
-  void _setCursorInNodeAtOffset(NodeLayoutInfo info, double globalX) {
-    final text = info.node.text;
-    final relativeX = globalX - info.rect.left;
-    int newSubIndex;
+    double cursorX;
     if (text.isEmpty) {
-      newSubIndex = 0;
-    } else if (info.renderParagraph != null) {
-      // Prefer using the actual RenderParagraph captured during layout
-      newSubIndex = _getCharIndexUsingRenderParagraph(info, relativeX);
+      cursorX = rightmostInfo.rect.left;
     } else {
-      // Fallback to the text-measure method
-      newSubIndex = MathTextStyle.getCharIndexForOffset(
-        text,
-        relativeX,
-        info.fontSize,
-        info.textScaler,
-      );
+      if (rightmostInfo.renderParagraph != null &&
+          rightmostInfo.renderParagraph!.attached) {
+        final displayIndex = MathTextStyle.logicalToDisplayIndex(
+          text,
+          charIndex,
+        );
+        final displayText = MathTextStyle.toDisplayText(text);
+        final offset = rightmostInfo.renderParagraph!.getOffsetForCaret(
+          TextPosition(offset: displayIndex.clamp(0, displayText.length)),
+          Rect.zero,
+        );
+        cursorX = rightmostInfo.rect.left + offset.dx;
+      } else {
+        cursorX =
+            rightmostInfo.rect.left +
+            MathTextStyle.getCursorOffset(
+              text,
+              charIndex,
+              rightmostInfo.fontSize,
+              rightmostInfo.textScaler,
+            );
+      }
     }
-    cursor = EditorCursor(
-      parentId: info.parentId,
-      path: info.path,
-      index: info.index,
-      subIndex: newSubIndex,
+
+    _cursorNotifier.value = EditorCursor(
+      parentId: rightmostInfo.parentId,
+      path: rightmostInfo.path,
+      index: rightmostInfo.index,
+      subIndex: charIndex,
     );
-    notifyListeners();
+
+    cursorPaintNotifier.updateRectDirect(
+      Rect.fromLTWH(
+        cursorX,
+        rightmostInfo.rect.top,
+        2,
+        rightmostInfo.rect.height,
+      ),
+    );
   }
 
   void insertCharacter(String char) {
@@ -752,172 +948,176 @@ class MathEditorController extends ChangeNotifier {
     _notifyStructureChanged();
   }
 
-void _insertParenthesis() {
+  void _insertParenthesis() {
+    // If there's a selection, wrap it in parentheses
+    if (hasSelection) {
+      _wrapSelectionInParenthesis();
+      return;
+    }
 
-  debugPrint('>>> _insertParenthesis called');
-  debugPrint('>>>   hasSelection: $hasSelection');
-  debugPrint('>>>   _selection: $_selection');
-  
-  // If there's a selection, wrap it in parentheses
-  if (hasSelection) {
-    debugPrint('>>>   Calling _wrapSelectionInParenthesis');
-    _wrapSelectionInParenthesis();
-    return;
+    // Original cursor-based insertion
+    final siblings = _resolveSiblingList();
+    final current = _resolveCursorNode();
+    if (current is! LiteralNode) return;
+
+    final String currentId = current.id;
+    String text = current.text;
+    int cursorPos = cursor.subIndex;
+    int actualIndex = siblings.indexWhere((n) => n.id == currentId);
+
+    current.text = text.substring(0, cursorPos);
+    final paren = ParenthesisNode(content: [LiteralNode(text: "")]);
+    final tail = LiteralNode(text: text.substring(cursorPos));
+
+    if (actualIndex >= 0) {
+      siblings.insert(actualIndex + 1, paren);
+      siblings.insert(actualIndex + 2, tail);
+      cursor = EditorCursor(
+        parentId: paren.id,
+        path: 'content',
+        index: 0,
+        subIndex: 0,
+      );
+    }
+    _notifyStructureChanged();
   }
-  
-  debugPrint('>>>   No selection, doing cursor-based insertion');
 
-  // Original cursor-based insertion
-  final siblings = _resolveSiblingList();
-  final current = _resolveCursorNode();
-  if (current is! LiteralNode) return;
+  void _wrapSelectionInParenthesis() {
+    if (!hasSelection) return;
+    saveStateForUndo();
 
-  final String currentId = current.id;
-  String text = current.text;
-  int cursorPos = cursor.subIndex;
-  int actualIndex = siblings.indexWhere((n) => n.id == currentId);
-
-  current.text = text.substring(0, cursorPos);
-  final paren = ParenthesisNode(content: [LiteralNode(text: "")]);
-  final tail = LiteralNode(text: text.substring(cursorPos));
-
-  if (actualIndex >= 0) {
-    siblings.insert(actualIndex + 1, paren);
-    siblings.insert(actualIndex + 2, tail);
-    cursor = EditorCursor(
-      parentId: paren.id,
-      path: 'content',
-      index: 0,
-      subIndex: 0,
+    final norm = _selection!.normalized;
+    final siblings = _resolveNodeListForSelection(
+      norm.start.parentId,
+      norm.start.path,
     );
-  }
-  _notifyStructureChanged();
-}
+    if (siblings == null) return;
 
-void _wrapSelectionInParenthesis() {
-  if (!hasSelection) return;
-  saveStateForUndo();
+    // Collect the selected nodes
+    List<MathNode> selectedNodes = [];
 
-  final norm = _selection!.normalized;
-  final siblings = _resolveNodeListForSelection(
-    norm.start.parentId,
-    norm.start.path,
-  );
-  if (siblings == null) return;
+    for (
+      int i = norm.start.nodeIndex;
+      i <= norm.end.nodeIndex && i < siblings.length;
+      i++
+    ) {
+      final node = siblings[i];
 
-  // Collect the selected nodes
-  List<MathNode> selectedNodes = [];
-  
-  for (int i = norm.start.nodeIndex; i <= norm.end.nodeIndex && i < siblings.length; i++) {
-    final node = siblings[i];
+      if (i == norm.start.nodeIndex && i == norm.end.nodeIndex) {
+        // Single node selection
+        if (node is LiteralNode) {
+          final startIdx = norm.start.charIndex.clamp(0, node.text.length);
+          final endIdx = norm.end.charIndex.clamp(0, node.text.length);
+          final selectedText = node.text.substring(startIdx, endIdx);
+          if (selectedText.isNotEmpty) {
+            selectedNodes.add(LiteralNode(text: selectedText));
+          }
+        } else {
+          // Composite node - add the whole thing
+          selectedNodes.add(MathClipboard.deepCopyNode(node));
+        }
+      } else if (i == norm.start.nodeIndex) {
+        // First node in multi-node selection
+        if (node is LiteralNode) {
+          final startIdx = norm.start.charIndex.clamp(0, node.text.length);
+          final selectedText = node.text.substring(startIdx);
+          if (selectedText.isNotEmpty) {
+            selectedNodes.add(LiteralNode(text: selectedText));
+          }
+        } else {
+          selectedNodes.add(MathClipboard.deepCopyNode(node));
+        }
+      } else if (i == norm.end.nodeIndex) {
+        // Last node in multi-node selection
+        if (node is LiteralNode) {
+          final endIdx = norm.end.charIndex.clamp(0, node.text.length);
+          final selectedText = node.text.substring(0, endIdx);
+          if (selectedText.isNotEmpty) {
+            selectedNodes.add(LiteralNode(text: selectedText));
+          }
+        } else {
+          selectedNodes.add(MathClipboard.deepCopyNode(node));
+        }
+      } else {
+        // Middle node - take the whole thing
+        selectedNodes.add(MathClipboard.deepCopyNode(node));
+      }
+    }
+
+    // If nothing was selected, just insert empty parenthesis
+    if (selectedNodes.isEmpty) {
+      selectedNodes.add(LiteralNode(text: ""));
+    }
+
+    // Get text before and after selection BEFORE removing nodes
+    String textBefore = '';
+    String textAfter = '';
+
+    final firstNode = siblings[norm.start.nodeIndex];
+    if (firstNode is LiteralNode) {
+      textBefore = firstNode.text.substring(
+        0,
+        norm.start.charIndex.clamp(0, firstNode.text.length),
+      );
+    }
+
+    // Check bounds before accessing lastNode
+    if (norm.end.nodeIndex < siblings.length) {
+      final lastNode = siblings[norm.end.nodeIndex];
+      if (lastNode is LiteralNode) {
+        textAfter = lastNode.text.substring(
+          norm.end.charIndex.clamp(0, lastNode.text.length),
+        );
+      }
+    }
+
+    // Remove selected nodes (from end to start)
+    for (int i = norm.end.nodeIndex; i >= norm.start.nodeIndex; i--) {
+      if (i < siblings.length) {
+        siblings.removeAt(i);
+      }
+    }
+
+    // Create the parenthesis node with selected content
+    if (selectedNodes.isNotEmpty && selectedNodes.first is! LiteralNode) {
+      selectedNodes.insert(0, LiteralNode(text: ""));
+    }
+    if (selectedNodes.isNotEmpty && selectedNodes.last is! LiteralNode) {
+      selectedNodes.add(LiteralNode(text: ""));
+    }
     
-    if (i == norm.start.nodeIndex && i == norm.end.nodeIndex) {
-      // Single node selection
-      if (node is LiteralNode) {
-        final startIdx = norm.start.charIndex.clamp(0, node.text.length);
-        final endIdx = norm.end.charIndex.clamp(0, node.text.length);
-        final selectedText = node.text.substring(startIdx, endIdx);
-        if (selectedText.isNotEmpty) {
-          selectedNodes.add(LiteralNode(text: selectedText));
-        }
-      } else {
-        // Composite node - add the whole thing
-        selectedNodes.add(MathClipboard.deepCopyNode(node));
-      }
-    } else if (i == norm.start.nodeIndex) {
-      // First node in multi-node selection
-      if (node is LiteralNode) {
-        final startIdx = norm.start.charIndex.clamp(0, node.text.length);
-        final selectedText = node.text.substring(startIdx);
-        if (selectedText.isNotEmpty) {
-          selectedNodes.add(LiteralNode(text: selectedText));
-        }
-      } else {
-        selectedNodes.add(MathClipboard.deepCopyNode(node));
-      }
-    } else if (i == norm.end.nodeIndex) {
-      // Last node in multi-node selection
-      if (node is LiteralNode) {
-        final endIdx = norm.end.charIndex.clamp(0, node.text.length);
-        final selectedText = node.text.substring(0, endIdx);
-        if (selectedText.isNotEmpty) {
-          selectedNodes.add(LiteralNode(text: selectedText));
-        }
-      } else {
-        selectedNodes.add(MathClipboard.deepCopyNode(node));
-      }
-    } else {
-      // Middle node - take the whole thing
-      selectedNodes.add(MathClipboard.deepCopyNode(node));
-    }
-  }
+    final paren = ParenthesisNode(content: selectedNodes);
 
-  // If nothing was selected, just insert empty parenthesis
-  if (selectedNodes.isEmpty) {
-    selectedNodes.add(LiteralNode(text: ""));
-  }
+    // Insert: textBefore literal, parenthesis, textAfter literal
+    // We unconditionally insert literals to ensure stable structure (Literal-Node-Literal pattern)
+    int insertIndex = norm.start.nodeIndex;
 
-  // Create the parenthesis node with selected content
-  final paren = ParenthesisNode(content: selectedNodes);
-
-  // Get text before and after selection
-  String textBefore = '';
-  String textAfter = '';
-  
-  final firstNode = siblings[norm.start.nodeIndex];
-  if (firstNode is LiteralNode) {
-    textBefore = firstNode.text.substring(0, norm.start.charIndex.clamp(0, firstNode.text.length));
-  }
-  
-  final lastNode = siblings[norm.end.nodeIndex];
-  if (lastNode is LiteralNode) {
-    textAfter = lastNode.text.substring(norm.end.charIndex.clamp(0, lastNode.text.length));
-  }
-
-  // Remove selected nodes (from end to start)
-  for (int i = norm.end.nodeIndex; i >= norm.start.nodeIndex; i--) {
-    if (i < siblings.length) {
-      siblings.removeAt(i);
-    }
-  }
-
-  // Insert: textBefore literal (if needed), parenthesis, textAfter literal (if needed)
-  int insertIndex = norm.start.nodeIndex;
-  
-  if (textBefore.isNotEmpty) {
+    // 1. Insert textBefore
     siblings.insert(insertIndex, LiteralNode(text: textBefore));
     insertIndex++;
-  } else if (insertIndex == 0 || (insertIndex > 0 && siblings[insertIndex - 1] is! LiteralNode)) {
-    // Ensure there's a literal before the parenthesis
-    siblings.insert(insertIndex, LiteralNode(text: ""));
+
+    // 2. Insert the parenthesis
+    siblings.insert(insertIndex, paren);
+    int parenIndex = insertIndex;
     insertIndex++;
-  }
 
-  siblings.insert(insertIndex, paren);
-  int parenIndex = insertIndex;
-  insertIndex++;
-
-  if (textAfter.isNotEmpty) {
+    // 3. Insert textAfter
     siblings.insert(insertIndex, LiteralNode(text: textAfter));
-  } else if (insertIndex >= siblings.length || siblings[insertIndex] is! LiteralNode) {
-    // Ensure there's a literal after the parenthesis
-    siblings.insert(insertIndex, LiteralNode(text: ""));
+
+    // Position cursor after the parenthesis (at start of next literal)
+    cursor = EditorCursor(
+      parentId: norm.start.parentId,
+      path: norm.start.path,
+      index: parenIndex + 1,
+      subIndex: 0,
+    );
+
+    // Clear selection
+    _selection = null;
+    onSelectionCleared?.call();
+
+    _notifyStructureChanged();
   }
-
-  // Position cursor after the parenthesis
-  cursor = EditorCursor(
-    parentId: norm.start.parentId,
-    path: norm.start.path,
-    index: parenIndex + 1,
-    subIndex: 0,
-  );
-
-  // Clear selection
-  _selection = null;
-  onSelectionCleared?.call();
-
-  _notifyStructureChanged();
-}
 
   void insertPermutation() {
     saveStateForUndo();
@@ -4090,8 +4290,6 @@ void _wrapSelectionInParenthesis() {
     notifyListeners();
   }
 
-
-
   // ============== SELECTION STATE ==============
   SelectionRange? _selection;
   SelectionRange? get selection => _selection;
@@ -4218,140 +4416,144 @@ void _wrapSelectionInParenthesis() {
   }
 
   /// Delete selected content
-void deleteSelection() {
-  if (!hasSelection) return;
+  void deleteSelection() {
+    if (!hasSelection) return;
 
-  final norm = _selection!.normalized;
-  final siblings = _resolveNodeListForSelection(
-    norm.start.parentId,
-    norm.start.path,
-  );
-  if (siblings == null) return;
+    final norm = _selection!.normalized;
+    final siblings = _resolveNodeListForSelection(
+      norm.start.parentId,
+      norm.start.path,
+    );
+    if (siblings == null) return;
 
-  if (norm.start.nodeIndex == norm.end.nodeIndex) {
-    // Same node
-    final node = siblings[norm.start.nodeIndex];
-    if (node is LiteralNode) {
-      // Character deletion within literal
-      final startIdx = norm.start.charIndex.clamp(0, node.text.length);
-      final endIdx = norm.end.charIndex.clamp(0, node.text.length);
-      node.text =
-          node.text.substring(0, startIdx) + node.text.substring(endIdx);
+    if (norm.start.nodeIndex == norm.end.nodeIndex) {
+      // Same node
+      final node = siblings[norm.start.nodeIndex];
+      if (node is LiteralNode) {
+        // Character deletion within literal
+        final startIdx = norm.start.charIndex.clamp(0, node.text.length);
+        final endIdx = norm.end.charIndex.clamp(0, node.text.length);
+        node.text =
+            node.text.substring(0, startIdx) + node.text.substring(endIdx);
 
-      cursor = EditorCursor(
-        parentId: norm.start.parentId,
-        path: norm.start.path,
-        index: norm.start.nodeIndex,
-        subIndex: startIdx,
-      );
-    } else {
-      // Composite node (FractionNode, ExponentNode, etc.) - delete the whole node
-      siblings.removeAt(norm.start.nodeIndex);
-      
-      // Position cursor at the deletion point
-      int newIndex = norm.start.nodeIndex;
-      if (newIndex >= siblings.length) {
-        newIndex = siblings.length - 1;
-      }
-      if (newIndex < 0) newIndex = 0;
-      
-      // If we deleted and there's a literal before or after, position there
-      if (siblings.isNotEmpty && newIndex < siblings.length) {
-        final targetNode = siblings[newIndex];
-        if (targetNode is LiteralNode) {
-          cursor = EditorCursor(
-            parentId: norm.start.parentId,
-            path: norm.start.path,
-            index: newIndex,
-            subIndex: 0,
-          );
-        } else {
-          cursor = EditorCursor(
-            parentId: norm.start.parentId,
-            path: norm.start.path,
-            index: newIndex,
-            subIndex: 0,
-          );
-        }
-      }
-    }
-  } else {
-    // Multiple nodes selected
-    final firstNode = siblings[norm.start.nodeIndex];
-    String remainingFromFirst = '';
-    if (firstNode is LiteralNode) {
-      final startIdx = norm.start.charIndex.clamp(0, firstNode.text.length);
-      remainingFromFirst = firstNode.text.substring(0, startIdx);
-    }
-
-    final lastNode = siblings[norm.end.nodeIndex];
-    String remainingFromLast = '';
-    if (lastNode is LiteralNode) {
-      final endIdx = norm.end.charIndex.clamp(0, lastNode.text.length);
-      remainingFromLast = lastNode.text.substring(endIdx);
-    }
-
-    // Remove nodes from end to start (including composite nodes)
-    for (int i = norm.end.nodeIndex; i > norm.start.nodeIndex; i--) {
-      if (i < siblings.length) {
-        siblings.removeAt(i);
-      }
-    }
-
-    // Handle first node
-    if (firstNode is LiteralNode) {
-      firstNode.text = remainingFromFirst + remainingFromLast;
-      cursor = EditorCursor(
-        parentId: norm.start.parentId,
-        path: norm.start.path,
-        index: norm.start.nodeIndex,
-        subIndex: remainingFromFirst.length,
-      );
-    } else {
-      // First node is composite and fully selected - remove it too
-      if (norm.start.charIndex == 0) {
-        siblings.removeAt(norm.start.nodeIndex);
-        // Add remaining text if any
-        if (remainingFromLast.isNotEmpty) {
-          if (norm.start.nodeIndex < siblings.length && 
-              siblings[norm.start.nodeIndex] is LiteralNode) {
-            (siblings[norm.start.nodeIndex] as LiteralNode).text = 
-                remainingFromLast + (siblings[norm.start.nodeIndex] as LiteralNode).text;
-          } else {
-            siblings.insert(norm.start.nodeIndex, LiteralNode(text: remainingFromLast));
-          }
-        }
         cursor = EditorCursor(
           parentId: norm.start.parentId,
           path: norm.start.path,
-          index: norm.start.nodeIndex.clamp(0, siblings.length - 1),
-          subIndex: 0,
+          index: norm.start.nodeIndex,
+          subIndex: startIdx,
         );
+      } else {
+        // Composite node (FractionNode, ExponentNode, etc.) - delete the whole node
+        siblings.removeAt(norm.start.nodeIndex);
+
+        // Position cursor at the deletion point
+        int newIndex = norm.start.nodeIndex;
+        if (newIndex >= siblings.length) {
+          newIndex = siblings.length - 1;
+        }
+        if (newIndex < 0) newIndex = 0;
+
+        // If we deleted and there's a literal before or after, position there
+        if (siblings.isNotEmpty && newIndex < siblings.length) {
+          final targetNode = siblings[newIndex];
+          if (targetNode is LiteralNode) {
+            cursor = EditorCursor(
+              parentId: norm.start.parentId,
+              path: norm.start.path,
+              index: newIndex,
+              subIndex: 0,
+            );
+          } else {
+            cursor = EditorCursor(
+              parentId: norm.start.parentId,
+              path: norm.start.path,
+              index: newIndex,
+              subIndex: 0,
+            );
+          }
+        }
+      }
+    } else {
+      // Multiple nodes selected
+      final firstNode = siblings[norm.start.nodeIndex];
+      String remainingFromFirst = '';
+      if (firstNode is LiteralNode) {
+        final startIdx = norm.start.charIndex.clamp(0, firstNode.text.length);
+        remainingFromFirst = firstNode.text.substring(0, startIdx);
+      }
+
+      final lastNode = siblings[norm.end.nodeIndex];
+      String remainingFromLast = '';
+      if (lastNode is LiteralNode) {
+        final endIdx = norm.end.charIndex.clamp(0, lastNode.text.length);
+        remainingFromLast = lastNode.text.substring(endIdx);
+      }
+
+      // Remove nodes from end to start (including composite nodes)
+      for (int i = norm.end.nodeIndex; i > norm.start.nodeIndex; i--) {
+        if (i < siblings.length) {
+          siblings.removeAt(i);
+        }
+      }
+
+      // Handle first node
+      if (firstNode is LiteralNode) {
+        firstNode.text = remainingFromFirst + remainingFromLast;
+        cursor = EditorCursor(
+          parentId: norm.start.parentId,
+          path: norm.start.path,
+          index: norm.start.nodeIndex,
+          subIndex: remainingFromFirst.length,
+        );
+      } else {
+        // First node is composite and fully selected - remove it too
+        if (norm.start.charIndex == 0) {
+          siblings.removeAt(norm.start.nodeIndex);
+          // Add remaining text if any
+          if (remainingFromLast.isNotEmpty) {
+            if (norm.start.nodeIndex < siblings.length &&
+                siblings[norm.start.nodeIndex] is LiteralNode) {
+              (siblings[norm.start.nodeIndex] as LiteralNode).text =
+                  remainingFromLast +
+                  (siblings[norm.start.nodeIndex] as LiteralNode).text;
+            } else {
+              siblings.insert(
+                norm.start.nodeIndex,
+                LiteralNode(text: remainingFromLast),
+              );
+            }
+          }
+          cursor = EditorCursor(
+            parentId: norm.start.parentId,
+            path: norm.start.path,
+            index: norm.start.nodeIndex.clamp(0, siblings.length - 1),
+            subIndex: 0,
+          );
+        }
       }
     }
+
+    // Ensure there's always at least one node
+    if (siblings.isEmpty) {
+      siblings.add(LiteralNode());
+      cursor = EditorCursor(
+        parentId: norm.start.parentId,
+        path: norm.start.path,
+        index: 0,
+        subIndex: 0,
+      );
+    }
+
+    // Clear selection FIRST, then notify
+    _selection = null;
+    onSelectionCleared?.call();
+
+    _structureVersion++;
+    notifyListeners();
+    onResultChanged?.call();
+
+    onCalculate();
   }
-
-  // Ensure there's always at least one node
-  if (siblings.isEmpty) {
-    siblings.add(LiteralNode());
-    cursor = EditorCursor(
-      parentId: norm.start.parentId,
-      path: norm.start.path,
-      index: 0,
-      subIndex: 0,
-    );
-  }
-
-  // Clear selection FIRST, then notify
-  _selection = null;
-  onSelectionCleared?.call();
-
-  _structureVersion++;
-  notifyListeners();
-  onResultChanged?.call();
-
-  onCalculate();
-}
 
   /// Paste clipboard content at cursor
   void pasteClipboard() {
@@ -4432,71 +4634,6 @@ void deleteSelection() {
   }
   // ============== SELECTION HELPERS ==============
 
-  // void _resetHandleTracking() {
-  //   _lastStartCharIndex = null;
-  //   _lastEndCharIndex = null;
-  // }
-
-  // Add this method inside MathEditorController
-  void debugSelectionState() {
-    debugPrint('=== SELECTION DEBUG ===');
-    debugPrint('Selection: $_selection');
-    if (_selection != null) {
-      final norm = _selection!.normalized;
-      debugPrint(
-        'Normalized - parentId: ${norm.start.parentId}, path: ${norm.start.path}',
-      );
-      debugPrint(
-        'Start: node=${norm.start.nodeIndex}, char=${norm.start.charIndex}',
-      );
-      debugPrint('End: node=${norm.end.nodeIndex}, char=${norm.end.charIndex}');
-    }
-
-    debugPrint('\n=== LAYOUT REGISTRY ===');
-    for (final entry in _layoutRegistry.entries) {
-      final info = entry.value;
-      debugPrint(
-        'Node: ${info.node.runtimeType} "${info.node.text}" | parentId: ${info.parentId} | path: ${info.path} | index: ${info.index} | rect: ${info.rect}',
-      );
-    }
-
-    debugPrint('\n=== COMPLEX NODE MAP ===');
-    for (final entry in _complexNodeMap.entries) {
-      final info = entry.value;
-      debugPrint(
-        'ID: ${entry.key} | Type: ${info.node.runtimeType} | parentId: ${info.parentId} | path: ${info.path} | index: ${info.index}',
-      );
-    }
-
-    debugPrint('=== END DEBUG ===');
-  }
-
-  /// Get character index using the ACTUAL RenderParagraph
-  int _getCharIndexUsingRenderParagraph(NodeLayoutInfo info, double relativeX) {
-    final text = info.node.text;
-
-    if (text.isEmpty) return 0;
-
-    final displayText = MathTextStyle.toDisplayText(text);
-
-    // Use the ACTUAL RenderParagraph if available
-    if (info.renderParagraph != null) {
-      final position = info.renderParagraph!.getPositionForOffset(
-        Offset(relativeX, info.fontSize / 2),
-      );
-      int displayOffset = position.offset.clamp(0, displayText.length);
-      return MathTextStyle.displayToLogicalIndex(text, displayOffset);
-    }
-
-    // Fallback: use MathTextStyle method
-    return MathTextStyle.getCharIndexForOffset(
-      text,
-      relativeX,
-      info.fontSize,
-      info.textScaler,
-    );
-  }
-
   // Add this field
   final Map<String, ComplexNodeInfo> _complexNodeMap = {};
 
@@ -4521,6 +4658,7 @@ void deleteSelection() {
           parentId: parentId,
           path: path,
           index: i,
+          rect: Rect.zero,
         );
       }
 
@@ -4573,7 +4711,6 @@ void deleteSelection() {
 
   // ============== HELPER METHODS ==============
 
-
   List<MathNode>? _resolveNodeListForSelection(String? parentId, String? path) {
     if (parentId == null && path == null) {
       return expression;
@@ -4611,39 +4748,53 @@ void deleteSelection() {
     return null;
   }
 
- 
- 
+  // Add this setter method
+  void setSelection(SelectionRange? range) {
+    _selection = range;
+    notifyListeners();
+  }
 
+  // Replace startHandleDrag
+  void startHandleDrag(bool isStartHandle) {
+    _selectionManager.startDrag(isStartHandle);
+  }
 
-// Add this setter method
-void setSelection(SelectionRange? range) {
-  _selection = range;
-  notifyListeners();
+  // Replace endHandleDrag
+  void endHandleDrag() {
+    _selectionManager.endDrag();
+  }
+
+  // Replace updateSelectionHandle
+  void updateSelectionHandle(bool isStartHandle, Offset localPosition) {
+    _selectionManager.updateDrag(localPosition);
+  }
+
+  // Replace selectAtPosition
+  void selectAtPosition(Offset position) {
+    _selectionManager.selectAtPosition(position);
+  }
+
+  Rect? getContentBounds() {
+    if (_layoutRegistry.isEmpty) return null;
+
+    double minX = double.infinity;
+    double maxX = double.negativeInfinity;
+    double minY = double.infinity;
+    double maxY = double.negativeInfinity;
+
+    for (final info in _layoutRegistry.values) {
+      minX = math.min(minX, info.rect.left);
+      maxX = math.max(maxX, info.rect.right);
+      minY = math.min(minY, info.rect.top);
+      maxY = math.max(maxY, info.rect.bottom);
+    }
+
+    if (minX == double.infinity) return null;
+
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
 }
-
-// Replace startHandleDrag
-void startHandleDrag(bool isStartHandle) {
-  _selectionManager.startDrag(isStartHandle);
-}
-
-// Replace endHandleDrag
-void endHandleDrag() {
-  _selectionManager.endDrag();
-}
-
-// Replace updateSelectionHandle
-void updateSelectionHandle(bool isStartHandle, Offset localPosition) {
-  _selectionManager.updateDrag(localPosition);
-}
-
-// Replace selectAtPosition
-void selectAtPosition(Offset position) {
-  _selectionManager.selectAtPosition(position);
-}
-
-
-}
-
 
 class _ParentListInfo {
   final List<MathNode> list;
@@ -4683,5 +4834,26 @@ extension NodeLayoutInfoExt on NodeLayoutInfo {
       nodeIndex: index,
       charIndex: charIdx,
     );
+  }
+}
+
+class CursorPaintNotifier extends ChangeNotifier {
+  Rect _rect = Rect.zero;
+
+  Rect get rect => _rect;
+
+  void updateRect(Rect newRect) {
+    if (_rect != newRect) {
+      _rect = newRect;
+      notifyListeners();
+    }
+  }
+
+  // Direct paint callback - bypasses notification system
+  VoidCallback? onNeedsPaint;
+
+  void updateRectDirect(Rect newRect) {
+    _rect = newRect;
+    onNeedsPaint?.call();
   }
 }

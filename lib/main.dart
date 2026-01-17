@@ -17,11 +17,31 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Precache SVG backgrounds to avoid flash on load
+  await Future.wait([
+    _precacheSvg('assets/imgs/background_light.svg'),
+    _precacheSvg('assets/imgs/background_dark.svg'),
+  ]);
+  
   final settingsProvider = await SettingsProvider.create();
 
   runApp(
     ChangeNotifierProvider.value(value: settingsProvider, child: const MyApp()),
   );
+}
+
+/// Precache an SVG asset to avoid loading delay
+Future<void> _precacheSvg(String assetPath) async {
+  try {
+    final loader = SvgAssetLoader(assetPath);
+    await svg.cache.putIfAbsent(
+      loader.cacheKey(null),
+      () => loader.loadBytes(null),
+    );
+  } catch (e) {
+    // Ignore errors - SVG will load normally if precaching fails
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -171,9 +191,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _walkthroughService.setDeviceMode(isTablet: isTablet);
 
       await _walkthroughService.initialize();
-      debugPrint(
-        'Walkthrough initialization complete. Active: ${_walkthroughService.isActive}, Tablet: $isTablet, Steps: ${_walkthroughService.steps.length}',
-      );
     }
   }
 
@@ -367,89 +384,107 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final resController = textDisplayControllers[index];
     final mathEditorKey = mathEditorKeys[index];
     final bool isFocused = (activeIndex == index);
-
-    // Only add keys to the active expression display
     final bool shouldAddKeys = index == activeIndex;
 
+    // Add scroll controller to track scroll position
+    final scrollController = ScrollController();
+
     return Container(
-      color: colors.containerBackground,
+      // color: colors.containerBackground,
+      decoration: BoxDecoration(
+        color: colors.containerBackground,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha:
+              0.2,
+            ), // Shadow color with transparency
+            spreadRadius: 2, // How much the shadow grows bigger than the box
+            blurRadius: 7, // How soft the edges are (higher = softer)
+            offset: Offset(0, 0,), // X, Y position (0,3 means slightly downwards)
+          ),
+        ],
+      ),      
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: <Widget>[
           Container(
             key: shouldAddKeys ? _expressionKey : null,
             width: double.infinity,
-            padding: EdgeInsets.all(10),
+            padding: const EdgeInsets.all(10),
             child: AnimatedOpacity(
               curve: Curves.easeIn,
-              duration: Duration(milliseconds: 500),
+              duration: const Duration(milliseconds: 500),
               opacity: isVisible ? 1.0 : 0.0,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTapDown: (details) {
-                  // Clear selection when tapping anywhere in this area
-                  mathEditorController.clearSelection();
-                  mathEditorKey?.currentState?.clearOverlay();
-                },
-                onTapUp: (details) {
-                  setState(() {
-                    activeIndex = index;
-                  });
-
-                  final box = context.findRenderObject() as RenderBox?;
-                  if (box != null) {
-                    final width = box.size.width;
-                    final tapX = details.localPosition.dx;
-
-                    if (tapX < width * 0.4) {
-                      mathEditorController.moveCursorToStart();
-                    } else if (tapX > width * 0.6) {
-                      mathEditorController.moveCursorToEnd();
-                    }
-                  }
-                },
-                onDoubleTapDown: (details) {
-                  setState(() {
-                    activeIndex = index;
-                  });
-
-                  final box = context.findRenderObject() as RenderBox?;
-                  if (box != null) {
-                    final width = box.size.width;
-                    final tapX = details.localPosition.dx;
-
-                    if (tapX < width * 0.4) {
-                      mathEditorController.moveCursorToStart();
-                    } else if (tapX > width * 0.6) {
-                      mathEditorController.moveCursorToEnd();
-                    }
-                  }
-                },
-                onDoubleTap: () {
-                  mathEditorKey?.currentState?.showPasteMenu();
-                },
-                child: Center(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    reverse: true,
-                    child: MathEditorInline(
-                      key: mathEditorKey,
-                      controller: mathEditorController!,
-                      showCursor: isFocused,
-                      onFocus: () {
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Listener(
+                    behavior: HitTestBehavior.translucent,
+                    onPointerDown: (event) {
+                      // Handle focus
+                      if (activeIndex != index) {
                         setState(() {
                           activeIndex = index;
                         });
-                      },
+                      }
+                      // Clear selection
+                      if (mathEditorController.hasSelection) {
+                        mathEditorController.clearSelection(notify: false);
+                        mathEditorKey?.currentState?.clearOverlay();
+                      }
+
+                      // Get content bounds from controller
+                      final bounds = mathEditorController.getContentBounds();
+                      if (bounds == null) return; // Let inner widget handle
+
+                      final tapX = event.localPosition.dx;
+                      final width = constraints.maxWidth;
+
+                      // Calculate where content is positioned on screen
+                      // Content is centered, so find the offset
+                      final contentWidth = bounds.width;
+                      final contentStartX = (width - contentWidth) / 2;
+                      final contentEndX = contentStartX + contentWidth;
+
+                      const padding = 10.0; // Small buffer zone
+
+                      // Tap to the LEFT of content
+                      if (tapX < contentStartX - padding) {
+                        mathEditorController.moveCursorToStartWithRect();
+                        return;
+                      }
+
+                      // Tap to the RIGHT of content
+                      if (tapX > contentEndX + padding) {
+                        mathEditorController.moveCursorToEndWithRect();
+                        return;
+                      }
+                    },
+                    child: Center(
+                      child: SingleChildScrollView(
+                        controller: scrollController,
+                        scrollDirection: Axis.horizontal,
+                        reverse: true,
+                        child: MathEditorInline(
+                          key: mathEditorKey,
+                          controller: mathEditorController!,
+                          showCursor: isFocused,
+                          onFocus: () {
+                            if (activeIndex != index) {
+                              setState(() {
+                                activeIndex = index;
+                              });
+                            }
+                          },
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
             ),
           ),
           Row(
             children: <Widget>[
-              // Cell index with key for walkthrough
               Container(
                 key: shouldAddKeys ? _ansIndexKey : null,
                 padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -479,11 +514,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           Container(
             key: shouldAddKeys ? _resultKey : null,
             color: colors.containerBackground,
-            padding: EdgeInsets.all(0),
+            padding: const EdgeInsets.all(0),
             alignment: Alignment.centerRight,
             child: AnimatedOpacity(
               curve: Curves.easeIn,
-              duration: Duration(milliseconds: 500),
+              duration: const Duration(milliseconds: 500),
               opacity: isVisible ? 1.0 : 0.0,
               child: TextField(
                 controller: resController,
@@ -495,7 +530,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 readOnly: true,
                 showCursor: false,
                 style: TextStyle(fontSize: FONTSIZE, color: colors.textPrimary),
-                decoration: InputDecoration(border: InputBorder.none),
+                decoration: const InputDecoration(border: InputBorder.none),
               ),
             ),
           ),
@@ -705,7 +740,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(body: Center(child: CircularProgressIndicator()));
+      final colors = AppColors.of(context);
+      return Scaffold(
+        backgroundColor: colors.displayBackground,
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     final colors = AppColors.of(context);
@@ -726,6 +765,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               child: SvgPicture.asset(
                 colors.backgroundImage,
                 fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
               ),
             ),
             SafeArea(

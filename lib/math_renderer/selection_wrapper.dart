@@ -217,25 +217,20 @@ class SelectionWrapper {
     if (siblings == null) return null;
 
     // Delete the selected content
-    if (norm.start.nodeIndex == norm.end.nodeIndex) {
-      // Single node
-      final node = siblings[norm.start.nodeIndex];
-      if (node is LiteralNode) {
-        node.text = (content.beforeText ?? '') + (content.afterText ?? '');
-      }
-    } else {
-      // Multiple nodes - remove from end to start
-      for (int i = norm.end.nodeIndex; i > norm.start.nodeIndex; i--) {
-        if (i < siblings.length) {
-          siblings.removeAt(i);
-        }
-      }
-      // Update first node
-      final firstNode = siblings[norm.start.nodeIndex];
-      if (firstNode is LiteralNode) {
-        firstNode.text = (content.beforeText ?? '') + (content.afterText ?? '');
+    // We remove ALL nodes in the range, including the start node
+    for (int i = norm.end.nodeIndex; i >= norm.start.nodeIndex; i--) {
+      if (i < siblings.length) {
+        siblings.removeAt(i);
       }
     }
+
+    // Insert a single literal node containing the text before and after
+    // This creates a stable target for _insertNodeAtPoint to split
+    final combinedText = (content.beforeText ?? '') + (content.afterText ?? '');
+    siblings.insert(
+      norm.start.nodeIndex,
+      LiteralNode(text: combinedText),
+    );
 
     return _InsertionPoint(
       siblings: siblings,
@@ -353,6 +348,15 @@ class SelectionWrapper {
     controller.saveStateForUndo();
 
     final nodesToWrap = _buildNodesToWrap(content);
+    
+    // Ensure literals exist inside the parenthesis for cursor positioning
+    if (nodesToWrap.isNotEmpty && nodesToWrap.first is! LiteralNode) {
+      nodesToWrap.insert(0, LiteralNode(text: ''));
+    }
+    if (nodesToWrap.isNotEmpty && nodesToWrap.last is! LiteralNode) {
+      nodesToWrap.add(LiteralNode(text: ''));
+    }
+
     final insertionPoint = _deleteSelectionAndGetInsertionPoint(content);
     if (insertionPoint == null) return false;
 
@@ -360,14 +364,12 @@ class SelectionWrapper {
 
     _insertNodeAtPoint(insertionPoint, parenNode);
 
+    // Place cursor AFTER the right parenthesis (at start of the following literal)
     controller.cursor = EditorCursor(
-      parentId: parenNode.id,
-      path: 'content',
-      index: nodesToWrap.length - 1,
-      subIndex:
-          nodesToWrap.last is LiteralNode
-              ? (nodesToWrap.last as LiteralNode).text.length
-              : 0,
+      parentId: insertionPoint.parentId,
+      path: insertionPoint.path,
+      index: insertionPoint.nodeIndex + 2,
+      subIndex: 0,
     );
 
     controller.clearSelection();
