@@ -1,4 +1,3 @@
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:klator/math_renderer/math_editor_controller.dart';
 import 'package:klator/math_renderer/math_nodes.dart';

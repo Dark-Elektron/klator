@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'settings_provider.dart';
 import 'package:provider/provider.dart';
+import '../utils/app_colors.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback? onShowTutorial;
@@ -14,25 +15,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
-    final isDark = settings.isDarkTheme;
+    final colors = AppColors.of(context);
 
-    // Theme-aware colors
-    final activeColor = isDark ? Colors.white : Colors.white;
-    final activeTrackColor = isDark ? Colors.blueGrey[700] : Colors.blueGrey;
-    final sliderActiveColor = isDark ? Colors.blueGrey[300] : Colors.blueGrey;
+    // Theme-aware colors for sliders and switches
+    final activeColor = colors.accent;
+    final activeTrackColor = colors.accent.withValues(alpha: 0.5);
+    final sliderActiveColor = colors.accent;
 
     return Scaffold(
-      appBar: AppBar(title: Text('Settings')),
+      backgroundColor: colors.displayBackground,
+      appBar: AppBar(
+        title: Text('Settings', style: TextStyle(color: colors.textPrimary)),
+        backgroundColor: colors.displayBackground,
+        elevation: 0,
+        iconTheme: IconThemeData(color: colors.textPrimary),
+      ),
       body: Column(
         children: [
           // Main settings in scrollable area
           Expanded(
             child: ListView(
-              padding: EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16.0),
               children: [
                 ListTile(
                   title: Text(
                     'Precision: ${settings.precision.toInt()} decimal places',
+                    style: TextStyle(color: colors.textPrimary),
                   ),
                   subtitle: Slider(
                     activeColor: sliderActiveColor,
@@ -46,66 +54,104 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
                 ),
-                
-                // NEW: Number Format dropdown
+
+                // Number Format dropdown
                 ListTile(
-                  title: const Text('Number Format'),
-                  subtitle: Text(_getNumberFormatDescription(settings.numberFormat)),
+                  title: Text(
+                    'Number Format',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
+                  subtitle: Text(
+                    _getNumberFormatDescription(settings.numberFormat),
+                    style: TextStyle(color: colors.textSecondary),
+                  ),
                   trailing: DropdownButton<NumberFormat>(
                     value: settings.numberFormat,
-                    underline: const SizedBox(), // Remove underline
+                    dropdownColor: colors.containerBackground,
+                    style: TextStyle(color: colors.textPrimary),
+                    underline: const SizedBox(),
                     onChanged: (NumberFormat? newValue) {
                       if (newValue != null) {
                         settings.setNumberFormat(newValue);
                       }
                     },
-                    items: NumberFormat.values.map((NumberFormat format) {
-                      return DropdownMenuItem<NumberFormat>(
-                        value: format,
-                        child: Text(_getNumberFormatLabel(format)),
-                      );
-                    }).toList(),
+                    items:
+                        NumberFormat.values.map((NumberFormat format) {
+                          return DropdownMenuItem<NumberFormat>(
+                            value: format,
+                            child: Text(
+                              _getNumberFormatLabel(format),
+                              style: TextStyle(color: colors.textPrimary),
+                            ),
+                          );
+                        }).toList(),
                   ),
                 ),
-                
-                SwitchListTile(
-                  title: Text('Dark Theme'),
-                  activeThumbColor: activeColor,
-                  activeTrackColor: activeTrackColor,
-                  value: settings.isDarkTheme,
-                  onChanged: settings.toggleDarkTheme,
+
+                ListTile(
+                  title: Text(
+                    'Theme',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
+                  trailing: DropdownButton<ThemeType>(
+                    value: settings.themeType,
+                    dropdownColor: colors.containerBackground,
+                    style: TextStyle(color: colors.textPrimary),
+                    underline: const SizedBox(),
+                    onChanged: (ThemeType? newValue) {
+                      if (newValue != null) {
+                        settings.setThemeType(newValue);
+                      }
+                    },
+                    items:
+                        ThemeType.values.map((ThemeType theme) {
+                          return DropdownMenuItem<ThemeType>(
+                            value: theme,
+                            child: Text(
+                              _getThemeLabel(theme),
+                              style: TextStyle(color: colors.textPrimary),
+                            ),
+                          );
+                        }).toList(),
+                  ),
                 ),
                 SwitchListTile(
-                  title: Text('Haptic Feedback'),
+                  title: Text(
+                    'Haptic Feedback',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
                   activeThumbColor: activeColor,
                   activeTrackColor: activeTrackColor,
                   value: settings.hapticFeedback,
                   onChanged: settings.toggleHapticFeedback,
                 ),
                 ListTile(
-                  title: const Text('Multiplication Sign'),
+                  title: Text(
+                    'Multiplication Sign',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
                   trailing: RadioGroup<String>(
                     groupValue: settings.multiplicationSign,
-                    onChanged: (String? value) {
-                      if (value != null) {
-                        settings.setMultiplicationSign(value);
-                      }
+                    onChanged: (val) {
+                      if (val != null) settings.setMultiplicationSign(val);
                     },
                     child: Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         _buildMultiplyOption(
                           settings,
-                          '\u00D7',
-                          '\u00D7',
+                          '×',
+                          '×',
                           sliderActiveColor,
+                          colors.textPrimary,
                         ),
                         const SizedBox(width: 12),
                         _buildMultiplyOption(
                           settings,
-                          '\u00B7',
-                          '\u00B7',
+                          '·',
+                          '·',
                           sliderActiveColor,
+                          colors.textPrimary,
                         ),
                       ],
                     ),
@@ -125,14 +171,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 vertical: 8.0,
               ),
               child: ListTile(
-                leading: const Icon(Icons.school_outlined),
-                title: const Text('Show Tutorial'),
-                subtitle: const Text('Learn how to use the calculator'),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                leading: Icon(Icons.school_outlined, color: colors.textPrimary),
+                title: Text(
+                  'Show Tutorial',
+                  style: TextStyle(color: colors.textPrimary),
+                ),
+                subtitle: Text(
+                  'Learn how to use the calculator',
+                  style: TextStyle(color: colors.textSecondary),
+                ),
+                trailing: Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: colors.textPrimary,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                tileColor: isDark ? Colors.blueGrey[800] : Colors.blueGrey[50],
+                tileColor: colors.containerBackground,
                 onTap: () {
                   if (widget.onShowTutorial != null) {
                     widget.onShowTutorial!();
@@ -146,7 +202,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // NEW: Helper to get display label for number format
+  // Helper to get display label for number format
   String _getNumberFormatLabel(NumberFormat format) {
     switch (format) {
       case NumberFormat.automatic:
@@ -158,7 +214,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // NEW: Helper to get description for number format
+  // Helper to get description for number format
   String _getNumberFormatDescription(NumberFormat format) {
     switch (format) {
       case NumberFormat.automatic:
@@ -175,6 +231,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     String value,
     String displayText,
     Color? activeColor,
+    Color? textColor,
   ) {
     final isSelected = settings.multiplicationSign == value;
 
@@ -186,20 +243,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Radio<String>(
-            value: value,
-            activeColor: activeColor,
-            // Remove groupValue and onChanged - RadioGroup handles these now
-          ),
+          Radio<String>(value: value, activeColor: activeColor),
           Text(
             displayText,
             style: TextStyle(
               fontSize: 24,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: textColor,
             ),
           ),
         ],
       ),
     );
+  }
+
+  // Helper to get display label for themes
+  String _getThemeLabel(ThemeType theme) {
+    switch (theme) {
+      case ThemeType.classic:
+        return 'Classic';
+      case ThemeType.dark:
+        return 'Dark';
+      case ThemeType.softPink:
+        return 'Petal Soft Pink';
+      case ThemeType.pink:
+        return 'Midnight Peony';
+      case ThemeType.sunsetEmber:
+        return 'Sunset Ember';
+      case ThemeType.desertSand:
+        return 'Desert Sand';
+      case ThemeType.digitalAmber:
+        return 'Digital Amber';
+      case ThemeType.roseChic:
+        return 'Rose Chic';
+      case ThemeType.honeyMustard:
+        return 'Honey Mustard';
+    }
   }
 }

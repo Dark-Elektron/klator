@@ -78,6 +78,7 @@ flutter {
 
 dependencies {
     // ...
+    implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("com.google.android.material:material:1.14.0-alpha08")
     // ...
 }

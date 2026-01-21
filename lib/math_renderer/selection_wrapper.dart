@@ -62,6 +62,8 @@ class SelectionWrapper {
       return AnsNode(index: _deepCopyNodes(node.index));
     } else if (node is NewlineNode) {
       return NewlineNode();
+    } else if (node is ConstantNode) {
+      return ConstantNode(node.constant);
     }
     return LiteralNode(text: '');
   }
@@ -197,6 +199,10 @@ class SelectionWrapper {
       return RegExp(r'^[a-zA-Z0-9.]+$').hasMatch(text);
     }
 
+    if (content.nodes.length == 1 && content.nodes.first is ConstantNode) {
+      return true;
+    }
+
     // Already a parenthesis node
     if (_isAlreadyInParenthesis(content)) {
       return true;
@@ -227,10 +233,7 @@ class SelectionWrapper {
     // Insert a single literal node containing the text before and after
     // This creates a stable target for _insertNodeAtPoint to split
     final combinedText = (content.beforeText ?? '') + (content.afterText ?? '');
-    siblings.insert(
-      norm.start.nodeIndex,
-      LiteralNode(text: combinedText),
-    );
+    siblings.insert(norm.start.nodeIndex, LiteralNode(text: combinedText));
 
     return _InsertionPoint(
       siblings: siblings,
@@ -348,7 +351,7 @@ class SelectionWrapper {
     controller.saveStateForUndo();
 
     final nodesToWrap = _buildNodesToWrap(content);
-    
+
     // Ensure literals exist inside the parenthesis for cursor positioning
     if (nodesToWrap.isNotEmpty && nodesToWrap.first is! LiteralNode) {
       nodesToWrap.insert(0, LiteralNode(text: ''));

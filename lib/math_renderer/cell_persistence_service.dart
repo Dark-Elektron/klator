@@ -34,19 +34,23 @@ class CellPersistence {
 
     List<Map<String, dynamic>> cells = [];
     for (int i = 0; i < expressions.length; i++) {
-      cells.add(CellData(
-        expressionJson: MathExpressionSerializer.serializeToJson(expressions[i]),
-        answer: i < answers.length ? answers[i] : '',
-      ).toJson());
+      cells.add(
+        CellData(
+          expressionJson: MathExpressionSerializer.serializeToJson(
+            expressions[i],
+          ),
+          answer: i < answers.length ? answers[i] : '',
+        ).toJson(),
+      );
     }
 
     await prefs.setString(_key, jsonEncode(cells));
   }
 
   /// Load all cells
-  static Future<List<CellData>> loadCells() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? jsonString = prefs.getString(_key);
+  static Future<List<CellData>> loadCells({SharedPreferences? prefs}) async {
+    final sharedPrefs = prefs ?? await SharedPreferences.getInstance();
+    String? jsonString = sharedPrefs.getString(_key);
 
     if (jsonString == null || jsonString.isEmpty) {
       return [];
@@ -69,9 +73,9 @@ class CellPersistence {
   }
 
   /// Load active cell index
-  static Future<int> loadActiveIndex() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_activeKey) ?? 0;
+  static Future<int> loadActiveIndex({SharedPreferences? prefs}) async {
+    final sharedPrefs = prefs ?? await SharedPreferences.getInstance();
+    return sharedPrefs.getInt(_activeKey) ?? 0;
   }
 
   /// Clear all saved data
