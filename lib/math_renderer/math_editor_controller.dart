@@ -59,6 +59,9 @@ class MathEditorController extends ChangeNotifier {
   final Map<String, NodeLayoutInfo> _layoutIndex = {};
   final CursorPaintNotifier cursorPaintNotifier = CursorPaintNotifier();
 
+  Rect? _cachedContentBounds;
+  bool _contentBoundsValid = false;
+
   MathEditorController() {
     selectionWrapper = SelectionWrapper(this);
   }
@@ -194,7 +197,9 @@ class MathEditorController extends ChangeNotifier {
     _layoutRegistry.clear();
     _layoutIndex.clear();
     _complexNodeMap.clear();
-    _lastTappedNode = null; // Clear cache
+    _lastTappedNode = null;
+    _contentBoundsValid = false;
+    _cachedContentBounds = null;
   }
 
   void _tryUpdateCursorRectFor(NodeLayoutInfo info) {
@@ -275,57 +280,57 @@ class MathEditorController extends ChangeNotifier {
   void tapAt(Offset position) {
     if (_layoutRegistry.isEmpty) return;
 
-    // OPTIMIZATION 1: Check last tapped node first
-    NodeLayoutInfo? best;
+    // Fast check: is it the same as last time?
     if (_lastTappedNode != null && _lastTappedNode!.rect.contains(position)) {
-      best = _lastTappedNode;
+      _processTapAtNode(_lastTappedNode!, position);
+      return;
     }
 
-    // OPTIMIZATION 2: Fast containment check
-    if (best == null) {
-      for (final info in _layoutRegistry.values) {
-        if (info.rect.contains(position)) {
-          best = info;
-          break;
-        }
+    NodeLayoutInfo? bestContain;
+    NodeLayoutInfo? bestNearest;
+    double minDistanceSq = double.infinity;
+
+    // Single pass for both containment and distance
+    for (final info in _layoutRegistry.values) {
+      if (info.rect.contains(position)) {
+        bestContain = info;
+        break; // Found it!
+      }
+
+      // Proximity fallback
+      final dx = position.dx - info.rect.center.dx;
+      final dy = position.dy - info.rect.center.dy;
+      final distSq = dx * dx + dy * dy;
+      if (distSq < minDistanceSq) {
+        minDistanceSq = distSq;
+        bestNearest = info;
       }
     }
 
-    // OPTIMIZATION 3: Nearest node (only if not inside any node)
-    if (best == null) {
-      double bestDistSq = double.infinity;
-      for (final info in _layoutRegistry.values) {
-        final dx = position.dx - info.rect.center.dx;
-        final dy = position.dy - info.rect.center.dy;
-        final distSq = dx * dx + dy * dy;
-        if (distSq < bestDistSq) {
-          bestDistSq = distSq;
-          best = info;
-        }
-      }
+    final targetNode = bestContain ?? bestNearest;
+    if (targetNode != null) {
+      _processTapAtNode(targetNode, position);
     }
+  }
 
-    if (best == null) return;
-
-    _lastTappedNode = best; // Cache for next tap
-
-    final text = best.node.text;
+  void _processTapAtNode(NodeLayoutInfo info, Offset position) {
+    _lastTappedNode = info;
+    final text = info.node.text;
     int charIndex;
     double cursorX;
 
     if (text.isEmpty) {
       charIndex = 0;
-      cursorX = best.rect.left;
+      cursorX = info.rect.left;
     } else {
-      final relativeX = position.dx - best.rect.left;
+      final relativeX = position.dx - info.rect.left;
 
-      // Use RenderParagraph if available (fast path)
-      if (best.renderParagraph != null && best.renderParagraph!.attached) {
-        final pos = best.renderParagraph!.getPositionForOffset(
-          Offset(relativeX, best.fontSize / 2),
+      if (info.renderParagraph != null && info.renderParagraph!.attached) {
+        final pos = info.renderParagraph!.getPositionForOffset(
+          Offset(relativeX, info.fontSize / 2),
         );
 
-        final displayText = best.displayText;
+        final displayText = info.displayText;
         final displayOffset = pos.offset.clamp(0, displayText.length);
         charIndex = MathTextStyle.displayToLogicalIndex(text, displayOffset);
 
@@ -333,49 +338,46 @@ class MathEditorController extends ChangeNotifier {
           text,
           charIndex,
         );
-        final offset = best.renderParagraph!.getOffsetForCaret(
+        final offset = info.renderParagraph!.getOffsetForCaret(
           TextPosition(offset: cursorDisplayIndex.clamp(0, displayText.length)),
           Rect.zero,
         );
-        cursorX = best.rect.left + offset.dx;
+        cursorX = info.rect.left + offset.dx;
       } else {
-        // Fallback (slow path - should rarely happen)
         charIndex = MathTextStyle.getCharIndexForOffset(
           text,
           relativeX,
-          best.fontSize,
-          best.textScaler,
+          info.fontSize,
+          info.textScaler,
         );
         cursorX =
-            best.rect.left +
+            info.rect.left +
             MathTextStyle.getCursorOffset(
               text,
               charIndex,
-              best.fontSize,
-              best.textScaler,
+              info.fontSize,
+              info.textScaler,
             );
       }
     }
 
-    // OPTIMIZATION 4: Early exit if cursor unchanged
     final currentCursor = _cursorNotifier.value;
-    if (currentCursor.parentId == best.parentId &&
-        currentCursor.path == best.path &&
-        currentCursor.index == best.index &&
+    if (currentCursor.parentId == info.parentId &&
+        currentCursor.path == info.path &&
+        currentCursor.index == info.index &&
         currentCursor.subIndex == charIndex) {
       return;
     }
 
-    // Update cursor
     _cursorNotifier.value = EditorCursor(
-      parentId: best.parentId,
-      path: best.path,
-      index: best.index,
+      parentId: info.parentId,
+      path: info.path,
+      index: info.index,
       subIndex: charIndex,
     );
 
     cursorPaintNotifier.updateRectDirect(
-      Rect.fromLTWH(cursorX, best.rect.top, 2, best.rect.height),
+      Rect.fromLTWH(cursorX, info.rect.top, 2, info.rect.height),
     );
   }
 
@@ -1085,7 +1087,7 @@ class MathEditorController extends ChangeNotifier {
     if (selectedNodes.isNotEmpty && selectedNodes.last is! LiteralNode) {
       selectedNodes.add(LiteralNode(text: ""));
     }
-    
+
     final paren = ParenthesisNode(content: selectedNodes);
 
     // Insert: textBefore literal, parenthesis, textAfter literal
@@ -4298,6 +4300,7 @@ class MathEditorController extends ChangeNotifier {
   // Static clipboard shared across all instances
   static MathClipboard? _clipboard;
   static MathClipboard? get clipboard => _clipboard;
+  static void setClipboard(MathClipboard? value) => _clipboard = value;
 
   // Container key for coordinate conversion
   GlobalKey? _containerKey;
@@ -4775,6 +4778,7 @@ class MathEditorController extends ChangeNotifier {
   }
 
   Rect? getContentBounds() {
+    if (_contentBoundsValid) return _cachedContentBounds;
     if (_layoutRegistry.isEmpty) return null;
 
     double minX = double.infinity;
@@ -4791,9 +4795,10 @@ class MathEditorController extends ChangeNotifier {
 
     if (minX == double.infinity) return null;
 
-    return Rect.fromLTRB(minX, minY, maxX, maxY);
+    _cachedContentBounds = Rect.fromLTRB(minX, minY, maxX, maxY);
+    _contentBoundsValid = true;
+    return _cachedContentBounds;
   }
-
 }
 
 class _ParentListInfo {

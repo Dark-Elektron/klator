@@ -17,13 +17,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Precache SVG backgrounds to avoid flash on load
   await Future.wait([
     _precacheSvg('assets/imgs/background_light.svg'),
     _precacheSvg('assets/imgs/background_dark.svg'),
   ]);
-  
+
   final settingsProvider = await SettingsProvider.create();
 
   runApp(
@@ -106,6 +106,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Map<int, TextEditingController> textDisplayControllers = {};
   Map<int, MathEditorController> mathEditorControllers = {};
   Map<int, FocusNode> focusNodes = {};
+  Map<int, ScrollController> scrollControllers =
+      {}; // ADD THIS for persistent scrolling
   int activeIndex = 0;
   PageController pgViewController = PageController(
     initialPage: 1,
@@ -244,6 +246,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       focusNode.dispose();
     }
 
+    for (ScrollController scrollController in scrollControllers.values) {
+      scrollController.dispose();
+    }
+
     super.dispose();
   }
 
@@ -331,9 +337,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _cascadeUpdates(index);
     };
 
+    // Add listener for auto-scroll on expression changes
+    mathEditorControllers[index]!.addListener(() {
+      _autoScrollToEnd(index);
+    });
+
     textDisplayControllers[index] = TextEditingController();
     focusNodes[index] = FocusNode();
-    mathEditorKeys[index] = GlobalKey<MathEditorInlineState>(); // ADD THIS
+    mathEditorKeys[index] = GlobalKey<MathEditorInlineState>();
+    scrollControllers[index] = ScrollController(); // ADD THIS
   }
 
   void _cascadeUpdates(int changedIndex) {
@@ -379,15 +391,50 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  /// Auto-scroll to the end when expression fills the screen
+  /// Only scrolls when cursor is at the end of the expression (not when editing in middle)
+  void _autoScrollToEnd(int index) {
+    final scrollController = scrollControllers[index];
+    final mathController = mathEditorControllers[index];
+    if (scrollController == null || !scrollController.hasClients) return;
+    if (mathController == null) return;
+
+    // Only auto-scroll if cursor is at the end of the root expression
+    final cursor = mathController.cursor;
+    final expression = mathController.expression;
+
+    // Check if cursor is at the end: at root level, at last node, at end of text
+    bool isAtEnd =
+        cursor.parentId == null && cursor.index == expression.length - 1;
+
+    if (isAtEnd && expression.isNotEmpty) {
+      final lastNode = expression.last;
+      if (lastNode is LiteralNode) {
+        isAtEnd = cursor.subIndex >= lastNode.text.length;
+      }
+    }
+
+    if (!isAtEnd) return; // Don't scroll if not at end
+
+    // Schedule scroll after layout is complete
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (scrollController.hasClients) {
+        // With reverse: true, position 0 is the RIGHT end (where cursor is)
+        if (scrollController.offset != 0) {
+          scrollController.jumpTo(0);
+        }
+      }
+    });
+  }
+
   Container _buildExpressionDisplay(int index, AppColors colors) {
     final mathEditorController = mathEditorControllers[index];
     final resController = textDisplayControllers[index];
     final mathEditorKey = mathEditorKeys[index];
+    final scrollController =
+        scrollControllers[index]; // Use persistent controller
     final bool isFocused = (activeIndex == index);
     final bool shouldAddKeys = index == activeIndex;
-
-    // Add scroll controller to track scroll position
-    final scrollController = ScrollController();
 
     return Container(
       // color: colors.containerBackground,
@@ -395,15 +442,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         color: colors.containerBackground,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:
-              0.2,
+            color: Colors.black.withValues(
+              alpha: 0.2,
             ), // Shadow color with transparency
             spreadRadius: 2, // How much the shadow grows bigger than the box
             blurRadius: 7, // How soft the edges are (higher = softer)
-            offset: Offset(0, 0,), // X, Y position (0,3 means slightly downwards)
+            offset: Offset(
+              0,
+              0,
+            ), // X, Y position (0,3 means slightly downwards)
           ),
         ],
-      ),      
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: <Widget>[
@@ -417,65 +467,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               opacity: isVisible ? 1.0 : 0.0,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  return Listener(
-                    behavior: HitTestBehavior.translucent,
-                    onPointerDown: (event) {
-                      // Handle focus
-                      if (activeIndex != index) {
-                        setState(() {
-                          activeIndex = index;
-                        });
-                      }
-                      // Clear selection
-                      if (mathEditorController.hasSelection) {
-                        mathEditorController.clearSelection(notify: false);
-                        mathEditorKey?.currentState?.clearOverlay();
-                      }
-
-                      // Get content bounds from controller
-                      final bounds = mathEditorController.getContentBounds();
-                      if (bounds == null) return; // Let inner widget handle
-
-                      final tapX = event.localPosition.dx;
-                      final width = constraints.maxWidth;
-
-                      // Calculate where content is positioned on screen
-                      // Content is centered, so find the offset
-                      final contentWidth = bounds.width;
-                      final contentStartX = (width - contentWidth) / 2;
-                      final contentEndX = contentStartX + contentWidth;
-
-                      const padding = 10.0; // Small buffer zone
-
-                      // Tap to the LEFT of content
-                      if (tapX < contentStartX - padding) {
-                        mathEditorController.moveCursorToStartWithRect();
-                        return;
-                      }
-
-                      // Tap to the RIGHT of content
-                      if (tapX > contentEndX + padding) {
-                        mathEditorController.moveCursorToEndWithRect();
-                        return;
-                      }
-                    },
-                    child: Center(
-                      child: SingleChildScrollView(
-                        controller: scrollController,
-                        scrollDirection: Axis.horizontal,
-                        reverse: true,
-                        child: MathEditorInline(
-                          key: mathEditorKey,
-                          controller: mathEditorController!,
-                          showCursor: isFocused,
-                          onFocus: () {
-                            if (activeIndex != index) {
-                              setState(() {
-                                activeIndex = index;
-                              });
-                            }
-                          },
-                        ),
+                  return Center(
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      scrollDirection: Axis.horizontal,
+                      reverse: true,
+                      child: MathEditorInline(
+                        key: mathEditorKey,
+                        controller: mathEditorController!,
+                        showCursor: isFocused,
+                        minWidth: constraints.maxWidth,
+                        onFocus: () {
+                          if (activeIndex != index) {
+                            setState(() {
+                              activeIndex = index;
+                            });
+                          }
+                        },
                       ),
                     ),
                   );
@@ -557,6 +565,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     textDisplayControllers.remove(indexToRemove);
     focusNodes[indexToRemove]?.dispose();
     focusNodes.remove(indexToRemove);
+    scrollControllers[indexToRemove]?.dispose();
+    scrollControllers.remove(indexToRemove);
 
     mathEditorKeys.remove(indexToRemove); // ADD THIS
 
@@ -590,11 +600,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     for (var focusNode in focusNodes.values) {
       focusNode.dispose();
     }
+    for (var scrollController in scrollControllers.values) {
+      scrollController.dispose();
+    }
 
     mathEditorControllers.clear();
     textDisplayControllers.clear();
     focusNodes.clear();
     mathEditorKeys.clear();
+    scrollControllers.clear();
 
     _createControllers(0);
 
@@ -610,6 +624,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     Map<int, MathEditorController> newMathControllers = {};
     Map<int, TextEditingController> newDisplayControllers = {};
     Map<int, FocusNode> newFocusNodes = {};
+    Map<int, ScrollController> newScrollControllers = {};
     Map<int, GlobalKey<MathEditorInlineState>> newMathEditorKeys =
         {}; // ADD THIS
 
@@ -618,12 +633,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       newMathControllers[newIndex] = mathEditorControllers[oldKey]!;
       newDisplayControllers[newIndex] = textDisplayControllers[oldKey]!;
       newFocusNodes[newIndex] = focusNodes[oldKey]!;
+      newScrollControllers[newIndex] = scrollControllers[oldKey]!;
       newMathEditorKeys[newIndex] = mathEditorKeys[oldKey]!; // ADD THIS
     }
 
     mathEditorControllers = newMathControllers;
     textDisplayControllers = newDisplayControllers;
     focusNodes = newFocusNodes;
+    scrollControllers = newScrollControllers;
     mathEditorKeys = newMathEditorKeys; // ADD THIS
   }
 
@@ -704,11 +721,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     for (var focusNode in focusNodes.values) {
       focusNode.dispose();
     }
+    for (var scrollController in scrollControllers.values) {
+      scrollController.dispose();
+    }
 
     mathEditorControllers.clear();
     textDisplayControllers.clear();
     focusNodes.clear();
     mathEditorKeys.clear();
+    scrollControllers.clear();
 
     // Recreate controllers with saved state
     for (int i = 0; i < state.expressions.length; i++) {

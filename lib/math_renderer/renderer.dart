@@ -46,13 +46,16 @@ class MathRenderer extends StatelessWidget {
 
             return Padding(
               padding: EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: _renderNodeList(
-                  lineInfo.nodes,
-                  lineInfo.startIndex,
-                  fontSize: FONTSIZE,
+              child: UnconstrainedBox(
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: _renderNodeList(
+                    lineInfo.nodes,
+                    lineInfo.startIndex,
+                    fontSize: FONTSIZE,
+                  ),
                 ),
               ),
             );

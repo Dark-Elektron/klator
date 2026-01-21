@@ -534,6 +534,21 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
         menuCenterX = cursorBounds.center.dx;
         final expressionTop = _getExpressionTop();
         menuTopY = (expressionTop ?? cursorBounds.top) - 55 - _menuOffset;
+      } else if (widget.cursorLocalPosition != null) {
+        // Fallback to tap position if cursor bounds unavailable
+        final containerBox =
+            widget.containerKey.currentContext?.findRenderObject()
+                as RenderBox?;
+        if (containerBox != null) {
+          final globalPos = containerBox.localToGlobal(
+            widget.cursorLocalPosition!,
+          );
+          menuCenterX = globalPos.dx;
+          menuTopY = globalPos.dy - 55 - _menuOffset;
+        } else {
+          menuCenterX = screenSize.width / 2;
+          menuTopY = 100;
+        }
       } else {
         menuCenterX = screenSize.width / 2;
         menuTopY = 100;

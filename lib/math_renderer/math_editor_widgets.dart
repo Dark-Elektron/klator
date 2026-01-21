@@ -8,12 +8,14 @@ class MathEditorInline extends StatefulWidget {
   final MathEditorController controller;
   final bool showCursor;
   final VoidCallback? onFocus;
+  final double? minWidth;
 
   const MathEditorInline({
     super.key,
     required this.controller,
     this.showCursor = true,
     this.onFocus,
+    this.minWidth,
   });
 
   @override
@@ -84,31 +86,10 @@ class MathEditorInlineState extends State<MathEditorInline>
     final RenderBox? myBox = context.findRenderObject() as RenderBox?;
     if (myBox == null) return;
 
-    // Convert tap to container coordinates
     final globalPos = myBox.localToGlobal(event.localPosition);
     final localToContainer = containerBox.globalToLocal(globalPos);
 
-    // Get content bounds in container coordinates
-    final bounds = widget.controller.getContentBounds();
-
-    if (bounds != null) {
-      const padding = 15.0;
-
-      // Tap to the LEFT of all content
-      if (localToContainer.dx < bounds.left - padding) {
-        widget.controller.moveCursorToStartWithRect();
-        return;
-      }
-
-      // Tap to the RIGHT of all content
-      if (localToContainer.dx > bounds.right + padding) {
-        widget.controller.moveCursorToEndWithRect();
-        return;
-      }
-    }
-
-    // Normal tap - find closest character
-    widget.controller.tapAt(localToContainer);
+    _processTap(localToContainer, isDoubleTap: false, isLongPress: false);
   }
 
   void _handleDoubleTapDown(TapDownDetails details) {
@@ -121,11 +102,37 @@ class MathEditorInlineState extends State<MathEditorInline>
     final RenderBox? gestureBox = context.findRenderObject() as RenderBox?;
     if (gestureBox == null) return;
 
-    final globalTapPos = gestureBox.localToGlobal(details.localPosition);
-    final localToContainer = containerBox.globalToLocal(globalTapPos);
+    final globalPoint = gestureBox.localToGlobal(details.localPosition);
+    final localToContainer = containerBox.globalToLocal(globalPoint);
 
     _doubleTapPosition = localToContainer;
-    widget.controller.tapAt(localToContainer);
+    _processTap(localToContainer, isDoubleTap: true, isLongPress: false);
+  }
+
+  void _processTap(
+    Offset localToContainer, {
+    required bool isDoubleTap,
+    required bool isLongPress,
+  }) {
+    final bounds = widget.controller.getContentBounds();
+
+    if (bounds != null) {
+      const padding = 15.0;
+      if (localToContainer.dx < bounds.left - padding) {
+        widget.controller.moveCursorToStartWithRect();
+        return;
+      }
+      if (localToContainer.dx > bounds.right + padding) {
+        widget.controller.moveCursorToEndWithRect();
+        return;
+      }
+    }
+
+    if (isLongPress) {
+      widget.controller.selectAtPosition(localToContainer);
+    } else {
+      widget.controller.tapAt(localToContainer);
+    }
   }
 
   void _handleDoubleTap() {
@@ -148,7 +155,7 @@ class MathEditorInlineState extends State<MathEditorInline>
     final globalPos = gestureBox.localToGlobal(details.localPosition);
     final localToContainer = containerBox.globalToLocal(globalPos);
 
-    widget.controller.selectAtPosition(localToContainer);
+    _processTap(localToContainer, isDoubleTap: false, isLongPress: true);
 
     if (widget.controller.hasSelection) {
       _showSelectionOverlay();
@@ -198,7 +205,7 @@ class MathEditorInlineState extends State<MathEditorInline>
   void _removeSelectionOverlay() {
     _selectionOverlay?.remove();
     _selectionOverlay = null;
-    _doubleTapPosition = null;
+    // Don't clear _doubleTapPosition here, it might be about to be used by _showPasteOnlyOverlay
   }
 
   void _handleCopy() {
@@ -213,6 +220,7 @@ class MathEditorInlineState extends State<MathEditorInline>
 
   void _handlePaste() {
     widget.controller.pasteClipboard();
+    _doubleTapPosition = null;
     _removeSelectionOverlay();
   }
 
@@ -222,6 +230,7 @@ class MathEditorInlineState extends State<MathEditorInline>
   }
 
   void _handleDismissPasteMenu() {
+    _doubleTapPosition = null;
     _removeSelectionOverlay();
   }
 
@@ -240,7 +249,6 @@ class MathEditorInlineState extends State<MathEditorInline>
     _removeSelectionOverlay();
   }
 
-
   // ============== BUILD ==============
 
   @override
@@ -257,48 +265,46 @@ class MathEditorInlineState extends State<MathEditorInline>
             onDoubleTapDown: _handleDoubleTapDown,
             onDoubleTap: _handleDoubleTap,
             onLongPressStart: _handleLongPress,
-            child: Container(
-              width:
-                  constraints.maxWidth.isFinite ? constraints.maxWidth : null,
-              constraints: const BoxConstraints(minHeight: 40),
-              alignment: Alignment.center,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: RepaintBoundary(
-                  child: ListenableBuilder(
-                    listenable: widget.controller,
-                    builder: (context, _) {
-                      final structureVersion =
-                          widget.controller.structureVersion;
-                      if (_lastStructureVersion != structureVersion) {
-                        _lastStructureVersion = structureVersion;
-                        widget.controller.clearLayoutRegistry();
-                      }
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minWidth:
+                    widget.minWidth ??
+                    (constraints.maxWidth.isFinite ? constraints.maxWidth : 0),
+                minHeight: 40,
+              ),
+              child: RepaintBoundary(
+                child: ListenableBuilder(
+                  listenable: widget.controller,
+                  builder: (context, _) {
+                    final structureVersion = widget.controller.structureVersion;
+                    if (_lastStructureVersion != structureVersion) {
+                      _lastStructureVersion = structureVersion;
+                      widget.controller.clearLayoutRegistry();
+                    }
 
-                      if (widget.controller.hasSelection &&
-                          _selectionOverlay != null) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          _selectionOverlay?.markNeedsBuild();
-                        });
-                      }
+                    if (widget.controller.hasSelection &&
+                        _selectionOverlay != null) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _selectionOverlay?.markNeedsBuild();
+                      });
+                    }
 
-                      return CursorOverlay(
-                        notifier: widget.controller.cursorPaintNotifier,
-                        blinkAnimation: _cursorBlinkController,
-                        showCursor: widget.showCursor,
-                        child: KeyedSubtree(
-                          key: _containerKey,
-                          child: MathRenderer(
-                            expression: widget.controller.expression,
-                            rootKey: _containerKey,
-                            controller: widget.controller,
-                            structureVersion: structureVersion,
-                            textScaler: textScaler,
-                          ),
+                    return CursorOverlay(
+                      notifier: widget.controller.cursorPaintNotifier,
+                      blinkAnimation: _cursorBlinkController,
+                      showCursor: widget.showCursor,
+                      child: KeyedSubtree(
+                        key: _containerKey,
+                        child: MathRenderer(
+                          expression: widget.controller.expression,
+                          rootKey: _containerKey,
+                          controller: widget.controller,
+                          structureVersion: structureVersion,
+                          textScaler: textScaler,
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
