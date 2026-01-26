@@ -47,7 +47,7 @@ class MathRenderer extends StatelessWidget {
             return Padding(
               padding: EdgeInsets.symmetric(vertical: 2),
               child: UnconstrainedBox(
-                alignment: Alignment.centerLeft,
+                alignment: Alignment.center,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -370,10 +370,10 @@ class MathRenderer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Base
-            // If the base is short, we push it down to let the power sit higher
-            // relative to the baseline.
             Padding(
-              padding: EdgeInsets.only(top: isTallBase ? 0 : powerSize * 0.4),
+              padding: EdgeInsets.symmetric(
+                vertical: isTallBase ? 0 : powerSize * 0.4,
+              ),
               child: baseWidget,
             ),
 

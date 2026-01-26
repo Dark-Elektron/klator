@@ -9,9 +9,21 @@ enum NumberFormat {
   plain, // Commas, never scientific
 }
 
+enum ThemeType {
+  classic,
+  dark,
+  softPink,
+  pink,
+  sunsetEmber,
+  desertSand,
+  digitalAmber,
+  roseChic,
+  honeyMustard,
+}
+
 class SettingsProvider extends ChangeNotifier {
   double _precision = 8;
-  bool _isDarkTheme = false;
+  ThemeType _themeType = ThemeType.classic;
   bool _isRadians = false;
   bool _hapticFeedback = true;
   bool _soundEffects = false;
@@ -20,7 +32,12 @@ class SettingsProvider extends ChangeNotifier {
 
   // Getters
   double get precision => _precision;
-  bool get isDarkTheme => _isDarkTheme;
+  ThemeType get themeType => _themeType;
+  bool get isDarkTheme =>
+      _themeType != ThemeType.classic &&
+      _themeType != ThemeType.softPink &&
+      _themeType != ThemeType.desertSand &&
+      _themeType != ThemeType.honeyMustard;
   bool get isRadians => _isRadians;
   bool get hapticFeedback => _hapticFeedback;
   bool get soundEffects => _soundEffects;
@@ -38,21 +55,21 @@ class SettingsProvider extends ChangeNotifier {
   SettingsProvider._();
 
   SettingsProvider._forTesting({
-    bool isDarkTheme = false,
+    ThemeType themeType = ThemeType.classic,
     String multiplicationSign = '×',
     NumberFormat numberFormat = NumberFormat.automatic,
-  })  : _isDarkTheme = isDarkTheme,
-        _multiplicationSign = multiplicationSign,
-        _numberFormat = numberFormat;
+  }) : _themeType = themeType,
+       _multiplicationSign = multiplicationSign,
+       _numberFormat = numberFormat;
 
   // Factory constructor for tests
   static SettingsProvider forTesting({
-    bool isDarkTheme = false,
+    ThemeType themeType = ThemeType.classic,
     String multiplicationSign = '×',
     NumberFormat numberFormat = NumberFormat.automatic,
   }) {
     return SettingsProvider._forTesting(
-      isDarkTheme: isDarkTheme,
+      themeType: themeType,
       multiplicationSign: multiplicationSign,
       numberFormat: numberFormat,
     );
@@ -62,12 +79,25 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _precision = prefs.getDouble('precision') ?? 6;
-    _isDarkTheme = prefs.getBool('isDarkTheme') ?? false;
+
+    // Load theme
+    String? themeStr = prefs.getString('themeType');
+    if (themeStr != null) {
+      _themeType = ThemeType.values.firstWhere(
+        (e) => e.name == themeStr,
+        orElse: () => ThemeType.classic,
+      );
+    } else {
+      // Migrate from old isDarkTheme bool if it exists
+      bool oldIsDark = prefs.getBool('isDarkTheme') ?? false;
+      _themeType = oldIsDark ? ThemeType.dark : ThemeType.classic;
+    }
+
     _isRadians = prefs.getBool('isRadians') ?? false;
     _hapticFeedback = prefs.getBool('hapticFeedback') ?? true;
     _soundEffects = prefs.getBool('soundEffects') ?? false;
     _multiplicationSign = prefs.getString('multiplicationSign') ?? '\u00D7';
-    
+
     // Load number format
     String formatStr = prefs.getString('numberFormat') ?? 'automatic';
     _numberFormat = NumberFormat.values.firstWhere(
@@ -77,7 +107,7 @@ class SettingsProvider extends ChangeNotifier {
 
     // Set global precision on load
     MathSolverNew.setPrecision(_precision.toInt());
-    
+
     // Set global number format on load
     MathSolverNew.setNumberFormat(_numberFormat);
 
@@ -99,11 +129,15 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> toggleDarkTheme(bool value) async {
-    _isDarkTheme = value;
+  Future<void> setThemeType(ThemeType value) async {
+    _themeType = value;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isDarkTheme', value);
+    await prefs.setString('themeType', value.name);
     notifyListeners();
+  }
+
+  Future<void> toggleDarkTheme(bool value) async {
+    await setThemeType(value ? ThemeType.dark : ThemeType.classic);
   }
 
   Future<void> toggleRadians(bool value) async {

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../settings/settings_provider.dart';
 
 class AppColors {
   final Color displayBackground;
@@ -27,8 +29,8 @@ class AppColors {
     required this.backgroundImage, // Add this
   });
 
-  // Light theme colors
-  static const light = AppColors(
+  // classic theme colors
+  static const classic = AppColors(
     displayBackground: Colors.white38,
     containerBackground: Colors.blueGrey,
     textPrimary: Colors.white,
@@ -39,7 +41,7 @@ class AppColors {
     keypadBackground: Color(0xFFE0E0E0),
     keypadButton: Colors.white,
     keypadButtonText: Colors.black,
-    backgroundImage: 'assets/imgs/background_light.svg',
+    backgroundImage: 'assets/imgs/background_classic.svg',
   );
 
   // Dark theme colors
@@ -57,9 +59,133 @@ class AppColors {
     backgroundImage: 'assets/imgs/background_dark.svg',
   );
 
+  static const pink = AppColors(
+    displayBackground: Color(0xFF2D2426), // Dark Chocolate-Plum
+    containerBackground: Color(0xFF3D3134), // Warm Dark Mauve
+    textPrimary: Color(0xFFFFF0F3), // Off-white with a hint of rose
+    textSecondary: Color(0xFFC2A3A8), // Muted dusty rose
+    textTertiary: Color(0xFFFF8FA3), // Vibrant Pink accent
+    divider: Color(0xFF5E4B4E), // Deep muted wine
+    accent: Color(0xFFFF4D6D), // Bright Cherry-Pink for operators
+    keypadBackground: Color(0xFF1F1819), // Deepest charcoal pink
+    keypadButton: Color(0xFF594548), // Muted plum-pink buttons
+    keypadButtonText: Color(0xFFFFB3C1), // Soft pastel pink text
+    backgroundImage: 'assets/imgs/background_pink.svg',
+  );
+
+  static const softPink = AppColors(
+    displayBackground: Color(0xFFFBE4E4), // Warm light rose
+    containerBackground: Color(
+      0xFFE29B9B,
+    ), // Warm Dusty Rose (Matched to image)
+    textPrimary: Color(0xFF5E2A2A), // Deep warm rose
+    textSecondary: Color(0xFF8E5C5C), // Muted warm rose
+    textTertiary: Color(0xFFFF7096), // Vibrant Pink (kept for contrast)
+    divider: Color(0xFFF2C4C4), // Warm light border
+    accent: Color(0xFFD87070), // Warm coral-red accent
+    keypadBackground: Color(0xFFFCF0F0), // Softest warm pink
+    keypadButton: Color(0xFFF2C4C4), // Warm rose buttons
+    keypadButtonText: Color(0xFF5E2A2A), // Dark warm text
+    backgroundImage: 'assets/imgs/background_soft_pink.svg',
+  );
+
+  // Dark theme colors
+  static const sunsetEmber = AppColors(
+    displayBackground: Color(0xFF2D1B1B),
+    containerBackground: Color(0xFF3D2B2B),
+    textPrimary: Color(0xFFFDF5E6),
+    textSecondary: Color(0xFFA89F91),
+    textTertiary: Color(0xFFFF8C42), // Burnt Orange
+    divider: Color(0xFF5D4037),
+    accent: Color(0xFFE2725B), // Terracotta
+    keypadBackground: Color(0xFF231515),
+    keypadButton: Color(0xFF4E342E),
+    keypadButtonText: Color(0xFFFFCC80),
+    backgroundImage: 'assets/imgs/background_sunset_ember.svg',
+  );
+
+  static const desertSand = AppColors(
+    displayBackground: Color(0xFFF4EBD2), // Soft Beige
+    containerBackground: Color(0xFFC18A63), // Clay
+    textPrimary: Color(0xFF4A3F36), // Deep Coffee
+    textSecondary: Color(0xFF7E9C76),
+    textTertiary: Color(0xFFA35418), // Burnt Sienna
+    divider: Color(0xFFD9C9A2),
+    accent: Color(0xFFE86F1B), // Orange Citrus
+    keypadBackground: Color(0xFFFDF5E6),
+    keypadButton: Color(0xFFEEDBC3),
+    keypadButtonText: Color(0xFF4A3325),
+    backgroundImage: 'assets/imgs/background_desert_sand.svg',
+  );
+
+  static const digitalAmber = AppColors(
+    displayBackground: Colors.black,
+    containerBackground: Color(0xFF1A120B),
+    textPrimary: Color(0xFFFFBF00), // Amber
+    textSecondary: Color(0xFFD69A3C),
+    textTertiary: Color(0xFFFFDA9A),
+    divider: Color(0xFF3E2723),
+    accent: Color(0xFFFF8F00),
+    keypadBackground: Color(0xFF0C0C0C),
+    keypadButton: Color(0xFF232323),
+    keypadButtonText: Color(0xFFFFBF00),
+    backgroundImage: 'assets/imgs/background_digital_amber.svg',
+  );
+
+  static const roseChic = AppColors(
+    displayBackground: Color(0xFF2C2C2C),
+    containerBackground: Color(0xFF3D3D3D),
+    textPrimary: Color(0xFFF7E5E1), // Soft Rose White
+    textSecondary: Color(0xFFB2545B),
+    textTertiary: Color(0xFFEAA292), // Peach Blossom
+    divider: Color(0xFF60202A),
+    accent: Color(0xFF8F2F42), // Rosewood
+    keypadBackground: Color(0xFF1A1A1A),
+    keypadButton: Color(0xFF4A3F3F),
+    keypadButtonText: Color(0xFFF9C6B0),
+    backgroundImage: 'assets/imgs/background_rose_chic.svg',
+  );
+
+  static const honeyMustard = AppColors(
+    displayBackground: Color(0xFFFFF5C5),
+    containerBackground: Color(0xFFFFCF36), // Mustard
+    textPrimary: Color(0xFF1E615A), // Dark Teal Contrast
+    textSecondary: Color(0xFF8A694D),
+    textTertiary: Color(0xFF138A7D),
+    divider: Color(0xFFC5A57E),
+    accent: Color(0xFFEB5B00), // Bright Orange
+    keypadBackground: Color(0xFFF5E8D8),
+    keypadButton: Color(0xFFD69A3C),
+    keypadButtonText: Colors.white,
+    backgroundImage: 'assets/imgs/background_honey_mustard.svg',
+  );
+
   // Helper to get colors based on context
   static AppColors of(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark ? dark : light;
+    final settings = Provider.of<SettingsProvider>(context);
+    return fromType(settings.themeType);
+  }
+
+  static AppColors fromType(ThemeType type) {
+    switch (type) {
+      case ThemeType.classic:
+        return classic;
+      case ThemeType.dark:
+        return dark;
+      case ThemeType.softPink:
+        return softPink;
+      case ThemeType.pink:
+        return pink;
+      case ThemeType.sunsetEmber:
+        return sunsetEmber;
+      case ThemeType.desertSand:
+        return desertSand;
+      case ThemeType.digitalAmber:
+        return digitalAmber;
+      case ThemeType.roseChic:
+        return roseChic;
+      case ThemeType.honeyMustard:
+        return honeyMustard;
+    }
   }
 }

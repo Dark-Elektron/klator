@@ -20,8 +20,15 @@ void main() async {
 
   // Precache SVG backgrounds to avoid flash on load
   await Future.wait([
-    _precacheSvg('assets/imgs/background_light.svg'),
+    _precacheSvg('assets/imgs/background_classic.svg'),
     _precacheSvg('assets/imgs/background_dark.svg'),
+    _precacheSvg('assets/imgs/background_pink.svg'),
+    _precacheSvg('assets/imgs/background_soft_pink.svg'),
+    _precacheSvg('assets/imgs/background_sunset_ember.svg'),
+    _precacheSvg('assets/imgs/background_desert_sand.svg'),
+    _precacheSvg('assets/imgs/background_digital_amber.svg'),
+    _precacheSvg('assets/imgs/background_rose_chic.svg'),
+    _precacheSvg('assets/imgs/background_honey_mustard.svg'),
   ]);
 
   final settingsProvider = await SettingsProvider.create();

@@ -742,7 +742,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               textColor: Colors.black,
             ),
           );
-        } else if (buttonText == 'C') {
+        } else if (buttonText == 'CE') {
           return MyButton(
             buttontapped: () {
               _activeController?.clear();
@@ -751,7 +751,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
               widget.onSetState();
             },
-            buttonText: 'C',
+            buttonText: 'CE',
             color: Colors.white,
             textColor: Colors.black,
           );
