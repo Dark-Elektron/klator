@@ -41,6 +41,18 @@ class MathEditorInlineState extends State<MathEditorInline>
 
     widget.controller.setContainerKey(_containerKey);
     widget.controller.onSelectionCleared = _onSelectionCleared;
+
+    // // Schedule cursor recalculation after initial layout is complete
+    // // We use a small delay to ensure the renderer has had time to report layout
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   if (mounted) {
+    //     Future.delayed(const Duration(milliseconds: 50), () {
+    //       if (mounted) {
+    //         widget.controller.recalculateCursorPosition();
+    //       }
+    //     });
+    //   }
+    // });
   }
 
   void _onSelectionCleared() {

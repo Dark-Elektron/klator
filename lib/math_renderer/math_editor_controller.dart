@@ -2538,6 +2538,53 @@ class MathEditorController extends ChangeNotifier {
     }
   }
 
+  void recalculateCursorRect() {
+    final c = cursor;
+
+    final key = _makeLayoutKey(c.parentId, c.path, c.index);
+
+    final info = _layoutIndex[key];
+
+    if (info == null) {
+      return;
+    }
+
+    // Calculate cursor position
+    final text = info.node.text;
+    final charIndex = c.subIndex.clamp(0, text.length);
+    double cursorX;
+
+    if (text.isEmpty) {
+      cursorX = info.rect.left;
+    } else {
+      if (info.renderParagraph != null && info.renderParagraph!.attached) {
+        final displayIndex = MathTextStyle.logicalToDisplayIndex(
+          text,
+          charIndex,
+        );
+        final displayText = MathTextStyle.toDisplayText(text);
+        final offset = info.renderParagraph!.getOffsetForCaret(
+          TextPosition(offset: displayIndex.clamp(0, displayText.length)),
+          Rect.zero,
+        );
+        cursorX = info.rect.left + offset.dx;
+      } else {
+        cursorX =
+            info.rect.left +
+            MathTextStyle.getCursorOffset(
+              text,
+              charIndex,
+              info.fontSize,
+              info.textScaler,
+            );
+      }
+    }
+
+    final newRect = Rect.fromLTWH(cursorX, info.rect.top, 2, info.rect.height);
+
+    cursorPaintNotifier.updateRectDirect(newRect);
+  }
+
   // === OTHER HELPERS ===
   void _updateLiteralAtCursor(void Function(LiteralNode) edit) {
     final node = _resolveCursorNode();
@@ -2873,7 +2920,6 @@ class MathEditorController extends ChangeNotifier {
   }
 
   void deleteChar() {
-    // If there's a selection, delete it
     if (hasSelection) {
       saveStateForUndo();
       deleteSelection();
@@ -2882,7 +2928,10 @@ class MathEditorController extends ChangeNotifier {
 
     saveStateForUndo();
     final node = _resolveCursorNode();
-    if (node is! LiteralNode) return;
+
+    if (node is! LiteralNode) {
+      return;
+    }
 
     if (cursor.subIndex > 0) {
       node.text =
@@ -2896,7 +2945,10 @@ class MathEditorController extends ChangeNotifier {
       _deleteIntoPreviousNode();
       return;
     }
-    if (cursor.parentId == null) return;
+    if (cursor.parentId == null) {
+      return;
+    }
+
     _handleDeleteAtStructureStart();
   }
 
@@ -2910,11 +2962,64 @@ class MathEditorController extends ChangeNotifier {
 
   // ============== DELETE HANDLERS FOR NEW NODES ==============
 
+  void _handleDeleteInExponent(ExponentNode exp) {
+    if (cursor.path == 'pow') {
+      if (_isListEffectivelyEmpty(exp.power)) {
+        _unwrapExponent(exp);
+      } else {
+        _moveCursorToEndOfList(exp.base, exp.id, 'base');
+        recalculateCursorRect();
+        notifyListeners();
+      }
+    } else if (cursor.path == 'base') {
+      if (_isListEffectivelyEmpty(exp.base) &&
+          _isListEffectivelyEmpty(exp.power)) {
+        _removeExponent(exp);
+      } else {
+        _moveCursorBeforeNode(exp.id);
+        recalculateCursorRect();
+        notifyListeners();
+      }
+    }
+  }
+
+  void _handleDeleteInFraction(FractionNode frac) {
+    if (cursor.path == 'den') {
+      if (_isListEffectivelyEmpty(frac.denominator)) {
+        _unwrapFraction(frac);
+      } else {
+        _moveCursorToEndOfList(frac.numerator, frac.id, 'num');
+        recalculateCursorRect();
+        notifyListeners();
+      }
+    } else if (cursor.path == 'num') {
+      if (_isListEffectivelyEmpty(frac.numerator) &&
+          _isListEffectivelyEmpty(frac.denominator)) {
+        _removeFraction(frac);
+      } else {
+        _moveCursorBeforeNode(frac.id);
+        recalculateCursorRect();
+        notifyListeners();
+      }
+    }
+  }
+
+  void _handleDeleteInParenthesis(ParenthesisNode paren) {
+    if (_isListEffectivelyEmpty(paren.content)) {
+      _removeParenthesis(paren);
+    } else {
+      _moveCursorBeforeNode(paren.id);
+      recalculateCursorRect();
+      notifyListeners();
+    }
+  }
+
   void _handleDeleteInTrig(TrigNode trig) {
     if (_isListEffectivelyEmpty(trig.argument)) {
       _removeTrig(trig);
     } else {
       _moveCursorBeforeNode(trig.id);
+      recalculateCursorRect();
       notifyListeners();
     }
   }
@@ -2925,9 +3030,11 @@ class MathEditorController extends ChangeNotifier {
         _removeRoot(root);
       } else if (!root.isSquareRoot) {
         _moveCursorToEndOfList(root.index, root.id, 'index');
+        recalculateCursorRect();
         notifyListeners();
       } else {
         _moveCursorBeforeNode(root.id);
+        recalculateCursorRect();
         notifyListeners();
       }
     } else if (cursor.path == 'index') {
@@ -2936,6 +3043,32 @@ class MathEditorController extends ChangeNotifier {
         _removeRoot(root);
       } else {
         _moveCursorBeforeNode(root.id);
+        recalculateCursorRect();
+        notifyListeners();
+      }
+    }
+  }
+
+  void _handleDeleteInLog(LogNode log) {
+    if (cursor.path == 'arg') {
+      if (_isListEffectivelyEmpty(log.argument)) {
+        _removeLog(log);
+      } else if (!log.isNaturalLog) {
+        _moveCursorToEndOfList(log.base, log.id, 'base');
+        recalculateCursorRect();
+        notifyListeners();
+      } else {
+        _moveCursorBeforeNode(log.id);
+        recalculateCursorRect();
+        notifyListeners();
+      }
+    } else if (cursor.path == 'base') {
+      if (_isListEffectivelyEmpty(log.base) &&
+          _isListEffectivelyEmpty(log.argument)) {
+        _removeLog(log);
+      } else {
+        _moveCursorBeforeNode(log.id);
+        recalculateCursorRect();
         notifyListeners();
       }
     }
@@ -2945,9 +3078,11 @@ class MathEditorController extends ChangeNotifier {
     if (cursor.path == 'r') {
       if (_isListEffectivelyEmpty(perm.r)) {
         _moveCursorToEndOfList(perm.n, perm.id, 'n');
+        recalculateCursorRect();
         notifyListeners();
       } else {
         _moveCursorToEndOfList(perm.n, perm.id, 'n');
+        recalculateCursorRect();
         notifyListeners();
       }
     } else if (cursor.path == 'n') {
@@ -2955,6 +3090,7 @@ class MathEditorController extends ChangeNotifier {
         _removePermutation(perm);
       } else {
         _moveCursorBeforeNode(perm.id);
+        recalculateCursorRect();
         notifyListeners();
       }
     }
@@ -2964,9 +3100,11 @@ class MathEditorController extends ChangeNotifier {
     if (cursor.path == 'r') {
       if (_isListEffectivelyEmpty(comb.r)) {
         _moveCursorToEndOfList(comb.n, comb.id, 'n');
+        recalculateCursorRect();
         notifyListeners();
       } else {
         _moveCursorToEndOfList(comb.n, comb.id, 'n');
+        recalculateCursorRect();
         notifyListeners();
       }
     } else if (cursor.path == 'n') {
@@ -2974,8 +3112,19 @@ class MathEditorController extends ChangeNotifier {
         _removeCombination(comb);
       } else {
         _moveCursorBeforeNode(comb.id);
+        recalculateCursorRect();
         notifyListeners();
       }
+    }
+  }
+
+  void _handleDeleteInAns(AnsNode ans) {
+    if (_isListEffectivelyEmpty(ans.index)) {
+      _removeAns(ans);
+    } else {
+      _moveCursorBeforeNode(ans.id);
+      recalculateCursorRect();
+      notifyListeners();
     }
   }
 
@@ -2993,37 +3142,46 @@ class MathEditorController extends ChangeNotifier {
         _notifyStructureChanged();
       } else {
         cursor = cursor.copyWith(index: cursor.index - 1, subIndex: 0);
+        recalculateCursorRect(); // ← ADD THIS
         notifyListeners();
       }
     } else if (prevNode is NewlineNode) {
-      // Delete the newline and merge with previous line
       _removeNewline(prevNode);
     } else if (prevNode is FractionNode) {
       _moveCursorToEndOfList(prevNode.denominator, prevNode.id, 'den');
+      recalculateCursorRect(); // ← ADD THIS
       notifyListeners();
     } else if (prevNode is ExponentNode) {
       _moveCursorToEndOfList(prevNode.power, prevNode.id, 'pow');
+      recalculateCursorRect(); // ← ADD THIS
       notifyListeners();
     } else if (prevNode is ParenthesisNode) {
       _moveCursorToEndOfList(prevNode.content, prevNode.id, 'content');
+      recalculateCursorRect(); // ← ADD THIS
       notifyListeners();
     } else if (prevNode is TrigNode) {
       _moveCursorToEndOfList(prevNode.argument, prevNode.id, 'arg');
+      recalculateCursorRect(); // ← ADD THIS
       notifyListeners();
     } else if (prevNode is RootNode) {
       _moveCursorToEndOfList(prevNode.radicand, prevNode.id, 'radicand');
+      recalculateCursorRect(); // ← ADD THIS
       notifyListeners();
     } else if (prevNode is LogNode) {
       _moveCursorToEndOfList(prevNode.argument, prevNode.id, 'arg');
+      recalculateCursorRect(); // ← ADD THIS
       notifyListeners();
     } else if (prevNode is PermutationNode) {
       _moveCursorToEndOfList(prevNode.r, prevNode.id, 'r');
+      recalculateCursorRect(); // ← ADD THIS
       notifyListeners();
     } else if (prevNode is CombinationNode) {
       _moveCursorToEndOfList(prevNode.r, prevNode.id, 'r');
+      recalculateCursorRect(); // ← ADD THIS
       notifyListeners();
     } else if (prevNode is AnsNode) {
       _moveCursorToEndOfList(prevNode.index, prevNode.id, 'index');
+      recalculateCursorRect(); // ← ADD THIS
       notifyListeners();
     }
   }
@@ -3048,85 +3206,6 @@ class MathEditorController extends ChangeNotifier {
       _handleDeleteInCombination(parent);
     } else if (parent is AnsNode) {
       _handleDeleteInAns(parent);
-    }
-  }
-
-  void _handleDeleteInFraction(FractionNode frac) {
-    if (cursor.path == 'den') {
-      if (_isListEffectivelyEmpty(frac.denominator)) {
-        _unwrapFraction(frac);
-      } else {
-        _moveCursorToEndOfList(frac.numerator, frac.id, 'num');
-        notifyListeners();
-      }
-    } else if (cursor.path == 'num') {
-      if (_isListEffectivelyEmpty(frac.numerator) &&
-          _isListEffectivelyEmpty(frac.denominator)) {
-        _removeFraction(frac);
-      } else {
-        _moveCursorBeforeNode(frac.id);
-        notifyListeners();
-      }
-    }
-  }
-
-  void _handleDeleteInExponent(ExponentNode exp) {
-    if (cursor.path == 'pow') {
-      if (_isListEffectivelyEmpty(exp.power)) {
-        _unwrapExponent(exp);
-      } else {
-        _moveCursorToEndOfList(exp.base, exp.id, 'base');
-        notifyListeners();
-      }
-    } else if (cursor.path == 'base') {
-      if (_isListEffectivelyEmpty(exp.base) &&
-          _isListEffectivelyEmpty(exp.power)) {
-        _removeExponent(exp);
-      } else {
-        _moveCursorBeforeNode(exp.id);
-        notifyListeners();
-      }
-    }
-  }
-
-  void _handleDeleteInParenthesis(ParenthesisNode paren) {
-    if (_isListEffectivelyEmpty(paren.content)) {
-      _removeParenthesis(paren);
-    } else {
-      _moveCursorBeforeNode(paren.id);
-      notifyListeners();
-    }
-  }
-
-  void _handleDeleteInLog(LogNode log) {
-    if (cursor.path == 'arg') {
-      if (_isListEffectivelyEmpty(log.argument)) {
-        _removeLog(log);
-      } else if (!log.isNaturalLog) {
-        _moveCursorToEndOfList(log.base, log.id, 'base');
-        notifyListeners();
-      } else {
-        _moveCursorBeforeNode(log.id);
-        notifyListeners();
-      }
-    } else if (cursor.path == 'base') {
-      if (_isListEffectivelyEmpty(log.base) &&
-          _isListEffectivelyEmpty(log.argument)) {
-        _removeLog(log);
-      } else {
-        _moveCursorBeforeNode(log.id);
-        notifyListeners();
-      }
-    }
-  }
-
-  void _handleDeleteInAns(AnsNode ans) {
-    // When deleting at start of index, delete the whole ANS node
-    if (_isListEffectivelyEmpty(ans.index)) {
-      _removeAns(ans);
-    } else {
-      _moveCursorBeforeNode(ans.id);
-      notifyListeners();
     }
   }
 

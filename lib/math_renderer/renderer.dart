@@ -33,24 +33,20 @@ class MathRenderer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Split expression into lines
     List<_LineInfo> lines = _splitIntoLines(expression);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children:
-          lines.asMap().entries.map((entry) {
-            // int lineIndex = entry.key;
-            _LineInfo lineInfo = entry.value;
-
+          lines.map((lineInfo) {
             return Padding(
-              padding: EdgeInsets.symmetric(vertical: 2),
+              padding: const EdgeInsets.symmetric(vertical: 2),
               child: UnconstrainedBox(
                 alignment: Alignment.center,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: _renderNodeList(
                     lineInfo.nodes,
                     lineInfo.startIndex,
@@ -94,21 +90,75 @@ class MathRenderer extends StatelessWidget {
     return lines;
   }
 
-  /// Helper to render a list of nodes with consistent padding.
+  /// Helper to render a list of nodes with reference axis alignment
   List<Widget> _renderNodeList(
     List<MathNode> nodes,
     int startIndex, {
     required double fontSize,
     String? parentId,
     String? path,
+    bool removeLeftPadding = false,
+    bool removeRightPadding = false,
   }) {
+    if (nodes.isEmpty) {
+      return [];
+    }
+
+    // Calculate max extents for the list
+    double maxAbove = 0;
+    double maxBelow = 0;
+
+    for (final node in nodes) {
+      final (height, offset) = _getNodeMetrics(node, fontSize);
+      if (height > 0) {
+        maxAbove = math.max(maxAbove, height - offset);
+        maxBelow = math.max(maxBelow, offset);
+      }
+    }
+
+    // Find first and last non-empty node indices for edge padding
+    int firstNonEmptyIndex = -1;
+    int lastNonEmptyIndex = -1;
+
+    for (int i = 0; i < nodes.length; i++) {
+      final node = nodes[i];
+      final bool isEmpty = node is LiteralNode && node.text.isEmpty;
+      if (!isEmpty) {
+        if (firstNonEmptyIndex == -1) firstNonEmptyIndex = i;
+        lastNonEmptyIndex = i;
+      }
+    }
+
+    // Render each node with appropriate top padding to align reference axes
     return nodes.asMap().entries.map((e) {
+      final node = e.value;
+      final int nodeIndex = e.key;
+      final (height, offset) = _getNodeMetrics(node, fontSize);
+
+      // Top padding = maxAbove - (this node's extent above its reference)
+      final topPadding = maxAbove - (height - offset);
+
+      // Check if this node is empty LiteralNode
+      final bool isEmpty = node is LiteralNode && node.text.isEmpty;
+
+      // Determine left/right padding
+      final bool isFirstNonEmpty = nodeIndex == firstNonEmptyIndex;
+      final bool isLastNonEmpty = nodeIndex == lastNonEmptyIndex;
+
+      // Empty nodes get 0 padding; non-empty use edge detection
+      final double leftPad =
+          isEmpty ? 0.0 : ((removeLeftPadding && isFirstNonEmpty) ? 0.0 : 1.5);
+      final double rightPad =
+          isEmpty ? 0.0 : ((removeRightPadding && isLastNonEmpty) ? 0.0 : 1.5);
+
       return Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 1.5,
-        ), // Standardized gap
+        padding: EdgeInsets.only(
+          left: leftPad,
+          right: rightPad,
+          top: math.max(0, topPadding),
+        ),
         child: _renderNode(
-          e.value,
+          node,
           startIndex + e.key,
           nodes,
           parentId,
@@ -195,6 +245,7 @@ class MathRenderer extends StatelessWidget {
                       minHeight: fontSize * 0.8,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: _renderNodeList(
                           node.numerator,
                           0,
@@ -207,6 +258,7 @@ class MathRenderer extends StatelessWidget {
                   )
                   : Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.numerator,
                       0,
@@ -240,6 +292,7 @@ class MathRenderer extends StatelessWidget {
                       minHeight: fontSize * 0.8,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: _renderNodeList(
                           node.denominator,
                           0,
@@ -252,6 +305,7 @@ class MathRenderer extends StatelessWidget {
                   )
                   : Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.denominator,
                       0,
@@ -267,22 +321,14 @@ class MathRenderer extends StatelessWidget {
     }
 
     if (node is ExponentNode) {
-      final double powerSize = fontSize * 0.8;
-
-      // Check if base is "tall" (like parenthesis, fraction, etc.)
-      // If tall, we align exponent to the TOP.
-      // If short (literals), we align to the BOTTOM (baseline-ish).
-      final bool isTallBase = _isTallContent(node.base);
-
-      // Raise factor depends on alignment
-      // final double powerRaise = isTallBase ? fontSize * 0.1 : fontSize * 0.35;
-      final CrossAxisAlignment alignment =
-          isTallBase ? CrossAxisAlignment.start : CrossAxisAlignment.end;
-
+      final double powerSize =
+          fontSize < FONTSIZE * 0.85 ? fontSize : fontSize * 0.8;
       final bool baseEmpty = _isContentEmpty(node.base);
       final bool powerEmpty = _isContentEmpty(node.power);
 
-      // Build base widget
+      // Fixed offset - must match metrics!
+      final double fixedOffset = fontSize * -0.5;
+
       Widget baseWidget =
           baseEmpty
               ? GestureDetector(
@@ -299,30 +345,33 @@ class MathRenderer extends StatelessWidget {
                   minHeight: fontSize * 0.9,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: alignment,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.base,
                       0,
                       fontSize: fontSize,
                       parentId: node.id,
                       path: 'base',
+                      removeLeftPadding: true,
+                      removeRightPadding: true,
                     ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: alignment,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.base,
                   0,
                   fontSize: fontSize,
                   parentId: node.id,
                   path: 'base',
+                  removeLeftPadding: true,
+                  removeRightPadding: true,
                 ),
               );
 
-      // Build power widget
       Widget powerWidget =
           powerEmpty
               ? GestureDetector(
@@ -339,26 +388,39 @@ class MathRenderer extends StatelessWidget {
                   minHeight: powerSize * 0.7,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.power,
                       0,
                       fontSize: powerSize,
                       parentId: node.id,
                       path: 'pow',
+                      removeLeftPadding: true,
+                      removeRightPadding: true,
                     ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.power,
                   0,
                   fontSize: powerSize,
                   parentId: node.id,
                   path: 'pow',
+                  removeLeftPadding: true,
+                  removeRightPadding: true,
                 ),
               );
+
+      // Get power height for layout
+      final powerMetrics = _getListMetrics(node.power, powerSize);
+      final double powerHeight = powerMetrics.$1;
+
+      // Base is pushed down by: powerHeight + fixedOffset
+      final double baseTopPadding = powerHeight + fixedOffset;
 
       return _wrapComposite(
         node: node,
@@ -369,22 +431,13 @@ class MathRenderer extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Base
+            // Base pushed down
             Padding(
-              padding: EdgeInsets.symmetric(
-                vertical: isTallBase ? 0 : powerSize * 0.4,
-              ),
+              padding: EdgeInsets.only(top: baseTopPadding),
               child: baseWidget,
             ),
-
-            // Power
-            // For tall bases (parenthesis, fractions), the power sits at the top.
-            // For short bases, it sits above the base.
-            // By using Padding on the base, we avoid Transform, ensuring correct bounds.
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: fontSize * 0.1),
-              child: powerWidget,
-            ),
+            // Power at top
+            powerWidget,
           ],
         ),
       );
@@ -409,7 +462,7 @@ class MathRenderer extends StatelessWidget {
                   minHeight: fontSize * 0.9,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.content,
                       0,
@@ -422,7 +475,7 @@ class MathRenderer extends StatelessWidget {
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.content,
                   0,
@@ -470,7 +523,6 @@ class MathRenderer extends StatelessWidget {
     if (node is TrigNode) {
       final bool argEmpty = _isContentEmpty(node.argument);
 
-      // Build argument widget
       Widget argWidget =
           argEmpty
               ? GestureDetector(
@@ -487,7 +539,7 @@ class MathRenderer extends StatelessWidget {
                   minHeight: fontSize * 0.9,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.argument,
                       0,
@@ -500,13 +552,13 @@ class MathRenderer extends StatelessWidget {
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.argument,
                   0,
                   fontSize: fontSize,
                   parentId: node.id,
-                  path: "arg",
+                  path: 'arg',
                 ),
               );
 
@@ -520,7 +572,7 @@ class MathRenderer extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Function name (sin, cos, etc.
+              // Function name (sin, cos, etc.)
               Text(
                 node.function,
                 style: MathTextStyle.getStyle(
@@ -586,6 +638,7 @@ class MathRenderer extends StatelessWidget {
                   minHeight: fontSize * 0.9,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.radicand,
                       0,
@@ -598,6 +651,7 @@ class MathRenderer extends StatelessWidget {
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.radicand,
                   0,
@@ -626,18 +680,20 @@ class MathRenderer extends StatelessWidget {
                     minHeight: indexSize * 0.7,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: _renderNodeList(
                         node.index,
                         0,
                         fontSize: indexSize,
                         parentId: node.id,
-                        path: "index",
+                        path: 'index',
                       ),
                     ),
                   ),
                 )
                 : Row(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: _renderNodeList(
                     node.index,
                     0,
@@ -735,6 +791,7 @@ class MathRenderer extends StatelessWidget {
                     minHeight: baseSize * 0.7,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: _renderNodeList(
                         node.base,
                         0,
@@ -747,6 +804,7 @@ class MathRenderer extends StatelessWidget {
                 )
                 : Row(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: _renderNodeList(
                     node.base,
                     0,
@@ -774,7 +832,7 @@ class MathRenderer extends StatelessWidget {
                   minHeight: fontSize * 0.9,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.argument,
                       0,
@@ -787,13 +845,13 @@ class MathRenderer extends StatelessWidget {
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.argument,
                   0,
                   fontSize: fontSize,
                   parentId: node.id,
-                  path: "arg",
+                  path: 'arg',
                 ),
               );
 
@@ -818,10 +876,7 @@ class MathRenderer extends StatelessWidget {
             // Subscript base - layout-aware positioning
             if (!node.isNaturalLog && baseWidget != null)
               Padding(
-                padding: EdgeInsets.only(
-                  left: 1,
-                  top: fontSize * 0.5, // Base offset for subscript
-                ),
+                padding: EdgeInsets.only(left: 1, top: fontSize * 0.5),
                 child: baseWidget,
               ),
 
@@ -884,24 +939,26 @@ class MathRenderer extends StatelessWidget {
                   minHeight: smallSize * 0.7,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.n,
                       0,
                       fontSize: smallSize,
                       parentId: node.id,
-                      path: "n",
+                      path: 'n',
                     ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.n,
                   0,
                   fontSize: smallSize,
                   parentId: node.id,
-                  path: "n",
+                  path: 'n',
                 ),
               );
 
@@ -922,24 +979,26 @@ class MathRenderer extends StatelessWidget {
                   minHeight: smallSize * 0.7,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.r,
                       0,
                       fontSize: smallSize,
                       parentId: node.id,
-                      path: "r",
+                      path: 'r',
                     ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.r,
                   0,
                   fontSize: smallSize,
                   parentId: node.id,
-                  path: "r",
+                  path: 'r',
                 ),
               );
 
@@ -952,7 +1011,7 @@ class MathRenderer extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // n (superscript position
+            // n (superscript position)
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [nWidget, SizedBox(height: fontSize * 0.8)],
@@ -998,24 +1057,26 @@ class MathRenderer extends StatelessWidget {
                   minHeight: smallSize * 0.7,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.n,
                       0,
                       fontSize: smallSize,
                       parentId: node.id,
-                      path: "n",
+                      path: 'n',
                     ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.n,
                   0,
                   fontSize: smallSize,
                   parentId: node.id,
-                  path: "n",
+                  path: 'n',
                 ),
               );
 
@@ -1036,24 +1097,26 @@ class MathRenderer extends StatelessWidget {
                   minHeight: smallSize * 0.7,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(
                       node.r,
                       0,
                       fontSize: smallSize,
                       parentId: node.id,
-                      path: "r",
+                      path: 'r',
                     ),
                   ),
                 ),
               )
               : Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.r,
                   0,
                   fontSize: smallSize,
                   parentId: node.id,
-                  path: "r",
+                  path: 'r',
                 ),
               );
 
@@ -1066,10 +1129,10 @@ class MathRenderer extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // n (superscript position
+            // n (superscript position)
             Column(
               mainAxisSize: MainAxisSize.min,
-              children: [nWidget, SizedBox(height: fontSize * 1)],
+              children: [nWidget, SizedBox(height: fontSize * 1.0)],
             ),
             // C symbol
             Text(
@@ -1112,6 +1175,7 @@ class MathRenderer extends StatelessWidget {
               // Index - same size as regular text
               Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(
                   node.index,
                   0,
@@ -1138,19 +1202,183 @@ class MathRenderer extends StatelessWidget {
     return false;
   }
 
-  /// Check if content contains tall nodes that should trigger top-alignment for exponents
-  bool _isTallContent(List<MathNode> nodes) {
-    if (nodes.isEmpty) return false;
-    for (final node in nodes) {
-      if (node is ParenthesisNode ||
-          node is FractionNode ||
-          node is RootNode ||
-          node is PermutationNode ||
-          node is CombinationNode) {
-        return true;
+  /// Returns (height, referenceOffset from bottom) for a node
+  (double, double) _getNodeMetrics(MathNode node, double fontSize) {
+    if (node is NewlineNode) {
+      return (0, 0);
+    }
+
+    if (node is LiteralNode) {
+      return (fontSize, fontSize / 2);
+    }
+
+    if (node is ExponentNode) {
+      final double powerSize =
+          fontSize < FONTSIZE * 0.85 ? fontSize : fontSize * 0.8;
+
+      final baseMetrics = _getListMetrics(node.base, fontSize);
+      final powerMetrics = _getListMetrics(node.power, powerSize);
+
+      final double baseHeight = baseMetrics.$1;
+      final double baseRef = baseMetrics.$2;
+      final double powerHeight = powerMetrics.$1;
+
+      // Fixed offset: how much of power sits above base top
+      final double fixedOffset = fontSize * -0.5;
+
+      // Total height = base + fixed offset above + power height
+      final double totalHeight = baseHeight + fixedOffset + powerHeight;
+
+      // Reference is base's reference (so bases align with siblings)
+      return (totalHeight, baseRef);
+    }
+
+    if (node is FractionNode) {
+      final numMetrics = _getListMetrics(node.numerator, fontSize);
+      final denMetrics = _getListMetrics(node.denominator, fontSize);
+
+      final double barHeight = math.max(1.5, fontSize * 0.06);
+      final double margin = fontSize * 0.15;
+
+      final numHeight = math.max(numMetrics.$1, fontSize * 0.8);
+      final denHeight = math.max(denMetrics.$1, fontSize * 0.8);
+
+      final height = numHeight + margin + barHeight + margin + denHeight;
+      // Reference at bar center, measured from bottom
+      final offset = denHeight + margin + barHeight / 2;
+
+      return (height, offset);
+    }
+
+    if (node is ParenthesisNode) {
+      final contentMetrics = _getListMetrics(node.content, fontSize);
+      final double vPadding = fontSize * 0.1;
+      final height = math.max(fontSize, contentMetrics.$1 + vPadding * 2);
+      final offset = vPadding + contentMetrics.$2;
+      return (height, offset);
+    }
+
+    if (node is TrigNode) {
+      final argMetrics = _getListMetrics(node.argument, fontSize);
+      final double vPadding = fontSize * 0.1;
+      final height = math.max(fontSize, argMetrics.$1 + vPadding * 2);
+      return (height, height / 2);
+    }
+
+    if (node is RootNode) {
+      final radicandMetrics = _getListMetrics(node.radicand, fontSize);
+      final double minHeight = fontSize * 1.2;
+      final height = math.max(minHeight, radicandMetrics.$1);
+      return (height, height / 2);
+    }
+
+    if (node is LogNode) {
+      final argMetrics = _getListMetrics(node.argument, fontSize);
+      final double vPadding = fontSize * 0.1;
+
+      // Argument area height
+      final double argAreaHeight = argMetrics.$1 + vPadding * 2;
+
+      // For non-natural log, subscript extends down
+      double subscriptExtent = 0;
+      if (!node.isNaturalLog) {
+        final baseSize = fontSize * 0.8;
+        final baseMetrics = _getListMetrics(node.base, baseSize);
+        // Subscript pushed down by fontSize * 0.5, plus its own height
+        // But capped by how much it extends below the argument area
+        subscriptExtent =
+            fontSize * 0.5 +
+            math.max(baseMetrics.$1, baseSize * 0.7) -
+            fontSize;
+        subscriptExtent = math.max(0, subscriptExtent);
+      }
+
+      final height = math.max(fontSize, argAreaHeight) + subscriptExtent;
+      return (height, height / 2);
+    }
+
+    if (node is PermutationNode) {
+      final double smallSize = fontSize * 0.8;
+
+      final nMetrics = _getListMetrics(node.n, smallSize);
+      final rMetrics = _getListMetrics(node.r, smallSize);
+
+      final double nHeight = math.max(nMetrics.$1, smallSize * 0.7);
+      final double rHeight = math.max(rMetrics.$1, smallSize * 0.7);
+
+      // Left column: nWidget + spacer
+      final double nColumnHeight = nHeight + fontSize * 0.8;
+      // Right column: spacer + rWidget
+      final double rColumnHeight = fontSize * 0.8 + rHeight;
+
+      // Row with center alignment: height = max of children
+      final double height = math.max(
+        fontSize,
+        math.max(nColumnHeight, rColumnHeight),
+      );
+
+      return (height, height / 2);
+    }
+
+    if (node is CombinationNode) {
+      final double smallSize = fontSize * 0.8;
+
+      final nMetrics = _getListMetrics(node.n, smallSize);
+      final rMetrics = _getListMetrics(node.r, smallSize);
+
+      final double nHeight = math.max(nMetrics.$1, smallSize * 0.7);
+      final double rHeight = math.max(rMetrics.$1, smallSize * 0.7);
+
+      // Left column: nWidget + spacer (fontSize * 1.0 for Combination)
+      final double nColumnHeight = nHeight + fontSize * 1.0;
+      // Right column: spacer + rWidget
+      final double rColumnHeight = fontSize * 0.8 + rHeight;
+
+      final double height = math.max(
+        fontSize,
+        math.max(nColumnHeight, rColumnHeight),
+      );
+
+      return (height, height / 2);
+    }
+
+    if (node is AnsNode) {
+      final indexMetrics = _getListMetrics(node.index, fontSize);
+      final height = math.max(fontSize, indexMetrics.$1);
+      return (height, height / 2);
+    }
+
+    return (fontSize, fontSize / 2);
+  }
+
+  /// Returns (height, referenceOffset from bottom) for a list of nodes
+  (double, double) _getListMetrics(List<MathNode> nodes, double fontSize) {
+    if (nodes.isEmpty) {
+      return (fontSize, fontSize / 2);
+    }
+
+    if (nodes.length == 1 && nodes.first is LiteralNode) {
+      if ((nodes.first as LiteralNode).text.isEmpty) {
+        return (fontSize, fontSize / 2);
       }
     }
-    return false;
+
+    double maxAbove = 0;
+    double maxBelow = 0;
+
+    for (final node in nodes) {
+      final (height, offset) = _getNodeMetrics(node, fontSize);
+      if (height > 0) {
+        maxAbove = math.max(maxAbove, height - offset);
+        maxBelow = math.max(maxBelow, offset);
+      }
+    }
+
+    if (maxAbove == 0 && maxBelow == 0) {
+      return (fontSize, fontSize / 2);
+    }
+
+    return (maxAbove + maxBelow, maxBelow);
   }
 }
 
