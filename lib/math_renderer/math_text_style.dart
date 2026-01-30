@@ -25,6 +25,7 @@ class MathTextStyle {
     minusSign,
     multiplyDot,
     multiplyTimes,
+    '*', // Add standard asterisk
     equalsSign,
   };
 
@@ -52,8 +53,8 @@ class MathTextStyle {
       final char = text[i];
 
       String displayChar = char;
-      if (_isMultiplySign(char)) {
-        displayChar = _multiplySign;
+      if (_isMultiplySign(char) || char == '*') {
+        displayChar = multiplyDot; // Always use dot for exact results
       }
 
       if (_isPaddedOperator(char)) {

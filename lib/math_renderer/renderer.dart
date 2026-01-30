@@ -1262,14 +1262,22 @@ class MathRenderer extends StatelessWidget {
       final argMetrics = _getListMetrics(node.argument, fontSize);
       final double vPadding = fontSize * 0.1;
       final height = math.max(fontSize, argMetrics.$1 + vPadding * 2);
-      return (height, height / 2);
+      // Reference follows argument's reference
+      return (height, vPadding + argMetrics.$2);
     }
 
     if (node is RootNode) {
       final radicandMetrics = _getListMetrics(node.radicand, fontSize);
       final double minHeight = fontSize * 1.2;
-      final height = math.max(minHeight, radicandMetrics.$1);
-      return (height, height / 2);
+      final double topPad = fontSize * 0.08;
+      final double bottomPad = 2.0;
+
+      final height = math.max(
+        minHeight,
+        radicandMetrics.$1 + topPad + bottomPad,
+      );
+      // Reference follows radicand's reference
+      return (height, bottomPad + radicandMetrics.$2);
     }
 
     if (node is LogNode) {
@@ -1284,8 +1292,6 @@ class MathRenderer extends StatelessWidget {
       if (!node.isNaturalLog) {
         final baseSize = fontSize * 0.8;
         final baseMetrics = _getListMetrics(node.base, baseSize);
-        // Subscript pushed down by fontSize * 0.5, plus its own height
-        // But capped by how much it extends below the argument area
         subscriptExtent =
             fontSize * 0.5 +
             math.max(baseMetrics.$1, baseSize * 0.7) -
@@ -1294,44 +1300,38 @@ class MathRenderer extends StatelessWidget {
       }
 
       final height = math.max(fontSize, argAreaHeight) + subscriptExtent;
-      return (height, height / 2);
+      // Reference follows argument's reference (within the arg area)
+      return (height, subscriptExtent + vPadding + argMetrics.$2);
     }
 
     if (node is PermutationNode) {
       final double smallSize = fontSize * 0.8;
-
       final nMetrics = _getListMetrics(node.n, smallSize);
       final rMetrics = _getListMetrics(node.r, smallSize);
 
       final double nHeight = math.max(nMetrics.$1, smallSize * 0.7);
       final double rHeight = math.max(rMetrics.$1, smallSize * 0.7);
 
-      // Left column: nWidget + spacer
       final double nColumnHeight = nHeight + fontSize * 0.8;
-      // Right column: spacer + rWidget
       final double rColumnHeight = fontSize * 0.8 + rHeight;
 
-      // Row with center alignment: height = max of children
       final double height = math.max(
         fontSize,
         math.max(nColumnHeight, rColumnHeight),
       );
 
-      return (height, height / 2);
+      return (height, height / 2); // Center of P as baseline
     }
 
     if (node is CombinationNode) {
       final double smallSize = fontSize * 0.8;
-
       final nMetrics = _getListMetrics(node.n, smallSize);
       final rMetrics = _getListMetrics(node.r, smallSize);
 
       final double nHeight = math.max(nMetrics.$1, smallSize * 0.7);
       final double rHeight = math.max(rMetrics.$1, smallSize * 0.7);
 
-      // Left column: nWidget + spacer (fontSize * 1.0 for Combination)
       final double nColumnHeight = nHeight + fontSize * 1.0;
-      // Right column: spacer + rWidget
       final double rColumnHeight = fontSize * 0.8 + rHeight;
 
       final double height = math.max(
@@ -1339,13 +1339,13 @@ class MathRenderer extends StatelessWidget {
         math.max(nColumnHeight, rColumnHeight),
       );
 
-      return (height, height / 2);
+      return (height, height / 2); // Center of C as baseline
     }
 
     if (node is AnsNode) {
       final indexMetrics = _getListMetrics(node.index, fontSize);
       final height = math.max(fontSize, indexMetrics.$1);
-      return (height, height / 2);
+      return (height, height / 2); // Center of 'ans' as baseline
     }
 
     return (fontSize, fontSize / 2);
