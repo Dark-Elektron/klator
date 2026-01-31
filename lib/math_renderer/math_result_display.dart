@@ -160,6 +160,7 @@ class MathResultDisplay extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: _renderNodeList(node.numerator, fontSize),
             ),
             Container(
@@ -171,6 +172,7 @@ class MathResultDisplay extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: _renderNodeList(node.denominator, fontSize),
             ),
           ],
@@ -195,11 +197,13 @@ class MathResultDisplay extends StatelessWidget {
             padding: EdgeInsets.only(top: baseTopPadding),
             child: Row(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: _renderNodeList(node.base, fontSize),
             ),
           ),
           Row(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: _renderNodeList(node.power, powerSize),
           ),
         ],
@@ -214,6 +218,7 @@ class MathResultDisplay extends StatelessWidget {
       if (!node.isSquareRoot) {
         indexWidget = Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: _renderNodeList(node.index, indexSize),
         );
       }
@@ -264,6 +269,7 @@ class MathResultDisplay extends StatelessWidget {
                     child: Center(
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: _renderNodeList(node.radicand, fontSize),
                       ),
                     ),
@@ -293,6 +299,7 @@ class MathResultDisplay extends StatelessWidget {
               padding: EdgeInsets.only(left: 1, top: fontSize * 0.5),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(node.base, baseSize),
               ),
             ),
@@ -314,6 +321,7 @@ class MathResultDisplay extends StatelessWidget {
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(node.argument, fontSize),
                   ),
                 ),
@@ -356,6 +364,7 @@ class MathResultDisplay extends StatelessWidget {
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: _renderNodeList(node.argument, fontSize),
                   ),
                 ),
@@ -389,6 +398,7 @@ class MathResultDisplay extends StatelessWidget {
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(node.content, fontSize),
               ),
             ),
@@ -414,6 +424,7 @@ class MathResultDisplay extends StatelessWidget {
             children: [
               Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(node.n, smallSize),
               ),
               SizedBox(height: fontSize * 0.8),
@@ -430,6 +441,7 @@ class MathResultDisplay extends StatelessWidget {
               SizedBox(height: fontSize * 0.8),
               Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(node.r, smallSize),
               ),
             ],
@@ -450,6 +462,7 @@ class MathResultDisplay extends StatelessWidget {
             children: [
               Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(node.n, smallSize),
               ),
               SizedBox(height: fontSize * 1.0),
@@ -466,6 +479,7 @@ class MathResultDisplay extends StatelessWidget {
               SizedBox(height: fontSize * 0.8),
               Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(node.r, smallSize),
               ),
             ],
@@ -488,6 +502,7 @@ class MathResultDisplay extends StatelessWidget {
           ),
           Row(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: _renderNodeList(node.index, fontSize),
           ),
         ],
@@ -505,7 +520,7 @@ class MathResultDisplay extends StatelessWidget {
       return (
         fontSize * 1.2,
         fontSize * 0.6,
-      ); // Slightly more than fontSize for better fit
+      );
     }
 
     if (node is ExponentNode) {
@@ -593,7 +608,7 @@ class MathResultDisplay extends StatelessWidget {
         fontSize,
         math.max(nColumnHeight, rColumnHeight),
       );
-      return (height, height / 2); // Center of P as baseline
+      return (height, height / 2);
     }
 
     if (node is CombinationNode) {
@@ -611,13 +626,13 @@ class MathResultDisplay extends StatelessWidget {
         fontSize,
         math.max(nColumnHeight, rColumnHeight),
       );
-      return (height, height / 2); // Center of C as baseline
+      return (height, height / 2);
     }
 
     if (node is AnsNode) {
       final indexMetrics = _staticGetListMetrics(node.index, fontSize);
       final height = math.max(fontSize, indexMetrics.$1);
-      return (height, height / 2); // Center of 'ans' as baseline
+      return (height, height / 2);
     }
 
     return (fontSize, fontSize / 2);
@@ -745,7 +760,7 @@ class MathResultDisplay extends StatelessWidget {
         fontSize,
         math.max(nColumnHeight, rColumnHeight),
       );
-      return (height, height / 2); // Center of P as baseline
+      return (height, height / 2);
     }
 
     if (node is CombinationNode) {
@@ -763,13 +778,13 @@ class MathResultDisplay extends StatelessWidget {
         fontSize,
         math.max(nColumnHeight, rColumnHeight),
       );
-      return (height, height / 2); // Center of C as baseline
+      return (height, height / 2);
     }
 
     if (node is AnsNode) {
       final indexMetrics = _getListMetrics(node.index, fontSize);
       final height = math.max(fontSize, indexMetrics.$1);
-      return (height, height / 2); // Center of 'ans' as baseline
+      return (height, height / 2);
     }
 
     return (fontSize, fontSize / 2);
