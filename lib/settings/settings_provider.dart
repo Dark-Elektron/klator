@@ -29,6 +29,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _soundEffects = false;
   String _multiplicationSign = '\u00D7'; // Default: ×
   NumberFormat _numberFormat = NumberFormat.automatic; // NEW
+  double _borderRadius = 0.0; // NEW: Global button styling
 
   // Getters
   double get precision => _precision;
@@ -43,6 +44,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get soundEffects => _soundEffects;
   String get multiplicationSign => _multiplicationSign;
   NumberFormat get numberFormat => _numberFormat; // NEW
+  double get borderRadius => _borderRadius; // NEW
 
   // Static method to create provider with preloaded settings
   static Future<SettingsProvider> create() async {
@@ -97,6 +99,8 @@ class SettingsProvider extends ChangeNotifier {
     _hapticFeedback = prefs.getBool('hapticFeedback') ?? true;
     _soundEffects = prefs.getBool('soundEffects') ?? false;
     _multiplicationSign = prefs.getString('multiplicationSign') ?? '\u00D7';
+    _borderRadius =
+        prefs.getDouble('borderRadius') ?? 0.0; // Match user preference
 
     // Load number format
     String formatStr = prefs.getString('numberFormat') ?? 'automatic';
@@ -179,6 +183,13 @@ class SettingsProvider extends ChangeNotifier {
 
     // Update MathSolverNew
     MathSolverNew.setNumberFormat(value);
+    notifyListeners();
+  }
+
+  Future<void> setBorderRadius(double value) async {
+    _borderRadius = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('borderRadius', value);
     notifyListeners();
   }
 }

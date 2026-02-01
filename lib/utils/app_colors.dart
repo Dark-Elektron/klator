@@ -13,6 +13,8 @@ class AppColors {
   final Color keypadBackground;
   final Color keypadButton;
   final Color keypadButtonText;
+  final Color keyboardPrimary; // NEW
+  final Color keyboardSecondary; // NEW
   final String backgroundImage; // Add this
 
   const AppColors({
@@ -26,6 +28,8 @@ class AppColors {
     required this.keypadBackground,
     required this.keypadButton,
     required this.keypadButtonText,
+    required this.keyboardPrimary, // NEW
+    required this.keyboardSecondary, // NEW
     required this.backgroundImage, // Add this
   });
 
@@ -41,6 +45,8 @@ class AppColors {
     keypadBackground: Color(0xFFE0E0E0),
     keypadButton: Colors.white,
     keypadButtonText: Colors.black,
+    keyboardPrimary: Color(0xFFE0E0E0), // Default keyboard background
+    keyboardSecondary: Colors.white, // Default key color
     backgroundImage: 'assets/imgs/background_classic.svg',
   );
 
@@ -56,6 +62,8 @@ class AppColors {
     keypadBackground: Color(0xFF121212),
     keypadButton: Color(0xFF2C2C2C),
     keypadButtonText: Colors.white,
+    keyboardPrimary: Color(0xFF121212), // Dark keyboard background
+    keyboardSecondary: Color(0xFF2C2C2C), // Dark key color
     backgroundImage: 'assets/imgs/background_dark.svg',
   );
 
@@ -70,6 +78,8 @@ class AppColors {
     keypadBackground: Color(0xFF1F1819), // Deepest charcoal pink
     keypadButton: Color(0xFF594548), // Muted plum-pink buttons
     keypadButtonText: Color(0xFFFFB3C1), // Soft pastel pink text
+    keyboardPrimary: Color(0xFF1F1819),
+    keyboardSecondary: Color(0xFF594548),
     backgroundImage: 'assets/imgs/background_pink.svg',
   );
 
@@ -86,6 +96,8 @@ class AppColors {
     keypadBackground: Color(0xFFFCF0F0), // Softest warm pink
     keypadButton: Color(0xFFF2C4C4), // Warm rose buttons
     keypadButtonText: Color(0xFF5E2A2A), // Dark warm text
+    keyboardPrimary: Color(0xFFFCF0F0),
+    keyboardSecondary: Color(0xFFF2C4C4),
     backgroundImage: 'assets/imgs/background_soft_pink.svg',
   );
 
@@ -101,6 +113,8 @@ class AppColors {
     keypadBackground: Color(0xFF231515),
     keypadButton: Color(0xFF4E342E),
     keypadButtonText: Color(0xFFFFCC80),
+    keyboardPrimary: Color(0xFF231515),
+    keyboardSecondary: Color(0xFF4E342E),
     backgroundImage: 'assets/imgs/background_sunset_ember.svg',
   );
 
@@ -115,6 +129,8 @@ class AppColors {
     keypadBackground: Color(0xFFFDF5E6),
     keypadButton: Color(0xFFEEDBC3),
     keypadButtonText: Color(0xFF4A3325),
+    keyboardPrimary: Color(0xFFFDF5E6),
+    keyboardSecondary: Color(0xFFEEDBC3),
     backgroundImage: 'assets/imgs/background_desert_sand.svg',
   );
 
@@ -129,6 +145,8 @@ class AppColors {
     keypadBackground: Color(0xFF0C0C0C),
     keypadButton: Color(0xFF232323),
     keypadButtonText: Color(0xFFFFBF00),
+    keyboardPrimary: Color(0xFF0C0C0C),
+    keyboardSecondary: Color(0xFF232323),
     backgroundImage: 'assets/imgs/background_digital_amber.svg',
   );
 
@@ -143,6 +161,8 @@ class AppColors {
     keypadBackground: Color(0xFF1A1A1A),
     keypadButton: Color(0xFF4A3F3F),
     keypadButtonText: Color(0xFFF9C6B0),
+    keyboardPrimary: Color(0xFF1A1A1A),
+    keyboardSecondary: Color(0xFF4A3F3F),
     backgroundImage: 'assets/imgs/background_rose_chic.svg',
   );
 
@@ -157,6 +177,8 @@ class AppColors {
     keypadBackground: Color(0xFFF5E8D8),
     keypadButton: Color(0xFFD69A3C),
     keypadButtonText: Colors.white,
+    keyboardPrimary: Color(0xFFF5E8D8),
+    keyboardSecondary: Color(0xFFD69A3C),
     backgroundImage: 'assets/imgs/background_honey_mustard.svg',
   );
 

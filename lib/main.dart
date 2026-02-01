@@ -411,14 +411,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final resController = textDisplayControllers[index];
     String text = resController?.text ?? '';
 
-    double baseHeight = 80.0; // Synced with Exact
+    if (text.isEmpty) return 80.0;
 
-    int lineCount = text.split('\n').where((s) => s.trim().isNotEmpty).length;
-    if (lineCount > 1) {
-      baseHeight = 80.0 + (lineCount - 1) * 30.0;
-    }
+    // Use the same measurement logic as Exact
+    double measuredHeight = MathResultDisplay.calculateTotalHeight([
+      LiteralNode(text: text),
+    ], FONTSIZE);
 
-    return baseHeight.clamp(80.0, 220.0);
+    double totalHeight = measuredHeight + 16 + 10;
+    return totalHeight.clamp(80.0, 300.0);
   }
 
   double _calculateExactResultHeight(int index) {
@@ -434,14 +435,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       FONTSIZE,
     );
 
-    // Add reasonable padding for the container (top/bottom)
-    // vertical: 8 padding means 16px total.
-    // We also have the divider area.
-    double totalHeight =
-        measuredHeight + 16 + 10; // 16 for padding, 10 for safety/dots
-
-    // Base minimum of 70 to match decimal and feel consistent
-    return totalHeight.clamp(70.0, 300.0);
+    // Add identical padding and clamping as Decimal
+    double totalHeight = measuredHeight + 16 + 10;
+    return totalHeight.clamp(80.0, 300.0);
   }
 
   int _estimateNodesHeight(List<MathNode> nodes) {

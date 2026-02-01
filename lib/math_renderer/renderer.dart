@@ -216,6 +216,14 @@ class MathRenderer extends StatelessWidget {
       );
     }
 
+    if (node is ConstantNode) {
+      return Text(
+        MathTextStyle.toDisplayText(node.constant),
+        style: MathTextStyle.getStyle(fontSize).copyWith(color: Colors.white),
+        textScaler: textScaler,
+      );
+    }
+
     if (node is FractionNode) {
       final bool numEmpty = _isContentEmpty(node.numerator);
       final bool denEmpty = _isContentEmpty(node.denominator);
@@ -1209,6 +1217,10 @@ class MathRenderer extends StatelessWidget {
     }
 
     if (node is LiteralNode) {
+      return (fontSize, fontSize / 2);
+    }
+
+    if (node is ConstantNode) {
       return (fontSize, fontSize / 2);
     }
 

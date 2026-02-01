@@ -71,6 +71,8 @@ class MathExpressionSerializer {
     } else if (node is AnsNode) {
       String idx = _serializeList(node.index);
       return 'ans$idx';
+    } else if (node is ConstantNode) {
+      return node.constant;
     }
     return '';
   }
@@ -189,6 +191,15 @@ class MathExpressionSerializer {
       'sin',
       'cos',
       'tan',
+      'asin',
+      'acos',
+      'atan',
+      'sinh',
+      'cosh',
+      'tanh',
+      'asinh',
+      'acosh',
+      'atanh',
       'log',
       'ln',
       'sqrt',
@@ -267,7 +278,10 @@ class MathExpressionSerializer {
       _extractVariablesFromList(node.argument, variables);
     } else if (node is AnsNode) {
       // Don't extract variables from ANS index - it's just a reference number
+      // Don't extract variables from ANS index - it's just a reference number
       // But if someone puts a variable in there, we might want to ignore it
+    } else if (node is ConstantNode) {
+      // Constants are not variables to be solved for
     }
   }
 
@@ -394,6 +408,10 @@ class MathExpressionSerializer {
       return {'type': 'newline'};
     }
 
+    if (node is ConstantNode) {
+      return {'type': 'constant', 'constant': node.constant};
+    }
+
     // Fallback for unknown node types
     return {'type': 'literal', 'text': ''};
   }
@@ -459,6 +477,9 @@ class MathExpressionSerializer {
 
       case 'newline':
         return NewlineNode();
+
+      case 'constant':
+        return ConstantNode(json['constant'] as String? ?? '');
 
       default:
         return LiteralNode();

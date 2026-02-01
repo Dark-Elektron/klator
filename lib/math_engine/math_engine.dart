@@ -90,18 +90,22 @@ class MathSolverNew {
     expr = expr.replaceAll('\u00B0', '*($pi/180)'); // degrees
     expr = expr.replaceAll('rad', '*((1/$pi)*180)'); // radian
 
-    // Replace pi constant - only add * if preceded by digit or )
-    expr = expr.replaceAllMapped(RegExp(r'([\d\)])?\u03C0'), (match) {
+    // Replace pi constant - only add * if preceded by digit, ), subscript 0, or pi
+    expr = expr.replaceAllMapped(RegExp(r'([\d\)\u2080\u03C0])?\u03C0'), (
+      match,
+    ) {
       String? before = match.group(1);
-      if (before != null) {
+      if (before != null && before != '\u03C0') {
+        // Don't self-match if overlap (though regex consumes)
         return '$before*($pi)';
       }
+      if (before == '\u03C0') return '$before*($pi)'; // matching previous pi
       return '($pi)';
     });
 
-    // Replace standalone e (Euler's number) - only add * if preceded by digit or )
+    // Replace standalone e (Euler's number)
     expr = expr.replaceAllMapped(
-      RegExp(r'([\d\)])?(?<![a-zA-Z])e(?![a-zA-Z])'),
+      RegExp(r'([\d\)\u2080\u03C0])?(?<![a-zA-Z])e(?![a-zA-Z])'),
       (match) {
         String? before = match.group(1);
         if (before != null) {
@@ -111,9 +115,66 @@ class MathSolverNew {
       },
     );
 
+    // Replace physical constants
+    // Vacuum permittivity ε₀ = 8.8541878128e-12 F/m
+    expr = expr.replaceAllMapped(RegExp(r'([\d\)\u2080\u03C0])?\u03B5\u2080'), (
+      match,
+    ) {
+      String? before = match.group(1);
+      if (before != null) {
+        return '$before*(8.8541878128e-12)';
+      }
+      return '(8.8541878128e-12)';
+    });
+
+    // Vacuum permeability μ₀ = 1.25663706212e-6 H/m
+    expr = expr.replaceAllMapped(RegExp(r'([\d\)\u2080\u03C0])?\u03BC\u2080'), (
+      match,
+    ) {
+      String? before = match.group(1);
+      if (before != null) {
+        return '$before*(1.25663706212e-6)';
+      }
+      return '(1.25663706212e-6)';
+    });
+
+    // Speed of light c₀ = 299792458 m/s
+    expr = expr.replaceAllMapped(RegExp(r'([\d\)\u2080\u03C0])?c\u2080'), (
+      match,
+    ) {
+      String? before = match.group(1);
+      if (before != null) {
+        return '$before*(299792458)';
+      }
+      return '(299792458)';
+    });
+
     // Process special functions
     expr = _preprocessPermuCombination(expr);
     expr = _processFactorials(expr);
+
+    // --- NEW: General Implicit Multiplication ---
+    // Handle cases like:
+    // 2(3) -> 2*(3)
+    // (2)3 -> (2)*3
+    // (2)(3) -> (2)*(3)
+    // 2pi -> 2*(pi) -- actually pi already handled above,
+    // but general digit followed by '(' is needed.
+
+    // 1. Number followed by '('
+    expr = expr.replaceAllMapped(
+      RegExp(r'(\d)\('),
+      (match) => '${match.group(1)}*(',
+    );
+
+    // 2. ')' followed by number
+    expr = expr.replaceAllMapped(
+      RegExp(r'\)(\d)'),
+      (match) => ')*${match.group(1)}',
+    );
+
+    // 3. ')' followed by '('
+    expr = expr.replaceAllMapped(RegExp(r'\)\('), (match) => ')*(');
 
     return expr;
   }
@@ -221,6 +282,12 @@ class MathSolverNew {
       'asin',
       'acos',
       'atan',
+      'sinh',
+      'cosh',
+      'tanh',
+      'asinh',
+      'acosh',
+      'atanh',
       'log',
       'ln',
       'sqrt',
@@ -723,8 +790,8 @@ class MathSolverNew {
   static String _formatResult(double num) {
     if (num.isNaN || num.isInfinite) return num.toString();
 
-    // Check if it's effectively zero
-    if (num.abs() < 1e-15) {
+    // Check if it's effectively zero (allow for very small physical constants)
+    if (num.abs() < 1e-30) {
       return '0';
     }
 
@@ -741,7 +808,8 @@ class MathSolverNew {
   /// Automatic format - scientific only for very large/small numbers
   static String _formatAutomatic(double num) {
     // Use scientific notation for very large or very small numbers
-    if (num.abs() >= 1e6 || (num.abs() <= 1e-6 && num.abs() > 0)) {
+    // Thresholds: >= 1e12 (to allow c0 as integer) or <= 1e-4 (to preserve precision for small values)
+    if (num.abs() >= 1e12 || (num.abs() <= 1e-4 && num.abs() > 0)) {
       return _formatScientific(num);
     }
 
@@ -945,6 +1013,12 @@ class _ExpressionParser {
 
   String? _tryParseFunction() {
     const functions = [
+      'sinh',
+      'cosh',
+      'tanh',
+      'asinh',
+      'acosh',
+      'atanh',
       'sin',
       'cos',
       'tan',
@@ -981,6 +1055,18 @@ class _ExpressionParser {
         return acos(arg);
       case 'atan':
         return atan(arg);
+      case 'sinh':
+        return (exp(arg) - exp(-arg)) / 2;
+      case 'cosh':
+        return (exp(arg) + exp(-arg)) / 2;
+      case 'tanh':
+        return (exp(arg) - exp(-arg)) / (exp(arg) + exp(-arg));
+      case 'asinh':
+        return log(arg + sqrt(arg * arg + 1));
+      case 'acosh':
+        return log(arg + sqrt(arg * arg - 1));
+      case 'atanh':
+        return 0.5 * log((1 + arg) / (1 - arg));
       case 'log':
         return log(arg) / ln10;
       case 'ln':

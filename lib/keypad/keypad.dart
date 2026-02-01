@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:klator/help.dart';
 import 'package:klator/utils/utils.dart';
 import 'buttons.dart';
+import 'popup_menu_button.dart';
 import '../settings/settings.dart';
 import '../settings/settings_provider.dart';
 import '../utils/app_colors.dart';
@@ -280,7 +281,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
 
   /// Navigate keypad to a specific page (used by walkthrough back button)
   void _navigateToKeypadPage(int page) {
-
     if (_keypadController != null && _keypadController!.hasClients) {
       // Set flag to bypass directional physics during programmatic navigation
       setState(() {
@@ -865,55 +865,80 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         }
-        // sin button
+        // sin button with popup for sinh
         else if (index == 7) {
-          return MyButton(
-            buttontapped: () {
+          return PopupMenuCalcButton(
+            buttonText: _buttonsSci[index],
+            onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
                     () => _activeController!.selectionWrapper.wrapInTrig('sin'),
                 normalAction: () => _activeController?.insertTrig('sin'),
               );
             },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            menuItems: [
+              CalcMenuItem(
+                label: 'sinh',
+                onTap: () {
+                  _activeController?.insertTrig('sinh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         }
-        // cos button
+        // cos button with popup for cosh
         else if (index == 8) {
-          return MyButton(
-            buttontapped: () {
+          return PopupMenuCalcButton(
+            buttonText: _buttonsSci[index],
+            onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
                     () => _activeController!.selectionWrapper.wrapInTrig('cos'),
                 normalAction: () => _activeController?.insertTrig('cos'),
               );
             },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            menuItems: [
+              CalcMenuItem(
+                label: 'cosh',
+                onTap: () {
+                  _activeController?.insertTrig('cosh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         }
-        // tan button
+        // tan button with popup for tanh
         else if (index == 9) {
-          return MyButton(
-            buttontapped: () {
+          return PopupMenuCalcButton(
+            buttonText: _buttonsSci[index],
+            onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
                     () => _activeController!.selectionWrapper.wrapInTrig('tan'),
                 normalAction: () => _activeController?.insertTrig('tan'),
               );
             },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            menuItems: [
+              CalcMenuItem(
+                label: 'tanh',
+                onTap: () {
+                  _activeController?.insertTrig('tanh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         }
-        // asin button
+        // asin button with popup for asinh
         else if (index == 12) {
-          return MyButton(
-            buttontapped: () {
+          return PopupMenuCalcButton(
+            buttonText: _buttonsSci[index],
+            onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
                     () =>
@@ -921,15 +946,23 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 normalAction: () => _activeController?.insertTrig('asin'),
               );
             },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            menuItems: [
+              CalcMenuItem(
+                label: 'asinh',
+                onTap: () {
+                  _activeController?.insertTrig('asinh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         }
-        // acos button
+        // acos button with popup for acosh
         else if (index == 13) {
-          return MyButton(
-            buttontapped: () {
+          return PopupMenuCalcButton(
+            buttonText: _buttonsSci[index],
+            onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
                     () =>
@@ -937,15 +970,23 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 normalAction: () => _activeController?.insertTrig('acos'),
               );
             },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            menuItems: [
+              CalcMenuItem(
+                label: 'acosh',
+                onTap: () {
+                  _activeController?.insertTrig('acosh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         }
-        // atan button
+        // atan button with popup for atanh
         else if (index == 14) {
-          return MyButton(
-            buttontapped: () {
+          return PopupMenuCalcButton(
+            buttonText: _buttonsSci[index],
+            onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
                     () =>
@@ -953,9 +994,16 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 normalAction: () => _activeController?.insertTrig('atan'),
               );
             },
-            buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            menuItems: [
+              CalcMenuItem(
+                label: 'atanh',
+                onTap: () {
+                  _activeController?.insertTrig('atanh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         }
         // ln button
@@ -1016,14 +1064,114 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         } else if (index == 6) {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertCharacter('\u03C0');
-              widget.onUpdateMathEditor();
-            },
+          // π button with popup menu for constants
+          return PopupMenuCalcButton(
             buttonText: '\u03C0',
             color: Colors.white,
             textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+
+            onTap: () {
+              _activeController?.insertCharacter('\u03C0');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'ε₀ (permittivity)',
+                onTap: () {
+                  _activeController?.insertConstant('\u03B5\u2080');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'μ₀ (permeability)',
+                onTap: () {
+                  _activeController?.insertConstant('\u03BC\u2080');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'c₀ (speed of light)',
+                onTap: () {
+                  _activeController?.insertConstant('c\u2080');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
+          );
+        } else if (index == 7) {
+          // sin
+          return PopupMenuCalcButton(
+            buttonText: 'sin',
+            color: widget.colors.keypadButton,
+            textColor: widget.colors.keypadButtonText,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+
+            onTap: () {
+              _activeController?.insertTrig('sin');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'sinh',
+                onTap: () {
+                  _activeController?.insertTrig('sinh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
+          );
+        } else if (index == 8) {
+          // cos
+          return PopupMenuCalcButton(
+            buttonText: 'cos',
+            color: widget.colors.keypadButton,
+            textColor: widget.colors.keypadButtonText,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+
+            onTap: () {
+              _activeController?.insertTrig('cos');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'cosh',
+                onTap: () {
+                  _activeController?.insertTrig('cosh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
+          );
+        } else if (index == 9) {
+          // tan
+          return PopupMenuCalcButton(
+            buttonText: 'tan',
+            color: widget.colors.keypadButton,
+            textColor: widget.colors.keypadButtonText,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+
+            onTap: () {
+              _activeController?.insertTrig('tan');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'tanh',
+                onTap: () {
+                  _activeController?.insertTrig('tanh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         } else if (index == 11) {
           return MyButton(
@@ -1034,6 +1182,78 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             buttonText: '\u00B0',
             color: Colors.white,
             textColor: Colors.black,
+          );
+        } else if (index == 12) {
+          // asin
+          return PopupMenuCalcButton(
+            buttonText: 'asin',
+            color: widget.colors.keypadButton,
+            textColor: widget.colors.keypadButtonText,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+
+            onTap: () {
+              _activeController?.insertTrig('asin');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'asinh',
+                onTap: () {
+                  _activeController?.insertTrig('asinh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
+          );
+        } else if (index == 13) {
+          // acos
+          return PopupMenuCalcButton(
+            buttonText: 'acos',
+            color: widget.colors.keypadButton,
+            textColor: widget.colors.keypadButtonText,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+
+            onTap: () {
+              _activeController?.insertTrig('acos');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'acosh',
+                onTap: () {
+                  _activeController?.insertTrig('acosh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
+          );
+        } else if (index == 14) {
+          // atan
+          return PopupMenuCalcButton(
+            buttonText: 'atan',
+            color: widget.colors.keypadButton,
+            textColor: widget.colors.keypadButtonText,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+
+            onTap: () {
+              _activeController?.insertTrig('atan');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'atanh',
+                onTap: () {
+                  _activeController?.insertTrig('atanh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         } else {
           return MyButton(

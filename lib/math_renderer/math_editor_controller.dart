@@ -514,6 +514,25 @@ class MathEditorController extends ChangeNotifier {
     // === NEW: Exit container nodes when typing operators ===
     if (_isOperator(char)) {
       _exitContainerIfNeeded();
+
+      // Check for double multiply -> power conversion
+      if (_isMultiplyChar(char)) {
+        final node = _resolveCursorNode();
+        if (node is LiteralNode && cursor.subIndex > 0) {
+          final text = node.text;
+          final prevChar = text[cursor.subIndex - 1];
+          if (_isMultiplyChar(prevChar)) {
+            // Delete the previous multiply sign and insert exponent instead
+            node.text =
+                text.substring(0, cursor.subIndex - 1) +
+                text.substring(cursor.subIndex);
+            cursor = cursor.copyWith(subIndex: cursor.subIndex - 1);
+            _notifyStructureChanged();
+            _wrapIntoExponent();
+            return;
+          }
+        }
+      }
     }
     // === END NEW ===
 
@@ -568,6 +587,12 @@ class MathEditorController extends ChangeNotifier {
         char == MathTextStyle.plusSign ||
         char == MathTextStyle.minusSign ||
         char == MathTextStyle.multiplySign;
+  }
+
+  bool _isMultiplyChar(String char) {
+    return char == '*' ||
+        char == MathTextStyle.multiplyDot ||
+        char == MathTextStyle.multiplyTimes;
   }
 
   void _exitContainerIfNeeded() {
@@ -695,6 +720,71 @@ class MathEditorController extends ChangeNotifier {
         index: actualIndex + 2,
         subIndex: 0,
       );
+    }
+    _notifyStructureChanged();
+    onCalculate();
+  }
+
+  void insertConstant(String constant) {
+    saveStateForUndo();
+
+    final siblings = _resolveSiblingList();
+    final current = _resolveCursorNode();
+    if (current is! LiteralNode) return;
+
+    final String currentId = current.id;
+    String text = current.text;
+    int cursorPos = cursor.subIndex;
+    int actualIndex = siblings.indexWhere((n) => n.id == currentId);
+
+    String before = text.substring(0, cursorPos);
+    String after = text.substring(cursorPos);
+
+    final node = ConstantNode(constant);
+
+    if (actualIndex >= 0) {
+      if (after.isNotEmpty) {
+        // We are in the middle or at the start. Update current and insert constant + new tail.
+        current.text = before;
+        final tail = LiteralNode(text: after);
+        siblings.insert(actualIndex + 1, node);
+        siblings.insert(actualIndex + 2, tail);
+        cursor = EditorCursor(
+          parentId: cursor.parentId,
+          path: cursor.path,
+          index: actualIndex + 2,
+          subIndex: 0,
+        );
+      } else {
+        // We are at the very end of the literal (or it was empty).
+        // If 'before' is not empty, we keep it and just apppend the constant.
+        // If 'before' IS empty, we replace the LiteralNode with the ConstantNode.
+        if (before.isNotEmpty) {
+          current.text = before;
+          siblings.insert(actualIndex + 1, node);
+          // Insert a NEW empty LiteralNode after the constant so the user has somewhere to type
+          final tail = LiteralNode(text: "");
+          siblings.insert(actualIndex + 2, tail);
+          cursor = EditorCursor(
+            parentId: cursor.parentId,
+            path: cursor.path,
+            index: actualIndex + 2,
+            subIndex: 0,
+          );
+        } else {
+          // Both before and after are empty. Replace current Literal with Constant.
+          siblings[actualIndex] = node;
+          // Still need an empty literal after it to allow further typing
+          final tail = LiteralNode(text: "");
+          siblings.insert(actualIndex + 1, tail);
+          cursor = EditorCursor(
+            parentId: cursor.parentId,
+            path: cursor.path,
+            index: actualIndex + 1,
+            subIndex: 0,
+          );
+        }
+      }
     }
     _notifyStructureChanged();
     onCalculate();
@@ -2762,6 +2852,7 @@ class MathEditorController extends ChangeNotifier {
           node is RootNode ||
           node is AnsNode ||
           node is LogNode ||
+          node is ConstantNode || // <-- ADD THIS
           node is PermutationNode || // <-- ADD THIS
           node is CombinationNode) {
         // <-- ADD THIS
@@ -2796,6 +2887,7 @@ class MathEditorController extends ChangeNotifier {
               prevNode is RootNode ||
               prevNode is AnsNode ||
               prevNode is LogNode ||
+              prevNode is ConstantNode || // <-- ADD THIS
               prevNode is PermutationNode || // <-- ADD THIS
               prevNode is CombinationNode) {
             // <-- ADD THIS
@@ -3145,6 +3237,10 @@ class MathEditorController extends ChangeNotifier {
         recalculateCursorRect(); // ← ADD THIS
         notifyListeners();
       }
+    } else if (prevNode is ConstantNode) {
+      siblings.removeAt(cursor.index - 1);
+      cursor = cursor.copyWith(index: cursor.index - 1);
+      _notifyStructureChanged();
     } else if (prevNode is NewlineNode) {
       _removeNewline(prevNode);
     } else if (prevNode is FractionNode) {

@@ -101,3 +101,9 @@ class AnsNode extends MathNode {
 
   AnsNode({List<MathNode>? index}) : index = index ?? [LiteralNode()];
 }
+
+/// A constant node (e.g. ε₀, μ₀) treated as an atomic unit.
+class ConstantNode extends MathNode {
+  final String constant;
+  ConstantNode(this.constant);
+}

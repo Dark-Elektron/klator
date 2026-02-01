@@ -434,6 +434,53 @@ void main() {
       expect(ConstExpr.e.toString(), 'e');
       expect(ConstExpr.phi.toString(), 'φ');
     });
+
+    test('epsilon0 value', () {
+      expect(ConstExpr.epsilon0.toDouble(), closeTo(8.854e-12, 1e-15));
+    });
+
+    test('mu0 value', () {
+      expect(ConstExpr.mu0.toDouble(), closeTo(1.256e-6, 1e-9));
+    });
+  });
+
+  group('MathNodeToExpr Integration', () {
+    test('converts ConstantNode(mu0)', () {
+      final nodes = [ConstantNode('\u03BC\u2080')];
+      final expr = MathNodeToExpr.convert(nodes);
+      expect(expr, isA<ConstExpr>());
+      expect((expr as ConstExpr).type, ConstType.mu0);
+    });
+
+    test('1/mu0 in ExactMathEngine', () {
+      final nodes = [
+        LiteralNode(text: '1'),
+        LiteralNode(text: '/'),
+        ConstantNode('\u03BC\u2080'),
+      ];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.numerical, isNotNull);
+      expect(result.numerical!.isInfinite, isFalse);
+      expect(result.toExactString(), contains('μ₀'));
+    });
+
+    test('implicit multiplication with ConstantNode', () {
+      // 2 mu0
+      final nodes = [LiteralNode(text: '2'), ConstantNode('\u03BC\u2080')];
+      final result = ExactMathEngine.evaluate(nodes);
+      final expectedValue = 2 * 1.25663706212e-6;
+      expect(result.numerical, closeTo(expectedValue, 1e-12));
+      // Result string may have middle dot for multiplication: 2·μ₀
+      expect(result.toExactString().replaceAll('\u00B7', ''), contains('2μ₀'));
+    });
+
+    test('handles mu0 in LiteralNode', () {
+      final nodes = [LiteralNode(text: '1/\u03BC\u2080')];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.numerical, isNotNull);
+      expect(result.numerical!.isInfinite, isFalse);
+      expect(result.toExactString(), contains('μ₀'));
+    });
   });
 
   group('SumExpr', () {

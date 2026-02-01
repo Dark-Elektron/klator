@@ -1,9 +1,9 @@
 // lib/math_engine/math_engine_exact.dart
 
 import 'dart:math' as math;
-import '../math_renderer/math_nodes.dart';
-import '../settings/settings_provider.dart';
-import 'math_engine.dart';
+import 'package:klator/math_renderer/math_nodes.dart';
+import 'package:klator/settings/settings_provider.dart';
+import 'package:klator/math_engine/math_engine.dart';
 
 // ============================================================
 // SECTION 1: EXPRESSION BASE CLASS
@@ -487,6 +487,9 @@ class ConstExpr extends Expr {
   static final ConstExpr pi = ConstExpr(ConstType.pi);
   static final ConstExpr e = ConstExpr(ConstType.e);
   static final ConstExpr phi = ConstExpr(ConstType.phi);
+  static final ConstExpr epsilon0 = ConstExpr(ConstType.epsilon0);
+  static final ConstExpr mu0 = ConstExpr(ConstType.mu0);
+  static final ConstExpr c0 = ConstExpr(ConstType.c0);
 
   @override
   Expr simplify() => this;
@@ -500,6 +503,12 @@ class ConstExpr extends Expr {
         return math.e;
       case ConstType.phi:
         return (1 + math.sqrt(5)) / 2;
+      case ConstType.epsilon0:
+        return 8.8541878128e-12; // vacuum permittivity F/m
+      case ConstType.mu0:
+        return 1.25663706212e-6; // vacuum permeability H/m
+      case ConstType.c0:
+        return 299792458.0; // speed of light m/s
     }
   }
 
@@ -541,6 +550,12 @@ class ConstExpr extends Expr {
         return [LiteralNode(text: 'e')];
       case ConstType.phi:
         return [LiteralNode(text: 'φ')];
+      case ConstType.epsilon0:
+        return [ConstantNode('ε₀')];
+      case ConstType.mu0:
+        return [ConstantNode('μ₀')];
+      case ConstType.c0:
+        return [ConstantNode('c₀')];
     }
   }
 
@@ -556,11 +571,17 @@ class ConstExpr extends Expr {
         return 'e';
       case ConstType.phi:
         return 'φ';
+      case ConstType.epsilon0:
+        return 'ε₀';
+      case ConstType.mu0:
+        return 'μ₀';
+      case ConstType.c0:
+        return 'c₀';
     }
   }
 }
 
-enum ConstType { pi, e, phi }
+enum ConstType { pi, e, phi, epsilon0, mu0, c0 }
 
 // ============================================================
 // SECTION 5: SUM EXPRESSION
@@ -1630,7 +1651,20 @@ class LogExpr extends Expr {
 // SECTION 10: TRIGONOMETRIC EXPRESSION
 // ============================================================
 
-enum TrigFunc { sin, cos, tan, asin, acos, atan }
+enum TrigFunc {
+  sin,
+  cos,
+  tan,
+  asin,
+  acos,
+  atan,
+  sinh,
+  cosh,
+  tanh,
+  asinh,
+  acosh,
+  atanh,
+}
 
 /// Represents a trigonometric function
 class TrigExpr extends Expr {
@@ -1668,6 +1702,18 @@ class TrigExpr extends Expr {
         case TrigFunc.acos:
           // acos(0) = π/2
           return DivExpr(ConstExpr.pi, IntExpr.two).simplify();
+        case TrigFunc.sinh:
+          return IntExpr.zero; // sinh(0) = 0
+        case TrigFunc.cosh:
+          return IntExpr.one; // cosh(0) = 1
+        case TrigFunc.tanh:
+          return IntExpr.zero; // tanh(0) = 0
+        case TrigFunc.asinh:
+          return IntExpr.zero; // asinh(0) = 0
+        case TrigFunc.acosh:
+          return null; // acosh(0) not real
+        case TrigFunc.atanh:
+          return IntExpr.zero; // atanh(0) = 0
       }
     }
 
@@ -1898,6 +1944,18 @@ class TrigExpr extends Expr {
         return math.acos(a);
       case TrigFunc.atan:
         return math.atan(a);
+      case TrigFunc.sinh:
+        return (math.exp(a) - math.exp(-a)) / 2;
+      case TrigFunc.cosh:
+        return (math.exp(a) + math.exp(-a)) / 2;
+      case TrigFunc.tanh:
+        return (math.exp(a) - math.exp(-a)) / (math.exp(a) + math.exp(-a));
+      case TrigFunc.asinh:
+        return math.log(a + math.sqrt(a * a + 1));
+      case TrigFunc.acosh:
+        return math.log(a + math.sqrt(a * a - 1));
+      case TrigFunc.atanh:
+        return 0.5 * math.log((1 + a) / (1 - a));
     }
   }
 
@@ -1980,6 +2038,24 @@ class TrigExpr extends Expr {
         break;
       case TrigFunc.atan:
         funcName = 'atan';
+        break;
+      case TrigFunc.sinh:
+        funcName = 'sinh';
+        break;
+      case TrigFunc.cosh:
+        funcName = 'cosh';
+        break;
+      case TrigFunc.tanh:
+        funcName = 'tanh';
+        break;
+      case TrigFunc.asinh:
+        funcName = 'asinh';
+        break;
+      case TrigFunc.acosh:
+        funcName = 'acosh';
+        break;
+      case TrigFunc.atanh:
+        funcName = 'atanh';
         break;
     }
 
@@ -2659,6 +2735,12 @@ class MathNodeToExpr {
     'asin',
     'acos',
     'atan',
+    'sinh',
+    'cosh',
+    'tanh',
+    'asinh',
+    'acosh',
+    'atanh',
     'log',
     'ln',
     'sqrt',
@@ -2817,6 +2899,24 @@ class MathNodeToExpr {
         case 'atan':
           func = TrigFunc.atan;
           break;
+        case 'sinh':
+          func = TrigFunc.sinh;
+          break;
+        case 'cosh':
+          func = TrigFunc.cosh;
+          break;
+        case 'tanh':
+          func = TrigFunc.tanh;
+          break;
+        case 'asinh':
+          func = TrigFunc.asinh;
+          break;
+        case 'acosh':
+          func = TrigFunc.acosh;
+          break;
+        case 'atanh':
+          func = TrigFunc.atanh;
+          break;
         case 'abs':
           return [_Token.fromExpr(AbsExpr(argument))];
         default:
@@ -2842,6 +2942,31 @@ class MathNodeToExpr {
       Expr n = convert(node.n, ansExpressions: ansExpressions);
       Expr r = convert(node.r, ansExpressions: ansExpressions);
       return [_Token.fromExpr(CombExpr(n, r))];
+    }
+
+    if (node is ConstantNode) {
+      ConstType type;
+      switch (node.constant) {
+        case '\u03C0':
+          type = ConstType.pi;
+          break;
+        case 'e':
+          type = ConstType.e;
+          break;
+        case '\u03B5\u2080':
+          type = ConstType.epsilon0;
+          break;
+        case '\u03BC\u2080':
+        case '\u00B5\u2080':
+          type = ConstType.mu0;
+          break;
+        case 'c\u2080':
+          type = ConstType.c0;
+          break;
+        default:
+          return [_Token.fromExpr(VarExpr(node.constant))];
+      }
+      return [_Token.fromExpr(ConstExpr(type))];
     }
 
     if (node is AnsNode) {
@@ -2962,9 +3087,14 @@ class MathNodeToExpr {
         continue;
       }
 
-      // Greek letters and special constants
       if (char == 'π' || char == '\u03C0') {
         tokens.add(_Token.fromExpr(ConstExpr.pi));
+        i++;
+        continue;
+      }
+
+      if (char == 'e' && (i + 1 >= text.length || !_isLetter(text[i + 1]))) {
+        tokens.add(_Token.fromExpr(ConstExpr.e));
         i++;
         continue;
       }
@@ -2972,6 +3102,26 @@ class MathNodeToExpr {
       if (char == 'φ') {
         tokens.add(_Token.fromExpr(ConstExpr.phi));
         i++;
+        continue;
+      }
+
+      if (char == '\u03B5' && i + 1 < text.length && text[i + 1] == '\u2080') {
+        tokens.add(_Token.fromExpr(ConstExpr.epsilon0));
+        i += 2;
+        continue;
+      }
+
+      if ((char == '\u03BC' || char == '\u00B5') &&
+          i + 1 < text.length &&
+          text[i + 1] == '\u2080') {
+        tokens.add(_Token.fromExpr(ConstExpr.mu0));
+        i += 2;
+        continue;
+      }
+
+      if (char == 'c' && i + 1 < text.length && text[i + 1] == '\u2080') {
+        tokens.add(_Token.fromExpr(ConstExpr.c0));
+        i += 2;
         continue;
       }
 
@@ -3289,7 +3439,6 @@ class ExactMathEngine {
           expr: simplified,
           mathNodes: [LiteralNode(text: numerical.isNegative ? '-∞' : '∞')],
           numerical: numerical,
-          isExact: true,
         );
       }
 
@@ -3484,9 +3633,7 @@ class ExactMathEngine {
       else if (term is VarExpr && term.name == varName) {
         coeffs['c1'] = SumExpr([coeffs['c1']!, IntExpr.one]).simplify();
       } else if (term is ProdExpr &&
-          term.factors.any(
-            (f) => f is VarExpr && f.name == varName,
-          )) {
+          term.factors.any((f) => f is VarExpr && f.name == varName)) {
         List<Expr> others =
             term.factors
                 .where((f) => !(f is VarExpr && f.name == varName))
@@ -3526,9 +3673,7 @@ class ExactMathEngine {
       if (term is VarExpr && term.name == varName) {
         a = SumExpr([a, IntExpr.one]).simplify();
       } else if (term is ProdExpr &&
-          term.factors.any(
-            (f) => f is VarExpr && f.name == varName,
-          )) {
+          term.factors.any((f) => f is VarExpr && f.name == varName)) {
         List<Expr> others =
             term.factors
                 .where((f) => !(f is VarExpr && f.name == varName))
@@ -3624,9 +3769,7 @@ class ExactMathEngine {
             matched = true;
             break;
           } else if (term is ProdExpr &&
-              term.factors.any(
-                (f) => f is VarExpr && f.name == v,
-              )) {
+              term.factors.any((f) => f is VarExpr && f.name == v)) {
             List<Expr> others =
                 term.factors
                     .where((f) => !(f is VarExpr && f.name == v))
@@ -4057,6 +4200,8 @@ class ExactMathEngine {
     for (MathNode node in nodes) {
       if (node is LiteralNode) {
         buffer.write(node.text);
+      } else if (node is ConstantNode) {
+        buffer.write(node.constant);
       } else if (node is FractionNode) {
         String num = _serializeForValidation(node.numerator);
         String den = _serializeForValidation(node.denominator);

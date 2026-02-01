@@ -152,6 +152,14 @@ class MathResultDisplay extends StatelessWidget {
       );
     }
 
+    if (node is ConstantNode) {
+      return Text(
+        MathTextStyle.toDisplayText(node.constant),
+        style: MathTextStyle.getStyle(fontSize).copyWith(color: textColor),
+        textScaler: textScaler,
+      );
+    }
+
     if (node is FractionNode) {
       return IntrinsicWidth(
         child: Column(
@@ -517,10 +525,11 @@ class MathResultDisplay extends StatelessWidget {
     double fontSize,
   ) {
     if (node is LiteralNode) {
-      return (
-        fontSize * 1.2,
-        fontSize * 0.6,
-      );
+      return (fontSize * 1.2, fontSize * 0.6);
+    }
+
+    if (node is ConstantNode) {
+      return (fontSize * 1.2, fontSize * 0.6);
     }
 
     if (node is ExponentNode) {
@@ -672,7 +681,11 @@ class MathResultDisplay extends StatelessWidget {
 
   (double, double) _getNodeMetrics(MathNode node, double fontSize) {
     if (node is LiteralNode) {
-      return (fontSize, fontSize / 2);
+      return (fontSize * 1.2, fontSize * 0.6);
+    }
+
+    if (node is ConstantNode) {
+      return (fontSize * 1.2, fontSize * 0.6);
     }
 
     if (node is ExponentNode) {

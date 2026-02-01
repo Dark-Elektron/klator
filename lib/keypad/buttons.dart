@@ -12,6 +12,7 @@ class MyButton extends StatelessWidget {
   final dynamic buttontapped;
   final double fontSize;
   final bool mirror;
+  final double borderRadius;
 
   //Constructor
   const MyButton({
@@ -22,12 +23,16 @@ class MyButton extends StatelessWidget {
     this.buttontapped,
     this.fontSize = 22,
     this.mirror = false,
+    this.borderRadius = 0,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bool hapticEnabled =
-        Provider.of<SettingsProvider>(context).hapticFeedback;
+    final settings = Provider.of<SettingsProvider>(context);
+    final bool hapticEnabled = settings.hapticFeedback;
+    final double effectiveBorderRadius =
+        borderRadius == 0 ? settings.borderRadius : borderRadius;
+
     // 2. Create the text widget separately for clarity
     Widget textWidget = Text(
       buttonText,
@@ -47,7 +52,7 @@ class MyButton extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           // IMPORTANT: borderRadius here must match ClipRRect to make the shadow curved
-          borderRadius: BorderRadius.circular(5),
+          borderRadius: BorderRadius.circular(effectiveBorderRadius),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.3), // Shadow color
@@ -74,9 +79,7 @@ class MyButton extends StatelessWidget {
               highlightColor: Colors.white.withValues(alpha: 0.1),
               // child: Container(
               // Remove color here since Material has it now
-              child: Center(
-                child: textWidget
-              ),
+              child: Center(child: textWidget),
               // ),
             ),
           ),
