@@ -91,12 +91,12 @@ class _PopupMenuCalcButtonState extends State<PopupMenuCalcButton> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.white, // Force white background
-                borderRadius: BorderRadius.circular(0.0), // Force square shape
+                borderRadius: BorderRadius.circular(widget.borderRadius), // Force square shape
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
+                    blurRadius: 2,
+                    offset: const Offset(0, 0),
                   ),
                 ],
               ),
@@ -107,7 +107,7 @@ class _PopupMenuCalcButtonState extends State<PopupMenuCalcButton> {
                     if (i > 0)
                       Container(
                         width: separatorWidth,
-                        height: 24,
+                        height: itemHeight,
                         color:
                             widget.separatorColor ??
                             Colors.grey.withValues(alpha: 0.3),

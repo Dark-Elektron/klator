@@ -1052,7 +1052,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         }
-        // ... rest of existing cases
         else if (index == 0) {
           return MyButton(
             buttontapped: () {
@@ -1095,6 +1094,13 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 label: 'c₀ (speed of light)',
                 onTap: () {
                   _activeController?.insertConstant('c\u2080');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'e⁻ (elementary charge)',
+                onTap: () {
+                  _activeController?.insertConstant('e\u207b');
                   widget.onUpdateMathEditor();
                 },
               ),

@@ -178,6 +178,38 @@ class MathEditorController extends ChangeNotifier {
         char == MathTextStyle.minusSign;
   }
 
+  /// Checks if a character at the given position is a word boundary for fraction extraction.
+  /// Unlike _isNonMultiplyWordBoundary, this treats minus sign as part of the
+  /// number when it's part of scientific notation (e.g., 1ᴇ-17).
+  static bool _isNonMultiplyWordBoundaryForFraction(String text, int index) {
+    final char = text[index];
+
+    // Standard word boundaries (excluding minus for special handling)
+    if (char == '+' ||
+        char == '/' ||
+        char == '=' ||
+        char == ' ' ||
+        char == MathTextStyle.plusSign) {
+      return true;
+    }
+
+    // Minus sign is NOT a boundary if it follows scientific E
+    if (char == '-' || char == MathTextStyle.minusSign) {
+      // Check if preceded by scientific E
+      if (index > 0) {
+        final prevChar = text[index - 1];
+        if (prevChar == MathTextStyle.scientificE ||
+            prevChar == 'E' ||
+            prevChar == 'e') {
+          return false; // Part of scientific notation, not a boundary
+        }
+      }
+      return true; // Regular minus sign is a boundary
+    }
+
+    return false;
+  }
+
   String _makeLayoutKey(String? parentId, String? path, int index) {
     return '${parentId ?? 'root'}:${path ?? 'root'}:$index';
   }
@@ -2272,7 +2304,7 @@ class MathEditorController extends ChangeNotifier {
 
     int operandStart = cursorClick;
     while (operandStart > 0 &&
-        !_isNonMultiplyWordBoundary(text[operandStart - 1])) {
+        !_isNonMultiplyWordBoundaryForFraction(text, operandStart - 1)) {
       operandStart--;
     }
 

@@ -509,6 +509,8 @@ class ConstExpr extends Expr {
         return 1.25663706212e-6; // vacuum permeability H/m
       case ConstType.c0:
         return 299792458.0; // speed of light m/s
+      case ConstType.eMinus:
+        return 1.602176634e-19; // elementary charge C
     }
   }
 
@@ -556,6 +558,8 @@ class ConstExpr extends Expr {
         return [ConstantNode('μ₀')];
       case ConstType.c0:
         return [ConstantNode('c₀')];
+      case ConstType.eMinus:
+        return [ConstantNode('e⁻')];
     }
   }
 
@@ -577,11 +581,13 @@ class ConstExpr extends Expr {
         return 'μ₀';
       case ConstType.c0:
         return 'c₀';
+      case ConstType.eMinus:
+        return 'e⁻';
     }
   }
 }
 
-enum ConstType { pi, e, phi, epsilon0, mu0, c0 }
+enum ConstType { pi, e, phi, epsilon0, mu0, c0, eMinus }
 
 // ============================================================
 // SECTION 5: SUM EXPRESSION
@@ -2956,12 +2962,14 @@ class MathNodeToExpr {
         case '\u03B5\u2080':
           type = ConstType.epsilon0;
           break;
-        case '\u03BC\u2080':
         case '\u00B5\u2080':
           type = ConstType.mu0;
           break;
         case 'c\u2080':
           type = ConstType.c0;
+          break;
+        case 'e\u207b':
+          type = ConstType.eMinus;
           break;
         default:
           return [_Token.fromExpr(VarExpr(node.constant))];

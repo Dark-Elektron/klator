@@ -29,8 +29,27 @@ class MathTextStyle {
     equalsSign,
   };
 
-  static bool _isPaddedOperator(String char) {
-    return _paddedOperators.contains(char);
+  /// Scientific E character (small caps E) used for notation like 1ᴇ-17
+  static const String scientificE = '\u1D07';
+
+  /// Checks if a character at the given position should have padding.
+  /// Minus signs following scientific E do NOT get padding.
+  static bool _isPaddedOperatorAt(String text, int index) {
+    final char = text[index];
+
+    if (!_paddedOperators.contains(char)) {
+      return false;
+    }
+
+    // Special case: minus sign after scientific E should NOT be padded
+    if ((char == '-' || char == minusSign) && index > 0) {
+      final prevChar = text[index - 1];
+      if (prevChar == scientificE || prevChar == 'E' || prevChar == 'e') {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   static bool _isMultiplySign(String char) {
@@ -57,7 +76,7 @@ class MathTextStyle {
         displayChar = multiplyDot; // Always use dot for exact results
       }
 
-      if (_isPaddedOperator(char)) {
+      if (_isPaddedOperatorAt(text, i)) {
         // Only add leading space if not the first character in the literal
         if (i > 0) {
           buffer.write(' ');
@@ -98,8 +117,7 @@ class MathTextStyle {
     final clampedIndex = logicalIndex.clamp(0, text.length);
 
     for (int i = 0; i < clampedIndex; i++) {
-      final char = text[i];
-      if (_isPaddedOperator(char)) {
+      if (_isPaddedOperatorAt(text, i)) {
         if (i == 0) {
           displayIndex += 2; // char + trailing space
         } else {
@@ -183,10 +201,10 @@ class MathTextStyle {
     int displayPos = 0;
 
     for (int logical = 0; logical < text.length; logical++) {
-      final char = text[logical];
+      final isPadded = _isPaddedOperatorAt(text, logical);
       int charWidth;
 
-      if (_isPaddedOperator(char)) {
+      if (isPadded) {
         charWidth = (logical == 0) ? 2 : 3;
       } else {
         charWidth = 1;
@@ -196,7 +214,7 @@ class MathTextStyle {
       displayPos += charWidth;
 
       if (displayIndex <= displayPos) {
-        if (_isPaddedOperator(char)) {
+        if (isPadded) {
           final midpoint = prevDisplayPos + ((logical == 0) ? 1 : 2);
           if (displayIndex <= midpoint) {
             return logical;

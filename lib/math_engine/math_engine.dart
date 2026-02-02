@@ -103,9 +103,9 @@ class MathSolverNew {
       return '($pi)';
     });
 
-    // Replace standalone e (Euler's number)
+    // Replace standalone e (Euler's number), but not e⁻ (elementary charge)
     expr = expr.replaceAllMapped(
-      RegExp(r'([\d\)\u2080\u03C0])?(?<![a-zA-Z])e(?![a-zA-Z])'),
+      RegExp(r'([\d\)\u2080\u03C0])?(?<![a-zA-Z])e(?![a-zA-Z\u207b])'),
       (match) {
         String? before = match.group(1);
         if (before != null) {
@@ -147,6 +147,17 @@ class MathSolverNew {
         return '$before*(299792458)';
       }
       return '(299792458)';
+    });
+
+    // elementary charge e⁻ = 1.602176634e-19 C
+    expr = expr.replaceAllMapped(RegExp(r'([\d\)\u2080\u03C0])?e\u207b'), (
+      match,
+    ) {
+      String? before = match.group(1);
+      if (before != null) {
+        return '$before*(1.602176634e-19)';
+      }
+      return '(1.602176634e-19)';
     });
 
     // Process special functions

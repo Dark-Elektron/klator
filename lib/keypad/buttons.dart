@@ -23,7 +23,7 @@ class MyButton extends StatelessWidget {
     this.buttontapped,
     this.fontSize = 22,
     this.mirror = false,
-    this.borderRadius = 0,
+    this.borderRadius = 5,
   });
 
   @override
