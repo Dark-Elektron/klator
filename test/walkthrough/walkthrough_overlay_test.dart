@@ -34,9 +34,9 @@ void main() {
     }
 
     testWidgets('should render child widget', (tester) async {
-      await tester.pumpWidget(buildTestWidget(
-        child: const Text('Child Content'),
-      ));
+      await tester.pumpWidget(
+        buildTestWidget(child: const Text('Child Content')),
+      );
 
       expect(find.text('Child Content'), findsOneWidget);
     });
@@ -156,10 +156,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining('Settings'),
-        findsWidgets,
-      );
+      expect(find.textContaining('Settings'), findsWidgets);
     });
 
     testWidgets('should update progress when step changes', (tester) async {
@@ -176,8 +173,9 @@ void main() {
     });
 
     group('Swipe Steps', () {
-      testWidgets('should show swipe instruction on swipe steps',
-          (tester) async {
+      testWidgets('should show swipe instruction on swipe steps', (
+        tester,
+      ) async {
         await service.initialize();
 
         // Navigate to first swipe step
@@ -231,8 +229,9 @@ void main() {
         expect(find.text('Back'), findsOneWidget);
       });
 
-      testWidgets('should go back from swipe step when Back is tapped',
-          (tester) async {
+      testWidgets('should go back from swipe step when Back is tapped', (
+        tester,
+      ) async {
         await service.initialize();
 
         // Navigate to first swipe step
@@ -274,25 +273,28 @@ void main() {
     });
 
     group('Target Highlighting', () {
-      testWidgets('should highlight target when key is provided',
-          (tester) async {
+      testWidgets('should highlight target when key is provided', (
+        tester,
+      ) async {
         final targetKey = GlobalKey();
 
         await service.initialize();
-        await tester.pumpWidget(MaterialApp(
-          home: Scaffold(
-            body: WalkthroughOverlay(
-              walkthroughService: service,
-              targetKeys: {'expression_area': targetKey},
-              child: Container(
-                key: targetKey,
-                width: 100,
-                height: 50,
-                color: Colors.blue,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: WalkthroughOverlay(
+                walkthroughService: service,
+                targetKeys: {'expression_area': targetKey},
+                child: Container(
+                  key: targetKey,
+                  width: 100,
+                  height: 50,
+                  color: Colors.blue,
+                ),
               ),
             ),
           ),
-        ));
+        );
         await tester.pumpAndSettle();
 
         // Overlay should be rendered

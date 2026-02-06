@@ -10,6 +10,7 @@ import 'dart:async';
 import '../walkthrough/walkthrough_service.dart';
 import '../walkthrough/walkthrough_steps.dart';
 import '../math_renderer/math_editor_controller.dart';
+import '../math_renderer/math_text_style.dart';
 
 /// Custom ScrollPhysics that restricts swipe direction
 class DirectionalScrollPhysics extends ScrollPhysics {
@@ -129,6 +130,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
   Timer? _deleteTimer;
   bool _isDeleting = false;
   int _deleteSpeed = 150;
+  bool _deletedContentInCurrentBackspaceSession = false;
 
   int _currentKeypadIndex = 1;
 
@@ -205,25 +207,25 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
   ];
 
   final List<String> _buttonsR = [
-    '',
-    '',
+    'x^2',
+    'i',
     '\u238C',
     '\u238C',
     '\u2327',
-    'i',
+    'SQR',
+    'PI',
+    '',
     'x!',
-    'nPr',
-    'nCr',
     'ans',
+    'sin',
+    '|x|',
     '',
-    '',
-    '',
-    '',
-    '',
-    '',
-    '',
-    '',
+    'nPr',
     '\u24D8',
+    'asin',
+    'x',
+    '',
+    'nCr',
     '',
   ];
 
@@ -377,10 +379,13 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
   }
 
   void _startContinuousDelete() {
+    _deletedContentInCurrentBackspaceSession = false;
     _isDeleting = true;
     _deleteSpeed = 150;
     _performDelete();
-    _scheduleNextDelete();
+    if (_isDeleting) {
+      _scheduleNextDelete();
+    }
   }
 
   void _scheduleNextDelete() {
@@ -399,13 +404,28 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     _deleteTimer = null;
   }
 
+  void _handleSingleBackspace() {
+    _deletedContentInCurrentBackspaceSession = false;
+    _performDelete();
+  }
+
   void _performDelete() {
-    if (_activeController?.expr == '') {
-      widget.onRemoveDisplay(widget.activeIndex);
+    final controller = _activeController;
+    if (controller == null) {
       _stopContinuousDelete();
       return;
     }
-    _activeController?.deleteChar();
+
+    if (controller.getExpression().isEmpty) {
+      if (!_deletedContentInCurrentBackspaceSession) {
+        widget.onRemoveDisplay(widget.activeIndex);
+      }
+      _stopContinuousDelete();
+      return;
+    }
+
+    controller.deleteChar();
+    _deletedContentInCurrentBackspaceSession = true;
     widget.onUpdateMathEditor();
     widget.onSetState();
   }
@@ -460,43 +480,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     }
   }
 
-  /// Get the appropriate scroll physics based on walkthrough state
-  ScrollPhysics _getKeypadPhysics() {
-    // IMPORTANT: Allow normal scrolling during programmatic navigation
-    if (_isNavigatingProgrammatically) {
-      return const PageScrollPhysics();
-    }
-
-    final service = widget.walkthroughService;
-
-    // If walkthrough is not active, allow normal scrolling
-    if (!service.isActive || !service.isInitialized) {
-      return const PageScrollPhysics();
-    }
-
-    final step = service.currentStepData;
-
-    // Only restrict if it's a swipe-required step
-    if (!step.requiresAction || step.requiredAction == null) {
-      return const PageScrollPhysics();
-    }
-
-    // Restrict based on required action
-    if (step.requiredAction == WalkthroughAction.swipeLeft) {
-      return const DirectionalScrollPhysics(
-        allowLeftSwipe: true,
-        allowRightSwipe: false,
-      );
-    } else if (step.requiredAction == WalkthroughAction.swipeRight) {
-      return const DirectionalScrollPhysics(
-        allowLeftSwipe: false,
-        allowRightSwipe: true,
-      );
-    }
-
-    return const PageScrollPhysics();
-  }
-
   @override
   Widget build(BuildContext context) {
     bool isWideScreen = widget.screenWidth > 600;
@@ -532,28 +515,27 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       _lastPagesPerView = pagesPerView;
     }
 
+    const double landscapeChildAspectRatio = 1.5;
     int crossAxisCount = 5;
     int rowCount = 4;
-    double buttonSize = widget.screenWidth / crossAxisCount;
-
-    double gridHeight;
-    if (widget.isLandscape) {
-      double buttonHeightRatio = 0.65;
-      gridHeight = (buttonSize * buttonHeightRatio * rowCount) / pagesPerView;
-    } else {
-      gridHeight = buttonSize * rowCount / pagesPerView;
-    }
+    final double mainChildAspectRatio =
+        widget.isLandscape ? landscapeChildAspectRatio : 1.0;
+    final double mainCellWidth =
+        widget.screenWidth / (crossAxisCount * pagesPerView);
+    final double mainCellHeight = mainCellWidth / mainChildAspectRatio;
+    final double gridHeight = mainCellHeight * rowCount;
 
     int crossAxisCountBasic = widget.isLandscape ? 20 : 10;
-    double buttonSizeBasic = widget.screenWidth / crossAxisCountBasic;
-
-    double basicKeypadExpandedHeight;
-    if (widget.isLandscape) {
-      double buttonHeightRatio = 0.65;
-      basicKeypadExpandedHeight = buttonSizeBasic * buttonHeightRatio * 1;
-    } else {
-      basicKeypadExpandedHeight = buttonSizeBasic * 2;
-    }
+    final int basicButtonsCount =
+        widget.isLandscape
+            ? _buttonsBasicLandscape.length
+            : _buttonsBasic.length;
+    final int basicRowCount = (basicButtonsCount / crossAxisCountBasic).ceil();
+    final double basicChildAspectRatio =
+        widget.isLandscape ? landscapeChildAspectRatio : 1.0;
+    final double basicCellWidth = widget.screenWidth / crossAxisCountBasic;
+    final double basicCellHeight = basicCellWidth / basicChildAspectRatio;
+    final double basicKeypadExpandedHeight = basicCellHeight * basicRowCount;
 
     double basicKeypadHeight =
         _isBasicKeypadExpanded
@@ -625,13 +607,13 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                   ? ListenableBuilder(
                     listenable: widget.walkthroughService,
                     builder: (context, _) {
-                      return PageView(
-                        padEnds: false,
+                      return EasySnapPageView(
                         controller: _keypadController!,
-                        physics: _getKeypadPhysics(),
                         onPageChanged: _onKeypadPageChanged,
+                        padEnds: false,
+                        enableTransitions:
+                            !isTablet, // Disable transitions on tablet
                         children: [
-                          // Use SizedBox.expand() for children that need to fill space
                           SizedBox.expand(
                             key: widget.scientificKeypadKey,
                             child: _buildScientificGrid(widget.isLandscape),
@@ -729,14 +711,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             onLongPressEnd: (_) => _stopContinuousDelete(),
             onLongPressCancel: _stopContinuousDelete,
             child: MyButton(
-              buttontapped: () {
-                _activeController?.deleteChar();
-                widget.onUpdateMathEditor();
-                if (_activeController?.expr == '') {
-                  widget.onRemoveDisplay(widget.activeIndex);
-                }
-                widget.onSetState();
-              },
+              buttontapped: _handleSingleBackspace,
               buttonText: '\u232B',
               color: const Color.fromARGB(255, 226, 104, 104),
               textColor: Colors.black,
@@ -746,6 +721,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           return MyButton(
             buttontapped: () {
               _activeController?.clear();
+              widget.onUpdateMathEditor();
               _activeController?.updateAnswer(
                 widget.textDisplayControllers[widget.activeIndex],
               );
@@ -1051,8 +1027,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        else if (index == 0) {
+        } else if (index == 0) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(_buttonsSci[index]);
@@ -1307,14 +1282,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             onLongPressEnd: (_) => _stopContinuousDelete(),
             onLongPressCancel: _stopContinuousDelete,
             child: MyButton(
-              buttontapped: () {
-                _activeController?.deleteChar();
-                widget.onUpdateMathEditor();
-                if (_activeController?.expr == '') {
-                  widget.onRemoveDisplay(widget.activeIndex);
-                }
-                widget.onSetState();
-              },
+              buttontapped: _handleSingleBackspace,
               buttonText: '\u232B',
               color: const Color.fromARGB(255, 226, 104, 104),
               textColor: Colors.black,
@@ -1368,12 +1336,24 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         } else if (index == 17) {
+          final useScientific =
+              widget.settingsProvider.useScientificNotationButton;
+          final buttonLabel =
+              _buttons[index] == MathTextStyle.scientificE
+                  ? (useScientific ? MathTextStyle.scientificE : '%')
+                  : _buttons[index];
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCharacter(_buttons[index]);
+              if (_buttons[index] == MathTextStyle.scientificE) {
+                _activeController?.insertCharacter(
+                  useScientific ? MathTextStyle.scientificE : '%',
+                );
+              } else {
+                _activeController?.insertCharacter(_buttons[index]);
+              }
               widget.onUpdateMathEditor();
             },
-            buttonText: _buttons[index],
+            buttonText: buttonLabel,
             color: Colors.white,
             textColor: Colors.black,
           );
@@ -1423,6 +1403,36 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         childAspectRatio: isLandscape ? 1.5 : 1.0,
       ),
       itemBuilder: (context, index) {
+        if (index == 16) {
+          return PopupMenuCalcButton(
+            buttonText: _buttonsR[index],
+            onTap: () {
+              _activeController?.insertCharacter('x');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'y',
+                onTap: () {
+                  _activeController?.insertCharacter('y');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'z',
+                onTap: () {
+                  _activeController?.insertCharacter('z');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
+        }
         if (index == 3) {
           // Undo button
           bool canUndo =
@@ -1470,22 +1480,147 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           return MyButton(
             buttontapped: widget.onClearAllDisplays,
             buttonText: _buttonsR[index],
-            color: const Color.fromARGB(255, 226, 104, 104),
+            color: Colors.white,
             textColor: Colors.black,
           );
         }
-        // if (index == 5) {
-        //   return MyButton(
-        //     buttontapped: () {
-        //       _activeController?.insertCharacter(_buttonsR[index]);
-        //       widget.onUpdateMathEditor();
-        //     },
-        //     buttonText: _buttonsR[index],
-        //     color: Colors.white,
-        //     textColor: Colors.grey,
-        //   );
-        // } else
-        if (index == 6) {
+        if (index == 1) {
+          return MyButton(
+            buttontapped: () {
+              _activeController?.insertCharacter('i');
+              widget.onUpdateMathEditor();
+            },
+            buttonText: _buttonsR[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        if (index == 0) {
+          // x^2 with popup for x^n
+          return PopupMenuCalcButton(
+            buttonText: 'x\u00B2',
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInSquare(),
+                normalAction: () => _activeController?.insertSquare(),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'x\u207F',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () =>
+                            _activeController!.selectionWrapper
+                                .wrapInExponent(),
+                    normalAction: () => _activeController?.insertCharacter('^'),
+                  );
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
+        }
+        if (index == 5) {
+          // square root with popup for nth root
+          return PopupMenuCalcButton(
+            buttonText: '\u221A',
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInSquareRoot(),
+                normalAction: () => _activeController?.insertSquareRoot(),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: '\u207F\u221A',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () =>
+                            _activeController!.selectionWrapper.wrapInNthRoot(),
+                    normalAction: () => _activeController?.insertNthRoot(),
+                  );
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
+        }
+        if (index == 7) {
+          return PopupMenuCalcButton(
+            buttonText: '\u2211',
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInSummation(),
+                normalAction: () => _activeController?.insertSummation(),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: '\u220F',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () =>
+                            _activeController!.selectionWrapper.wrapInProduct(),
+                    normalAction: () => _activeController?.insertProduct(),
+                  );
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
+          );
+        }
+        if (index == 12) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInDerivative(),
+                normalAction: () => _activeController?.insertDerivative(),
+              );
+            },
+            buttonText: 'd/dx',
+            fontSize: 18,
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        if (index == 17) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInIntegral(),
+                normalAction: () => _activeController?.insertIntegral(),
+              );
+            },
+            buttonText: '\u222B',
+            fontSize: 28,
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        if (index == 8) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('!');
@@ -1496,7 +1631,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         } // nPr button
-        else if (index == 7) {
+        else if (index == 13) {
           return MyButton(
             buttontapped: () {
               _handleButtonWithSelection(
@@ -1512,7 +1647,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           );
         }
         // nCr button
-        else if (index == 8) {
+        else if (index == 18) {
           return MyButton(
             buttontapped: () {
               _handleButtonWithSelection(
@@ -1534,9 +1669,9 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             },
             buttonText: _buttonsR[index],
             color: Colors.white,
-            textColor: Colors.black,
+            textColor: Colors.orangeAccent,
           );
-        } else if (index == 18) {
+        } else if (index == 14) {
           return MyButton(
             buttontapped: () {
               Navigator.push(context, SlidePageRoute(page: HelpPage()));
@@ -1545,6 +1680,226 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             fontSize: 28,
             color: Colors.white,
             textColor: Colors.black,
+          );
+        } else if (index == 10) {
+          // sin with popup for cos/tan/sinh/cosh/tanh
+          return PopupMenuCalcButton(
+            buttonText: 'sin',
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInTrig('sin'),
+                normalAction: () => _activeController?.insertTrig('sin'),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'cos',
+                onTap: () {
+                  _activeController?.insertTrig('cos');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'tan',
+                onTap: () {
+                  _activeController?.insertTrig('tan');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'sinh',
+                onTap: () {
+                  _activeController?.insertTrig('sinh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'cosh',
+                onTap: () {
+                  _activeController?.insertTrig('cosh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'tanh',
+                onTap: () {
+                  _activeController?.insertTrig('tanh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
+        } else if (index == 11) {
+          // Absolute value with complex function variants
+          return PopupMenuCalcButton(
+            buttonText: '|x|',
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInTrig('abs'),
+                normalAction: () => _activeController?.insertTrig('abs'),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'arg',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () => _activeController!.selectionWrapper.wrapInTrig(
+                          'arg',
+                        ),
+                    normalAction: () => _activeController?.insertTrig('arg'),
+                  );
+                },
+              ),
+              CalcMenuItem(
+                label: 'Re',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () => _activeController!.selectionWrapper.wrapInTrig(
+                          'Re',
+                        ),
+                    normalAction: () => _activeController?.insertTrig('Re'),
+                  );
+                },
+              ),
+              CalcMenuItem(
+                label: 'Im',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () => _activeController!.selectionWrapper.wrapInTrig(
+                          'Im',
+                        ),
+                    normalAction: () => _activeController?.insertTrig('Im'),
+                  );
+                },
+              ),
+              CalcMenuItem(
+                label: 'sgn',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () => _activeController!.selectionWrapper.wrapInTrig(
+                          'sgn',
+                        ),
+                    normalAction: () => _activeController?.insertTrig('sgn'),
+                  );
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
+        } else if (index == 15) {
+          // asin with popup for acos/atan/asinh/acosh/atanh
+          return PopupMenuCalcButton(
+            buttonText: 'asin',
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInTrig('asin'),
+                normalAction: () => _activeController?.insertTrig('asin'),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'acos',
+                onTap: () {
+                  _activeController?.insertTrig('acos');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'atan',
+                onTap: () {
+                  _activeController?.insertTrig('atan');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'asinh',
+                onTap: () {
+                  _activeController?.insertTrig('asinh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'acosh',
+                onTap: () {
+                  _activeController?.insertTrig('acosh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'atanh',
+                onTap: () {
+                  _activeController?.insertTrig('atanh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
+        } else if (index == 6) {
+          // π button with popup for constants
+          return PopupMenuCalcButton(
+            buttonText: '\u03C0',
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            onTap: () {
+              _activeController?.insertCharacter('\u03C0');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'e',
+                onTap: () {
+                  _activeController?.insertConstant('e');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: '\u03BC\u2080',
+                onTap: () {
+                  _activeController?.insertConstant('\u03BC\u2080');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: '\u03B5\u2080',
+                onTap: () {
+                  _activeController?.insertConstant('\u03B5\u2080');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'c\u2080',
+                onTap: () {
+                  _activeController?.insertConstant('c\u2080');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         } else if (index == 19) {
           return Container(
@@ -1563,7 +1918,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                   ),
                 );
               },
-              buttonText: '\u2699',
+              buttonText: '\u2630',
               color: Colors.white,
               textColor: Colors.black,
             ),
@@ -1576,6 +1931,204 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           );
         }
       },
+    );
+  }
+}
+
+class CustomPageScrollPhysics extends PageScrollPhysics {
+  final double threshold; // 0.0 - 1.0
+
+  const CustomPageScrollPhysics({
+    this.threshold = 0.1, // 10% drag required
+    super.parent,
+  });
+
+  @override
+  CustomPageScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return CustomPageScrollPhysics(
+      threshold: threshold,
+      parent: buildParent(ancestor),
+    );
+  }
+}
+
+class CustomSnapPageView extends StatefulWidget {
+  final PageController controller;
+  final List<Widget> children;
+  final ValueChanged<int>? onPageChanged;
+  final double threshold; // fraction of page width to trigger snap
+
+  const CustomSnapPageView({
+    super.key,
+    required this.controller,
+    required this.children,
+    this.onPageChanged,
+    this.threshold = 0.05, // 5% of page width
+  });
+
+  @override
+  State<CustomSnapPageView> createState() => _CustomSnapPageViewState();
+}
+
+class _CustomSnapPageViewState extends State<CustomSnapPageView> {
+  double? _dragStartPage;
+  bool _isAnimating = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (_isAnimating) return false;
+
+        if (notification is ScrollStartNotification &&
+            notification.dragDetails != null) {
+          // User started dragging — record starting page
+          _dragStartPage = widget.controller.page;
+        }
+
+        if (notification is ScrollUpdateNotification &&
+            notification.dragDetails != null &&
+            _dragStartPage != null) {
+          final currentPage = widget.controller.page!;
+          final delta = currentPage - _dragStartPage!;
+
+          if (delta.abs() > widget.threshold) {
+            // Determine target page
+            int targetPage;
+            if (delta > 0) {
+              targetPage = _dragStartPage!.ceil(); // swiped forward
+            } else {
+              targetPage = _dragStartPage!.floor(); // swiped backward
+            }
+
+            // Clamp to valid range
+            targetPage = targetPage.clamp(0, widget.children.length - 1);
+
+            _dragStartPage = null;
+            _isAnimating = true;
+
+            widget.controller
+                .animateToPage(
+                  targetPage,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                )
+                .then((_) {
+                  _isAnimating = false;
+                });
+          }
+        }
+
+        if (notification is ScrollEndNotification) {
+          _dragStartPage = null;
+        }
+
+        return false;
+      },
+      child: PageView(
+        controller: widget.controller,
+        physics: const PageScrollPhysics(), // Keep default physics
+        onPageChanged: widget.onPageChanged,
+        padEnds: false,
+        children: widget.children,
+      ),
+    );
+  }
+}
+
+class EasySnapPageView extends StatefulWidget {
+  final PageController controller;
+  final List<Widget> children;
+  final ValueChanged<int>? onPageChanged;
+  final bool padEnds;
+  final bool enableTransitions; // Add this
+
+  const EasySnapPageView({
+    super.key,
+    required this.controller,
+    required this.children,
+    this.onPageChanged,
+    this.padEnds = false,
+    this.enableTransitions = true, // Default true for phone
+  });
+
+  @override
+  State<EasySnapPageView> createState() => _EasySnapPageViewState();
+}
+
+class _EasySnapPageViewState extends State<EasySnapPageView> {
+  bool _handled = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onHorizontalDragStart: (_) {
+        _handled = false;
+      },
+      onHorizontalDragUpdate: (details) {
+        if (_handled) return;
+
+        final delta = details.primaryDelta ?? 0;
+        if (delta == 0) return;
+
+        _handled = true;
+
+        final currentPage = widget.controller.page?.round() ?? 0;
+        final targetPage =
+            delta > 0
+                ? (currentPage - 1).clamp(0, widget.children.length - 1)
+                : (currentPage + 1).clamp(0, widget.children.length - 1);
+
+        widget.controller.animateToPage(
+          targetPage,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      },
+      child:
+          widget.enableTransitions
+              ? _buildWithTransitions()
+              : _buildWithoutTransitions(),
+    );
+  }
+
+  Widget _buildWithTransitions() {
+    return AnimatedBuilder(
+      animation: widget.controller,
+      builder: (context, _) {
+        return PageView.builder(
+          controller: widget.controller,
+          physics: const NeverScrollableScrollPhysics(),
+          onPageChanged: widget.onPageChanged,
+          padEnds: widget.padEnds,
+          itemCount: widget.children.length,
+          itemBuilder: (context, index) {
+            double page = 0;
+            if (widget.controller.position.hasContentDimensions) {
+              page = widget.controller.page ?? 0;
+            }
+
+            final double offset = (page - index).abs();
+            final double scale = (1 - (offset * 0.15)).clamp(0.85, 1.0);
+            final double opacity = (1 - (offset * 0.5)).clamp(0.5, 1.0);
+
+            return Transform.scale(
+              scale: scale,
+              child: Opacity(opacity: opacity, child: widget.children[index]),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildWithoutTransitions() {
+    return PageView(
+      controller: widget.controller,
+      physics: const NeverScrollableScrollPhysics(),
+      onPageChanged: widget.onPageChanged,
+      padEnds: widget.padEnds,
+      children: widget.children,
     );
   }
 }

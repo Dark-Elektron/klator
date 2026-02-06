@@ -117,7 +117,7 @@ const List<WalkthroughStep> walkthroughSteps = [
     id: 'settings_button',
     title: 'Settings',
     description:
-        'Tap the gear icon \u2699 anytime to access settings. You can always restart this tutorial from there!',
+        'Tap the gear icon \u2630 anytime to access settings. You can always restart this tutorial from there!',
     position: TooltipPosition.above,
     mobileOnly: true,
   ),
@@ -162,15 +162,14 @@ const List<WalkthroughStep> walkthroughSteps = [
     id: 'tablet_settings_button',
     title: 'Settings',
     description:
-        'Tap the gear icon \u2699 anytime to access settings. You can always restart this tutorial from there!',
+        'Tap the gear icon \u2630 anytime to access settings. You can always restart this tutorial from there!',
     position: TooltipPosition.above,
     tabletOnly: true,
   ),
   WalkthroughStep(
     id: 'tablet_swipe_right_back',
     title: 'Navigate Back',
-    description:
-        'Swipe RIGHT to return to Scientific and Number pads anytime.',
+    description: 'Swipe RIGHT to return to Scientific and Number pads anytime.',
     position: TooltipPosition.above,
     requiresAction: true,
     requiredAction: WalkthroughAction.swipeRight,

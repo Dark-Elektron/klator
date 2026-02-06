@@ -51,8 +51,25 @@ class _PopupMenuCalcButtonState extends State<PopupMenuCalcButton> {
   final ValueNotifier<int?> _highlightedIndex = ValueNotifier(null);
   bool _isPressed = false;
 
+  double _effectiveBorderRadius(SettingsProvider settings) {
+    return widget.borderRadius == 0 ? settings.borderRadius : widget.borderRadius;
+  }
+
+  Widget _buildIndicatorDot() {
+    return Container(
+      width: 5,
+      height: 5,
+      decoration: BoxDecoration(
+        color: widget.indicatorColor ?? widget.textColor.withValues(alpha: 0.5),
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+
   void _showOverlay() {
     if (_overlayEntry != null) return;
+
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
 
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
     final Size size = renderBox.size;
@@ -91,7 +108,9 @@ class _PopupMenuCalcButtonState extends State<PopupMenuCalcButton> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.white, // Force white background
-                borderRadius: BorderRadius.circular(widget.borderRadius), // Force square shape
+                borderRadius: BorderRadius.circular(
+                  _effectiveBorderRadius(settings),
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.3),
@@ -220,17 +239,17 @@ class _PopupMenuCalcButtonState extends State<PopupMenuCalcButton> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = Provider.of<SettingsProvider>(context);
+    final effectiveBorderRadius = _effectiveBorderRadius(settings);
+
     return Padding(
-      padding: const EdgeInsets.all(0.5),
+      padding: EdgeInsets.all(settings.buttonSpacing / 2),
       child: GestureDetector(
         onTapDown: (_) => setState(() => _isPressed = true),
         onTapUp: (_) {
           setState(() => _isPressed = false);
           widget.onTap?.call();
-          if (Provider.of<SettingsProvider>(
-            context,
-            listen: false,
-          ).hapticFeedback) {
+          if (settings.hapticFeedback) {
             HapticFeedback.lightImpact();
           }
         },
@@ -250,21 +269,14 @@ class _PopupMenuCalcButtonState extends State<PopupMenuCalcButton> {
           _removeOverlay();
           if (index != null) {
             widget.menuItems[index].onTap();
-            if (Provider.of<SettingsProvider>(
-              context,
-              listen: false,
-            ).hapticFeedback) {
+            if (settings.hapticFeedback) {
               HapticFeedback.heavyImpact();
             }
           }
         },
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(
-              widget.borderRadius == 0
-                  ? Provider.of<SettingsProvider>(context).borderRadius
-                  : widget.borderRadius,
-            ),
+            borderRadius: BorderRadius.circular(effectiveBorderRadius),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.3),
@@ -275,11 +287,7 @@ class _PopupMenuCalcButtonState extends State<PopupMenuCalcButton> {
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(
-              widget.borderRadius == 0
-                  ? Provider.of<SettingsProvider>(context).borderRadius
-                  : widget.borderRadius,
-            ),
+            borderRadius: BorderRadius.circular(effectiveBorderRadius),
             child: Material(
               color: widget.color,
               child: Container(
@@ -299,20 +307,18 @@ class _PopupMenuCalcButtonState extends State<PopupMenuCalcButton> {
                       ),
                     ),
                     if (widget.hasIndicator)
-                      Positioned(
-                        bottom: 4,
-                        right: 4,
-                        child: Container(
-                          width: 5,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color:
-                                widget.indicatorColor ??
-                                widget.textColor.withValues(alpha: 0.5),
-                            shape: BoxShape.circle,
+                      (effectiveBorderRadius > 10)
+                          ? Positioned(
+                            bottom: 4,
+                            left: 0,
+                            right: 0,
+                            child: Center(child: _buildIndicatorDot()),
+                          )
+                          : Positioned(
+                            bottom: 4,
+                            right: 4,
+                            child: _buildIndicatorDot(),
                           ),
-                        ),
-                      ),
                   ],
                 ),
               ),

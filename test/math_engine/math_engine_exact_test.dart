@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:klator/math_engine/math_engine_exact.dart';
+import 'package:klator/math_engine/math_expression_serializer.dart';
 import 'package:klator/math_renderer/math_nodes.dart';
 
 void main() {
@@ -68,7 +69,7 @@ void main() {
     test('negative integer toMathNode', () {
       final nodes = IntExpr.from(-42).toMathNode();
       expect(nodes.length, 1);
-      expect((nodes[0] as LiteralNode).text, '-42');
+      expect((nodes[0] as LiteralNode).text, '\u221242');
     });
 
     test('add integers', () {
@@ -154,7 +155,7 @@ void main() {
 
     test('toString', () {
       expect(IntExpr.from(42).toString(), '42');
-      expect(IntExpr.from(-7).toString(), '-7');
+      expect(IntExpr.from(-7).toString(), '\u22127');
     });
 
     test('add integer to fraction', () {
@@ -544,6 +545,50 @@ void main() {
       expect(sum.toDouble(), closeTo(7.071, 0.001));
     });
 
+    test('factor common variable', () {
+      final sum =
+          SumExpr([
+            ProdExpr([VarExpr('x'), VarExpr('y')]),
+            ProdExpr([VarExpr('x'), VarExpr('z')]),
+          ]).simplify();
+      expect(sum, isA<ProdExpr>());
+      final prod = sum as ProdExpr;
+      expect(
+        prod.factors.any((factor) => factor is VarExpr && factor.name == 'x'),
+        isTrue,
+      );
+      final sumFactor = prod.factors.firstWhere((f) => f is SumExpr) as SumExpr;
+      expect(sumFactor.terms.length, equals(2));
+      expect(
+        sumFactor.terms.any((term) => term is VarExpr && term.name == 'y'),
+        isTrue,
+      );
+      expect(
+        sumFactor.terms.any((term) => term is VarExpr && term.name == 'z'),
+        isTrue,
+      );
+    });
+
+    test('factor common variable powers', () {
+      final sum =
+          SumExpr([
+            ProdExpr([PowExpr(VarExpr('x'), IntExpr.from(2)), VarExpr('y')]),
+            ProdExpr([VarExpr('x'), VarExpr('y')]),
+          ]).simplify();
+      expect(sum, isA<ProdExpr>());
+      final prod = sum as ProdExpr;
+      expect(
+        prod.factors.any((factor) => factor is VarExpr && factor.name == 'x'),
+        isTrue,
+      );
+      expect(
+        prod.factors.any((factor) => factor is VarExpr && factor.name == 'y'),
+        isTrue,
+      );
+      final sumFactor = prod.factors.firstWhere((f) => f is SumExpr) as SumExpr;
+      expect(sumFactor.terms.length, equals(2));
+    });
+
     test('preserve order of unlike terms', () {
       // √2 + 3 + log(7) should stay in that order
       final sum =
@@ -758,6 +803,38 @@ void main() {
       final nodes = prod.toMathNode();
       expect(nodes.isNotEmpty, true);
     });
+
+    test('toMathNode omits explicit multiply for c₀xy', () {
+      final prod = ProdExpr([VarExpr('c₀'), VarExpr('x'), VarExpr('y')]);
+      final nodes = prod.toMathNode();
+      final literalTexts = nodes.whereType<LiteralNode>().map((n) => n.text);
+
+      expect(literalTexts.contains('·'), isFalse);
+      expect(literalTexts.toList(), equals(['c₀', 'x', 'y']));
+    });
+
+    test('toMathNode omits explicit multiply for x²y', () {
+      final prod = ProdExpr([
+        PowExpr(VarExpr('x'), IntExpr.from(2)),
+        VarExpr('y'),
+      ]);
+      final nodes = prod.toMathNode();
+      final hasDot = nodes.whereType<LiteralNode>().any((n) => n.text == '·');
+      expect(hasDot, isFalse);
+    });
+
+    test(
+      'toMathNode keeps explicit multiply between variable and function',
+      () {
+        final prod = ProdExpr([
+          VarExpr('x'),
+          TrigExpr(TrigFunc.sin, VarExpr('x')),
+        ]);
+        final nodes = prod.toMathNode();
+        final hasDot = nodes.whereType<LiteralNode>().any((n) => n.text == '·');
+        expect(hasDot, isTrue);
+      },
+    );
 
     test('copy', () {
       final original = ProdExpr([IntExpr.from(3), IntExpr.from(4)]);
@@ -1436,7 +1513,7 @@ void main() {
     });
 
     test('toString', () {
-      expect(AbsExpr(IntExpr.from(-5)).toString(), '|-5|');
+      expect(AbsExpr(IntExpr.from(-5)).toString(), '|\u22125|');
     });
   });
 
@@ -1963,6 +2040,42 @@ void main() {
       expect((expr as IntExpr).value, BigInt.from(5));
     });
 
+    test('convert arg node', () {
+      final nodes = [
+        TrigNode(function: 'arg', argument: [LiteralNode(text: '0')]),
+      ];
+      final expr = MathNodeToExpr.convert(nodes).simplify();
+      expect(expr, isA<IntExpr>());
+      expect((expr as IntExpr).value, BigInt.zero);
+    });
+
+    test('convert Re node', () {
+      final nodes = [
+        TrigNode(function: 'Re', argument: [LiteralNode(text: '5')]),
+      ];
+      final expr = MathNodeToExpr.convert(nodes).simplify();
+      expect(expr, isA<IntExpr>());
+      expect((expr as IntExpr).value, BigInt.from(5));
+    });
+
+    test('convert Im node', () {
+      final nodes = [
+        TrigNode(function: 'Im', argument: [LiteralNode(text: '5')]),
+      ];
+      final expr = MathNodeToExpr.convert(nodes).simplify();
+      expect(expr, isA<IntExpr>());
+      expect((expr as IntExpr).value, BigInt.zero);
+    });
+
+    test('convert sgn node', () {
+      final nodes = [
+        TrigNode(function: 'sgn', argument: [LiteralNode(text: '-3')]),
+      ];
+      final expr = MathNodeToExpr.convert(nodes).simplify();
+      expect(expr, isA<IntExpr>());
+      expect((expr as IntExpr).value, BigInt.from(-1));
+    });
+
     test('convert addition', () {
       final nodes = [
         LiteralNode(text: '3'),
@@ -2475,6 +2588,56 @@ void main() {
       final result = ExactMathEngine.evaluate(nodes);
       expect(result.isExact, false);
     });
+
+    test('solves quadratic equation exactly', () {
+      final nodes = [LiteralNode(text: 'x^2+2x=1')];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.mathNodes, isNotNull);
+      final serialized = MathExpressionSerializer.serialize(result.mathNodes!);
+      final normalized = serialized.replaceAll(' ', '');
+      expect(normalized.split('\n').length, 2);
+      expect(normalized, contains('x='));
+      expect(normalized, contains('sqrt(2)'));
+      expect(normalized, contains('-1+'));
+      expect(normalized, contains('-1-'));
+      expect(normalized.contains('x^2'), isFalse);
+    });
+
+    test(
+      'quadratic simplifies discriminant and uses coefficient before root',
+      () {
+        final nodes = [LiteralNode(text: 'x^2+2/3x=1')];
+        final result = ExactMathEngine.evaluate(nodes);
+        expect(result.expr, isNotNull);
+        expect(result.expr, isA<SumExpr>());
+        final sum = result.expr as SumExpr;
+        final prodTerms = sum.terms.whereType<ProdExpr>().toList();
+        expect(prodTerms, isNotEmpty);
+        final rootProd = prodTerms.firstWhere(
+          (prod) => prod.factors.any((f) => f is RootExpr),
+        );
+        final root =
+            rootProd.factors.firstWhere((f) => f is RootExpr) as RootExpr;
+        expect(root.radicand, isA<IntExpr>());
+        expect((root.radicand as IntExpr).value, BigInt.from(10));
+        expect(rootProd.factors.any((f) => f is FracExpr), isTrue);
+      },
+    );
+
+    test('solves linear system with fractional coefficients', () {
+      final nodes = [
+        LiteralNode(text: 'x+1/2y=5'),
+        NewlineNode(),
+        LiteralNode(text: 'x-1/2y=1'),
+      ];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.mathNodes, isNotNull);
+      final serialized = MathExpressionSerializer.serialize(result.mathNodes!);
+      final normalized = serialized.replaceAll(' ', '');
+      expect(normalized, contains('x=3'));
+      expect(normalized, contains('y=4'));
+      expect(normalized.contains('='), isTrue);
+    });
   });
 
   group('ExactResult', () {
@@ -2548,10 +2711,10 @@ void main() {
     test('toNumericalString for negative infinity', () {
       final result = ExactResult(
         expr: IntExpr.one,
-        mathNodes: [LiteralNode(text: '-∞')],
+        mathNodes: [LiteralNode(text: '\u2212∞')],
         numerical: double.negativeInfinity,
       );
-      expect(result.toNumericalString(), '-∞');
+      expect(result.toNumericalString(), '\u2212∞');
     });
 
     test('toNumericalString strips trailing zeros', () {

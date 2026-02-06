@@ -38,10 +38,7 @@ void main() {
 
     test('square root: sqrt(16) = 4', () {
       final expression = [
-        RootNode(
-          isSquareRoot: true,
-          radicand: [LiteralNode(text: '16')],
-        ),
+        RootNode(isSquareRoot: true, radicand: [LiteralNode(text: '16')]),
       ];
       final serialized = MathExpressionSerializer.serialize(expression);
       final result = MathSolverNew.solve(serialized);
@@ -50,10 +47,7 @@ void main() {
 
     test('trig function: sin(0) = 0', () {
       final expression = [
-        TrigNode(
-          function: 'sin',
-          argument: [LiteralNode(text: '0')],
-        ),
+        TrigNode(function: 'sin', argument: [LiteralNode(text: '0')]),
       ];
       final serialized = MathExpressionSerializer.serialize(expression);
       final result = MathSolverNew.solve(serialized);
@@ -101,10 +95,7 @@ void main() {
 
     test('natural log: ln(1) = 0', () {
       final expression = [
-        LogNode(
-          isNaturalLog: true,
-          argument: [LiteralNode(text: '1')],
-        ),
+        LogNode(isNaturalLog: true, argument: [LiteralNode(text: '1')]),
       ];
       final serialized = MathExpressionSerializer.serialize(expression);
       final result = MathSolverNew.solve(serialized);
@@ -146,20 +137,18 @@ void main() {
 
   group('Integration - Persistence Round Trip', () {
     test('simple expression survives JSON round trip', () {
-      final original = [
-        LiteralNode(text: '2+3'),
-      ];
-      
+      final original = [LiteralNode(text: '2+3')];
+
       // Serialize to JSON
       final json = MathExpressionSerializer.serializeToJson(original);
-      
+
       // Deserialize from JSON
       final restored = MathExpressionSerializer.deserializeFromJson(json);
-      
+
       // Serialize both to string and compare
       final originalStr = MathExpressionSerializer.serialize(original);
       final restoredStr = MathExpressionSerializer.serialize(restored);
-      
+
       expect(restoredStr, equals(originalStr));
     });
 
@@ -175,13 +164,13 @@ void main() {
         LiteralNode(text: '+'),
         RootNode(isSquareRoot: true, radicand: [LiteralNode(text: '16')]),
       ];
-      
+
       final json = MathExpressionSerializer.serializeToJson(original);
       final restored = MathExpressionSerializer.deserializeFromJson(json);
-      
+
       final originalStr = MathExpressionSerializer.serialize(original);
       final restoredStr = MathExpressionSerializer.serialize(restored);
-      
+
       expect(restoredStr, equals(originalStr));
     });
   });
@@ -193,10 +182,10 @@ void main() {
       final serialized1 = MathExpressionSerializer.serialize(expr1);
       final result1 = MathSolverNew.solve(serialized1);
       expect(result1, equals('5'));
-      
+
       // Create ans values map
       final ansValues = {0: result1!};
-      
+
       // Second calculation using ans0
       final expr2 = [
         AnsNode(index: [LiteralNode(text: '0')]),
@@ -204,7 +193,7 @@ void main() {
       ];
       final serialized2 = MathExpressionSerializer.serialize(expr2);
       final result2 = MathSolverNew.solve(serialized2, ansValues: ansValues);
-      
+
       expect(result2, equals('10'));
     });
   });

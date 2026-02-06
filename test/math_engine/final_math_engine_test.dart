@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:klator/math_engine/math_engine.dart';
 
 void main() {
+  // ignore: no_leading_underscores_for_local_identifiers
   double _parse(String? s) {
     if (s == null || s.isEmpty) return 0.0;
     return double.parse(s.replaceAll('\u1D07', 'e').replaceAll(',', '').trim());
@@ -51,10 +52,13 @@ void main() {
 
       // mu0 approx 1.2566e-6
       String? resM = MathSolverNew.solve('\u03BC\u2080'); // μ₀
-      expect(_parse(resM), closeTo(1.256637e-6, 1e-12));
+      expect(
+        _parse(resM),
+        closeTo(1.256637e-6, 1e-9),
+      ); // Reduced precision expectation because > 1e-6 triggers toStringAsFixed(10)
 
       // c0 = 299792458
-      expect(MathSolverNew.solve('c\u2080'), equals('299792458'));
+      expect(MathSolverNew.solve('c\u2080'), equals('2.99792458\u1D078'));
     });
 
     test('Implicit Multiplication with Constants', () {

@@ -10,8 +10,16 @@ void main() {
     test('all steps should have required fields', () {
       for (final step in walkthroughSteps) {
         expect(step.id, isNotEmpty, reason: 'Step should have an id');
-        expect(step.title, isNotEmpty, reason: 'Step ${step.id} should have a title');
-        expect(step.description, isNotEmpty, reason: 'Step ${step.id} should have a description');
+        expect(
+          step.title,
+          isNotEmpty,
+          reason: 'Step ${step.id} should have a title',
+        );
+        expect(
+          step.description,
+          isNotEmpty,
+          reason: 'Step ${step.id} should have a description',
+        );
       }
     });
 
@@ -30,7 +38,7 @@ void main() {
     test('step ids should be unique', () {
       final ids = walkthroughSteps.map((s) => s.id).toList();
       final uniqueIds = ids.toSet();
-      
+
       expect(ids.length, uniqueIds.length, reason: 'Step ids should be unique');
     });
 
@@ -38,19 +46,19 @@ void main() {
       final commonSteps = walkthroughSteps.where(
         (s) => !s.mobileOnly && !s.tabletOnly,
       );
-      
+
       expect(commonSteps, isNotEmpty);
     });
 
     test('should have mobile-only steps', () {
       final mobileSteps = walkthroughSteps.where((s) => s.mobileOnly);
-      
+
       expect(mobileSteps, isNotEmpty);
     });
 
     test('should have tablet-only steps', () {
       final tabletSteps = walkthroughSteps.where((s) => s.tabletOnly);
-      
+
       expect(tabletSteps, isNotEmpty);
     });
 
@@ -74,7 +82,7 @@ void main() {
 
     test('complete step should not require action', () {
       final completeStep = walkthroughSteps.last;
-      
+
       expect(completeStep.requiresAction, false);
     });
 
@@ -85,7 +93,7 @@ void main() {
       final swipeLeftSteps = walkthroughSteps.where(
         (s) => s.id.contains('swipe_left'),
       );
-      
+
       for (final step in swipeRightSteps) {
         if (step.requiresAction) {
           expect(
@@ -95,7 +103,7 @@ void main() {
           );
         }
       }
-      
+
       for (final step in swipeLeftSteps) {
         if (step.requiresAction) {
           expect(
@@ -115,16 +123,17 @@ void main() {
       });
 
       test('should have settings_button step', () {
-        expect(
-          mobileSteps.any((s) => s.id == 'settings_button'),
-          true,
-        );
+        expect(mobileSteps.any((s) => s.id == 'settings_button'), true);
       });
 
       test('settings_button should come before swipe_right_back', () {
-        final settingsIndex = mobileSteps.indexWhere((s) => s.id == 'settings_button');
-        final swipeBackIndex = mobileSteps.indexWhere((s) => s.id == 'swipe_right_back');
-        
+        final settingsIndex = mobileSteps.indexWhere(
+          (s) => s.id == 'settings_button',
+        );
+        final swipeBackIndex = mobileSteps.indexWhere(
+          (s) => s.id == 'swipe_right_back',
+        );
+
         if (settingsIndex != -1 && swipeBackIndex != -1) {
           expect(settingsIndex, lessThan(swipeBackIndex));
         }
@@ -139,20 +148,19 @@ void main() {
       });
 
       test('should have tablet_settings_button step', () {
-        expect(
-          tabletSteps.any((s) => s.id == 'tablet_settings_button'),
-          true,
-        );
+        expect(tabletSteps.any((s) => s.id == 'tablet_settings_button'), true);
       });
 
       test('tablet flow should have fewer swipe steps than mobile', () {
-        final mobileSwipeSteps = walkthroughSteps
-            .where((s) => !s.tabletOnly && s.requiresAction)
-            .length;
-        final tabletSwipeSteps = walkthroughSteps
-            .where((s) => !s.mobileOnly && s.requiresAction)
-            .length;
-        
+        final mobileSwipeSteps =
+            walkthroughSteps
+                .where((s) => !s.tabletOnly && s.requiresAction)
+                .length;
+        final tabletSwipeSteps =
+            walkthroughSteps
+                .where((s) => !s.mobileOnly && s.requiresAction)
+                .length;
+
         expect(tabletSwipeSteps, lessThan(mobileSwipeSteps));
       });
     });
@@ -166,7 +174,7 @@ void main() {
         description: 'Test Description',
         position: TooltipPosition.below,
       );
-      
+
       expect(step.id, 'test_step');
       expect(step.title, 'Test Title');
       expect(step.description, 'Test Description');
@@ -186,7 +194,7 @@ void main() {
         requiresAction: true,
         requiredAction: WalkthroughAction.swipeLeft,
       );
-      
+
       expect(step.requiresAction, true);
       expect(step.requiredAction, WalkthroughAction.swipeLeft);
     });
@@ -199,7 +207,7 @@ void main() {
         position: TooltipPosition.above,
         mobileOnly: true,
       );
-      
+
       expect(step.mobileOnly, true);
       expect(step.tabletOnly, false);
     });
@@ -212,7 +220,7 @@ void main() {
         position: TooltipPosition.above,
         tabletOnly: true,
       );
-      
+
       expect(step.mobileOnly, false);
       expect(step.tabletOnly, true);
     });

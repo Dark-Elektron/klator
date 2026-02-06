@@ -11,11 +11,11 @@ void main() {
       MathSolverNew.precision = 6;
     });
 
-    test('Small integer remains plain with automatic format', () {
+    test('Large integer becomes scientific with automatic format (>= 1e6)', () {
       final expr = IntExpr(BigInt.from(123456789));
       final nodes = expr.toMathNode();
       expect(nodes.length, equals(1));
-      expect((nodes[0] as LiteralNode).text, equals('123456789'));
+      expect((nodes[0] as LiteralNode).text, equals('1.234568\u1D078'));
     });
 
     test('Large integer (>1e15) uses scientific notation', () {
@@ -63,7 +63,7 @@ void main() {
     });
 
     test(
-      'Fraction does NOT use scientific notation for small numbers even in scientific mode',
+      'Fraction DOES use scientific notation for components in scientific mode',
       () {
         MathSolverNew.numberFormat = NumberFormat.scientific;
         final expr = FracExpr(
@@ -72,8 +72,8 @@ void main() {
         );
         final nodes = expr.toMathNode();
         final frac = nodes[0] as FractionNode;
-        expect((frac.numerator[0] as LiteralNode).text, equals('21'));
-        expect((frac.denominator[0] as LiteralNode).text, equals('5'));
+        expect((frac.numerator[0] as LiteralNode).text, equals('2.1\u1D071'));
+        expect((frac.denominator[0] as LiteralNode).text, equals('5\u1D070'));
       },
     );
 

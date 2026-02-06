@@ -15,10 +15,7 @@ void main() {
     });
 
     test('serializes multiple literals', () {
-      final expression = [
-        LiteralNode(text: '2'),
-        LiteralNode(text: '+3'),
-      ];
+      final expression = [LiteralNode(text: '2'), LiteralNode(text: '+3')];
       expect(MathExpressionSerializer.serialize(expression), equals('2+3'));
     });
   });
@@ -31,7 +28,10 @@ void main() {
           den: [LiteralNode(text: '2')],
         ),
       ];
-      expect(MathExpressionSerializer.serialize(expression), equals('((1)/(2))'));
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('((1)/(2))'),
+      );
     });
 
     test('serializes fraction with expressions', () {
@@ -41,7 +41,10 @@ void main() {
           den: [LiteralNode(text: '4')],
         ),
       ];
-      expect(MathExpressionSerializer.serialize(expression), equals('((2+3)/(4))'));
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('((2+3)/(4))'),
+      );
     });
 
     test('serializes nested fractions', () {
@@ -79,16 +82,17 @@ void main() {
           power: [LiteralNode(text: '2')],
         ),
       ];
-      expect(MathExpressionSerializer.serialize(expression), equals('(2+1)^(2)'));
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('(2+1)^(2)'),
+      );
     });
   });
 
   group('MathExpressionSerializer - Parenthesis Serialization', () {
     test('serializes parentheses', () {
       final expression = [
-        ParenthesisNode(
-          content: [LiteralNode(text: '2+3')],
-        ),
+        ParenthesisNode(content: [LiteralNode(text: '2+3')]),
       ];
       expect(MathExpressionSerializer.serialize(expression), equals('(2+3)'));
     });
@@ -97,9 +101,7 @@ void main() {
       final expression = [
         ParenthesisNode(
           content: [
-            ParenthesisNode(
-              content: [LiteralNode(text: '1+2')],
-            ),
+            ParenthesisNode(content: [LiteralNode(text: '1+2')]),
             LiteralNode(text: '+3'),
           ],
         ),
@@ -112,42 +114,55 @@ void main() {
   group('MathExpressionSerializer - Trig Function Serialization', () {
     test('serializes sin function', () {
       final expression = [
-        TrigNode(
-          function: 'sin',
-          argument: [LiteralNode(text: '30')],
-        ),
+        TrigNode(function: 'sin', argument: [LiteralNode(text: '30')]),
       ];
       expect(MathExpressionSerializer.serialize(expression), equals('sin(30)'));
     });
 
     test('serializes cos function', () {
       final expression = [
-        TrigNode(
-          function: 'cos',
-          argument: [LiteralNode(text: '60')],
-        ),
+        TrigNode(function: 'cos', argument: [LiteralNode(text: '60')]),
       ];
       expect(MathExpressionSerializer.serialize(expression), equals('cos(60)'));
     });
 
     test('serializes tan function', () {
       final expression = [
-        TrigNode(
-          function: 'tan',
-          argument: [LiteralNode(text: '45')],
-        ),
+        TrigNode(function: 'tan', argument: [LiteralNode(text: '45')]),
       ];
       expect(MathExpressionSerializer.serialize(expression), equals('tan(45)'));
+    });
+
+    test('serializes arg function', () {
+      final expression = [
+        TrigNode(function: 'arg', argument: [LiteralNode(text: '3+4i')]),
+      ];
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('arg(3+4*i)'),
+      );
+    });
+
+    test('serializes Re/Im/sgn functions', () {
+      final reExpr = [
+        TrigNode(function: 'Re', argument: [LiteralNode(text: '3+4i')]),
+      ];
+      final imExpr = [
+        TrigNode(function: 'Im', argument: [LiteralNode(text: '3+4i')]),
+      ];
+      final sgnExpr = [
+        TrigNode(function: 'sgn', argument: [LiteralNode(text: '3+4i')]),
+      ];
+      expect(MathExpressionSerializer.serialize(reExpr), equals('Re(3+4*i)'));
+      expect(MathExpressionSerializer.serialize(imExpr), equals('Im(3+4*i)'));
+      expect(MathExpressionSerializer.serialize(sgnExpr), equals('sgn(3+4*i)'));
     });
   });
 
   group('MathExpressionSerializer - Root Serialization', () {
     test('serializes square root', () {
       final expression = [
-        RootNode(
-          isSquareRoot: true,
-          radicand: [LiteralNode(text: '4')],
-        ),
+        RootNode(isSquareRoot: true, radicand: [LiteralNode(text: '4')]),
       ];
       expect(MathExpressionSerializer.serialize(expression), equals('sqrt(4)'));
     });
@@ -160,17 +175,17 @@ void main() {
           radicand: [LiteralNode(text: '8')],
         ),
       ];
-      expect(MathExpressionSerializer.serialize(expression), equals('((8)^(1/(3)))'));
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('((8)^(1/(3)))'),
+      );
     });
   });
 
   group('MathExpressionSerializer - Log Serialization', () {
     test('serializes natural log', () {
       final expression = [
-        LogNode(
-          isNaturalLog: true,
-          argument: [LiteralNode(text: '10')],
-        ),
+        LogNode(isNaturalLog: true, argument: [LiteralNode(text: '10')]),
       ];
       expect(MathExpressionSerializer.serialize(expression), equals('ln(10)'));
     });
@@ -183,7 +198,10 @@ void main() {
           argument: [LiteralNode(text: '100')],
         ),
       ];
-      expect(MathExpressionSerializer.serialize(expression), equals('(ln(100)/ln(10))'));
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('(ln(100)/ln(10))'),
+      );
     });
 
     test('serializes log with custom base', () {
@@ -194,7 +212,10 @@ void main() {
           argument: [LiteralNode(text: '8')],
         ),
       ];
-      expect(MathExpressionSerializer.serialize(expression), equals('(ln(8)/ln(2))'));
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('(ln(8)/ln(2))'),
+      );
     });
   });
 
@@ -206,7 +227,10 @@ void main() {
           r: [LiteralNode(text: '2')],
         ),
       ];
-      expect(MathExpressionSerializer.serialize(expression), equals('perm(5,2)'));
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('perm(5,2)'),
+      );
     });
 
     test('serializes combination', () {
@@ -216,7 +240,10 @@ void main() {
           r: [LiteralNode(text: '2')],
         ),
       ];
-      expect(MathExpressionSerializer.serialize(expression), equals('comb(5,2)'));
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('comb(5,2)'),
+      );
     });
 
     test('serializes permutation with expressions', () {
@@ -228,25 +255,55 @@ void main() {
           r: [LiteralNode(text: '2')],
         ),
       ];
-      expect(MathExpressionSerializer.serialize(expression), equals('perm((2+3),2)'));
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('perm((2+3),2)'),
+      );
+    });
+  });
+
+  group('MathExpressionSerializer - Calculus Serialization', () {
+    test('serializes derivative', () {
+      final expression = [
+        DerivativeNode(
+          variable: [LiteralNode(text: 'x')],
+          at: [LiteralNode(text: '2')],
+          body: [LiteralNode(text: 'x^2')],
+        ),
+      ];
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('diff(x,2,x^2)'),
+      );
+    });
+
+    test('serializes integral', () {
+      final expression = [
+        IntegralNode(
+          variable: [LiteralNode(text: 'x')],
+          lower: [LiteralNode(text: '0')],
+          upper: [LiteralNode(text: '1')],
+          body: [LiteralNode(text: 'x')],
+        ),
+      ];
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('int(x,0,1,x)'),
+      );
     });
   });
 
   group('MathExpressionSerializer - ANS Serialization', () {
     test('serializes ans node', () {
       final expression = [
-        AnsNode(
-          index: [LiteralNode(text: '0')],
-        ),
+        AnsNode(index: [LiteralNode(text: '0')]),
       ];
       expect(MathExpressionSerializer.serialize(expression), equals('ans0'));
     });
 
     test('serializes ans with index', () {
       final expression = [
-        AnsNode(
-          index: [LiteralNode(text: '5')],
-        ),
+        AnsNode(index: [LiteralNode(text: '5')]),
       ];
       expect(MathExpressionSerializer.serialize(expression), equals('ans5'));
     });
@@ -259,7 +316,10 @@ void main() {
         NewlineNode(),
         LiteralNode(text: 'x-y=1'),
       ];
-      expect(MathExpressionSerializer.serialize(expression), equals('x+y=5\nx-y=1'));
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('x+y=5\nx-y=1'),
+      );
     });
   });
 
@@ -268,7 +328,7 @@ void main() {
       final original = [LiteralNode(text: '123')];
       final json = MathExpressionSerializer.serializeToJson(original);
       final restored = MathExpressionSerializer.deserializeFromJson(json);
-      
+
       expect(restored.length, equals(1));
       expect((restored[0] as LiteralNode).text, equals('123'));
     });
@@ -282,10 +342,10 @@ void main() {
       ];
       final json = MathExpressionSerializer.serializeToJson(original);
       final restored = MathExpressionSerializer.deserializeFromJson(json);
-      
+
       expect(restored.length, equals(1));
       expect(restored[0], isA<FractionNode>());
-      
+
       final fraction = restored[0] as FractionNode;
       expect((fraction.numerator[0] as LiteralNode).text, equals('1'));
       expect((fraction.denominator[0] as LiteralNode).text, equals('2'));
@@ -302,11 +362,33 @@ void main() {
       ];
       final json = MathExpressionSerializer.serializeToJson(original);
       final restored = MathExpressionSerializer.deserializeFromJson(json);
-      
+
       expect(restored.length, equals(3));
       expect(restored[0], isA<LiteralNode>());
       expect(restored[1], isA<FractionNode>());
       expect(restored[2], isA<LiteralNode>());
+    });
+
+    test('serializes and deserializes calculus nodes', () {
+      final original = [
+        DerivativeNode(
+          variable: [LiteralNode(text: 'x')],
+          at: [LiteralNode(text: '1')],
+          body: [LiteralNode(text: 'x^2')],
+        ),
+        IntegralNode(
+          variable: [LiteralNode(text: 'x')],
+          lower: [LiteralNode(text: '0')],
+          upper: [LiteralNode(text: '2')],
+          body: [LiteralNode(text: 'x')],
+        ),
+      ];
+      final json = MathExpressionSerializer.serializeToJson(original);
+      final restored = MathExpressionSerializer.deserializeFromJson(json);
+
+      expect(restored.length, equals(2));
+      expect(restored[0], isA<DerivativeNode>());
+      expect(restored[1], isA<IntegralNode>());
     });
 
     test('handles empty json', () {

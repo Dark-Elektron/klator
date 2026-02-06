@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:klator/utils/constants.dart';
+import 'package:klator/utils/texture_generator.dart';
 import 'package:provider/provider.dart';
 import 'settings/settings_provider.dart';
 import 'math_renderer/renderer.dart';
@@ -12,10 +13,13 @@ import 'walkthrough/walkthrough_service.dart';
 import 'walkthrough/walkthrough_overlay.dart';
 import 'utils/app_state.dart';
 import 'math_renderer/expression_selection.dart';
+import 'utils/compute_service.dart';
 import 'math_renderer/math_editor_controller.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'math_engine/math_engine_exact.dart';
 import 'math_renderer/math_result_display.dart';
+import 'math_renderer/decimal_result_nodes.dart';
+import 'widgets/textured_container.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,7 +70,7 @@ class MyApp extends StatelessWidget {
           theme: ThemeData(
             brightness: Brightness.light,
             primarySwatch: Colors.blueGrey,
-            fontFamily: FONTFAMILY,
+            fontFamily: settings.fontFamily,
             scaffoldBackgroundColor: Colors.white,
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.blueGrey,
@@ -81,7 +85,7 @@ class MyApp extends StatelessWidget {
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primarySwatch: Colors.blueGrey,
-            fontFamily: FONTFAMILY,
+            fontFamily: settings.fontFamily,
             scaffoldBackgroundColor: const Color(0xFF121212),
             appBarTheme: const AppBarTheme(
               backgroundColor: Color(0xFF1E1E1E),
@@ -110,8 +114,14 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  static const Duration _cellCreateTransitionDuration = Duration(
+    milliseconds: 300,
+  );
+  static const Duration _cellDeleteTransitionDuration = Duration(
+    milliseconds: 250,
+  );
   int count = 0;
-  Map<int, GlobalKey<MathEditorInlineState>> mathEditorKeys = {}; // ADD THIS
+  Map<int, GlobalKey<MathEditorInlineState>> mathEditorKeys = {};
   Map<int, TextEditingController> textDisplayControllers = {};
   Map<int, MathEditorController> mathEditorControllers = {};
   Map<int, FocusNode> focusNodes = {};
@@ -124,28 +134,32 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Map<int, ValueNotifier<int>> currentResultPageNotifiers = {};
 
   Map<int, ValueNotifier<int>> exactResultVersionNotifiers = {};
-  // OLD:
-  // Map<int, double> resultPageProgress = {};
 
-  // NEW:
   Map<int, ValueNotifier<double>> resultPageProgressNotifiers = {};
   int activeIndex = 0;
-  PageController pgViewController = PageController(
-    initialPage: 1,
-    viewportFraction: 1,
-  );
   bool isVisible = true;
   bool isTypingExponent = false;
-  double plotMaxHeight = 300;
-  double plotMinHeight = 21;
   bool _isUpdating = false;
   String _globalClearId = DateTime.now().toIso8601String();
   bool _isLoading = true;
   List<String> answers = [];
+  final bool _isKeypadVisible = true;
+  final Map<int, bool> _plotExpanded = {};
+  final Map<int, bool> _cellVisibilityByToken = {};
+  final Set<int> _cellsPendingEntry = <int>{};
+  final Set<int> _cellsPendingRemoval = <int>{};
 
   SettingsProvider? _settingsProvider;
   bool _listenerAdded = false;
   Timer? _deleteTimer;
+  ThemeType? _lastThemeType;
+  double? _lastPrecision;
+  NumberFormat? _lastNumberFormat;
+  String? _lastMultiplicationSign;
+  String? _lastFontFamily;
+
+  // Compute service for background isolate computation
+  late ComputeService _computeService;
 
   // Walkthrough
   late WalkthroughService _walkthroughService;
@@ -222,18 +236,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
 
+    // Initialize compute service
+    _computeService = ComputeService(
+      debounceDuration: const Duration(milliseconds: 150),
+      onResult: _onComputeResult,
+    );
+
     // Initialize walkthrough service
     _walkthroughService = WalkthroughService();
     _walkthroughService.addListener(_onWalkthroughChanged);
 
     WidgetsBinding.instance.addObserver(this);
     _loadCells();
-
-    if (mathEditorControllers.isEmpty) {
-      _createControllers(0);
-      count = 1;
-      activeIndex = 0;
-    }
 
     // Initialize walkthrough after build is complete
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -247,21 +261,52 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  // ============================================
-  // COMPREHENSIVE FIX - Replace these sections
-  // ============================================
+  int? _findControllerIndex(MathEditorController controller) {
+    for (final entry in mathEditorControllers.entries) {
+      if (identical(entry.value, controller)) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
 
-  // 2. REPLACE _createControllers entirely:
-  void _createControllers(int index) {
-    mathEditorControllers[index] = MathEditorController();
+  int _cellToken(MathEditorController controller) {
+    return identityHashCode(controller);
+  }
 
-    mathEditorControllers[index]!.onResultChanged = () {
-      _cascadeUpdates(index);
+  void _cancelCellAnimationState() {
+    _cellVisibilityByToken.clear();
+    _cellsPendingEntry.clear();
+    _cellsPendingRemoval.clear();
+  }
+
+  void _bindControllerCallbacks(MathEditorController controller) {
+    controller.onResultChanged = () {
+      final index = _findControllerIndex(controller);
+      if (index != null) {
+        _requestComputation(index);
+      }
     };
 
-    mathEditorControllers[index]!.addListener(() {
-      _autoScrollToEnd(index);
+    controller.addListener(() {
+      final index = _findControllerIndex(controller);
+      if (index != null) {
+        _autoScrollToEnd(index);
+      }
     });
+  }
+
+  void _createControllers(int index, {bool animateEntry = false}) {
+    final controller = MathEditorController();
+    mathEditorControllers[index] = controller;
+    _bindControllerCallbacks(controller);
+    final int token = _cellToken(controller);
+    _cellVisibilityByToken[token] = true;
+    if (animateEntry) {
+      _cellsPendingEntry.add(token);
+    } else {
+      _cellsPendingEntry.remove(token);
+    }
 
     textDisplayControllers[index] = TextEditingController();
     focusNodes[index] = FocusNode();
@@ -277,156 +322,323 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     exactResultExprs[index] = null;
   }
 
-  // 4. REPLACE _updateExactResult:
-  void _updateExactResult(int index) {
+  /// Request computation for a cell via the background ComputeService.
+  /// This debounces the request and runs it in a background isolate.
+  void _requestComputation(int index) {
     final controller = mathEditorControllers[index];
     if (controller == null) return;
 
-    try {
-      // Collect valid previous exact results for substitution
-      Map<int, Expr> ansExprs = {};
-      List<int> sortedKeys = mathEditorControllers.keys.toList()..sort();
-      for (int key in sortedKeys) {
-        if (key < index) {
-          Expr? prevExpr = exactResultExprs[key];
-          if (prevExpr != null) {
-            ansExprs[key] = prevExpr;
-          }
+    // Collect ans expressions for exact engine
+    Map<int, Expr> ansExprs = {};
+    List<int> sortedKeys = mathEditorControllers.keys.toList()..sort();
+    for (int key in sortedKeys) {
+      if (key < index) {
+        Expr? prevExpr = exactResultExprs[key];
+        if (prevExpr != null) {
+          ansExprs[key] = prevExpr;
         }
       }
+    }
 
-      ExactResult result = ExactMathEngine.evaluate(
-        controller.expression,
-        ansExpressions: ansExprs,
-      );
+    // Collect ans values for decimal engine
+    Map<int, String> ansValues = _getAnsValues();
 
-      if (result.isEmpty || result.hasError) {
-        exactResultNodes[index] = null;
-        exactResultExprs[index] = null;
-      } else if (result.mathNodes != null && result.mathNodes!.isNotEmpty) {
-        exactResultNodes[index] = result.mathNodes;
-        exactResultExprs[index] = result.expr;
+    _computeService.computeForCell(
+      cellIndex: index,
+      expression: controller.expression,
+      ansValues: ansValues,
+      ansExpressions: ansExprs,
+    );
+  }
+
+  /// Callback invoked when a background computation completes.
+  void _onComputeResult(CellComputeResult result) {
+    if (!mounted) return;
+
+    final index = result.cellIndex;
+    final controller = mathEditorControllers[index];
+    if (controller == null) return;
+
+    final oldDecimal = controller.result;
+    final oldExactExpr = exactResultExprs[index];
+
+    final newDecimal = result.decimalResult;
+    final newExactExpr = result.exactExpr;
+
+    // Check if result effectively changed
+    bool decimalChanged = oldDecimal != newDecimal;
+    bool exactChanged = false;
+
+    if (oldExactExpr == null && newExactExpr != null) {
+      exactChanged = true;
+    } else if (oldExactExpr != null && newExactExpr == null) {
+      exactChanged = true;
+    } else if (oldExactExpr != null && newExactExpr != null) {
+      exactChanged = !oldExactExpr.structurallyEquals(newExactExpr);
+    }
+
+    bool hasChanged = decimalChanged || exactChanged;
+    bool isActiveCell = index == activeIndex;
+
+    // Always update if active cell (user typing) OR if result changed
+    if (isActiveCell || hasChanged) {
+      // Update decimal result
+      controller.result = newDecimal;
+      controller.updateAnswer(textDisplayControllers[index]);
+
+      // Update exact result
+      if (result.exactNodes != null && result.exactNodes!.isNotEmpty) {
+        exactResultNodes[index] = result.exactNodes;
+        exactResultExprs[index] = result.exactExpr;
       } else {
         exactResultNodes[index] = null;
         exactResultExprs[index] = null;
       }
-    } catch (e) {
-      exactResultNodes[index] = null;
-      exactResultExprs[index] = null;
-    }
 
-    // Notify that exact result changed
-    final notifier = exactResultVersionNotifiers[index];
-    if (notifier != null) {
-      notifier.value = notifier.value + 1;
+      // Notify that exact result changed (triggers animation)
+      final notifier = exactResultVersionNotifiers[index];
+      if (notifier != null) {
+        notifier.value = notifier.value + 1;
+      }
+
+      // Only cascade if the result actually changed
+      if (hasChanged) {
+        _cascadeToDependents(index);
+      }
+
+      setState(() {});
     }
   }
 
-  // 5. REPLACE _buildExpressionDisplay ENTIRELY:
-  Container _buildExpressionDisplay(int index, AppColors colors) {
+  Widget _buildExpressionDisplay(
+    int index,
+    AppColors colors, {
+    double? maxPlotHeight,
+    bool forcePlotExpanded = false,
+  }) {
     final mathEditorController = mathEditorControllers[index];
-    // final resController = textDisplayControllers[index];
     final mathEditorKey = mathEditorKeys[index];
     final scrollController = scrollControllers[index];
     final bool isFocused = (activeIndex == index);
     final bool shouldAddKeys = index == activeIndex;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: colors.containerBackground,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            spreadRadius: 2,
-            blurRadius: 7,
-            offset: const Offset(0, 0),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: <Widget>[
-          // Expression input area
-          Container(
-            key: shouldAddKeys ? _expressionKey : null,
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            child: AnimatedOpacity(
-              curve: Curves.easeIn,
-              duration: const Duration(milliseconds: 500),
-              opacity: isVisible ? 1.0 : 0.0,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return Center(
-                    child: SingleChildScrollView(
-                      controller: scrollController,
-                      scrollDirection: Axis.horizontal,
-                      reverse: true,
-                      child: MathEditorInline(
-                        key: mathEditorKey,
-                        controller: mathEditorController!,
-                        showCursor: isFocused,
-                        minWidth: constraints.maxWidth,
-                        onFocus: () {
-                          if (activeIndex != index) {
-                            setState(() {
-                              activeIndex = index;
-                            });
-                          }
-                        },
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: <Widget>[
+            TexturedContainer(
+              baseColor: colors.containerBackground,
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    spreadRadius: 2,
+                    blurRadius: 7,
+                    offset: const Offset(0, 0),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  // Expression input area - transparent background
+                  SizedBox(
+                    key: shouldAddKeys ? _expressionKey : null,
+                    width: double.infinity,
+                    // No color - let texture show through
+                    child: Padding(
+                      padding: const EdgeInsets.all(5),
+                      child: AnimatedOpacity(
+                        curve: Curves.easeIn,
+                        duration: const Duration(milliseconds: 200),
+                        opacity: isVisible ? 1.0 : 0.0,
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return Center(
+                              child: SingleChildScrollView(
+                                controller: scrollController,
+                                scrollDirection: Axis.horizontal,
+                                reverse: true,
+                                child: MathEditorInline(
+                                  key: mathEditorKey,
+                                  controller: mathEditorController!,
+                                  showCursor: isFocused,
+                                  minWidth: constraints.maxWidth,
+                                  onFocus: () {
+                                    if (activeIndex != index) {
+                                      setState(() {
+                                        activeIndex = index;
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
-                  );
-                },
+                  ),
+
+                  // Result area - transparent background
+                  _ResultPageViewWidget(
+                    key: ValueKey('result_pageview_${index}_$_globalClearId'),
+                    index: index,
+                    colors: colors,
+                    shouldAddKeys: shouldAddKeys,
+                    isVisible: isVisible,
+                    exactResultNodes: exactResultNodes,
+                    currentResultPage: currentResultPage,
+                    currentResultPageNotifiers: currentResultPageNotifiers,
+                    resultPageProgressNotifiers: resultPageProgressNotifiers,
+                    exactResultVersionNotifiers: exactResultVersionNotifiers,
+                    resultPageControllers: resultPageControllers,
+                    textDisplayControllers: textDisplayControllers,
+                    ansIndexKey: _ansIndexKey,
+                    resultKey: _resultKey,
+                    calculateDecimalResultHeight: _calculateDecimalResultHeight,
+                    calculateExactResultHeight: _calculateExactResultHeight,
+                    useTransparentBackground: true,
+                  ),
+                ],
               ),
             ),
-          ),
-
-          // Result area with PageView - use StatefulBuilder to isolate rebuilds
-          _ResultPageViewWidget(
-            key: ValueKey('result_pageview_${index}_$_globalClearId'),
-            index: index,
-            colors: colors,
-            shouldAddKeys: shouldAddKeys,
-            isVisible: isVisible,
-            exactResultNodes: exactResultNodes,
-            currentResultPage: currentResultPage,
-            currentResultPageNotifiers: currentResultPageNotifiers,
-            resultPageProgressNotifiers: resultPageProgressNotifiers,
-            exactResultVersionNotifiers: exactResultVersionNotifiers,
-            resultPageControllers: resultPageControllers,
-            textDisplayControllers: textDisplayControllers,
-            ansIndexKey: _ansIndexKey,
-            resultKey: _resultKey,
-            calculateDecimalResultHeight: _calculateDecimalResultHeight,
-            calculateExactResultHeight: _calculateExactResultHeight,
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
-  // 8. Keep these height calculation methods in _HomePageState:
+  Widget _buildAnimatedCellList(AppColors colors) {
+    final List<int> keys = mathEditorControllers.keys.toList()..sort();
+    final Map<int, int> tokenToBuilderIndex = <int, int>{};
+    for (int i = 0; i < keys.length; i++) {
+      final int reversedIndex = keys.length - 1 - i;
+      final int cellIndex = keys[reversedIndex];
+      final controller = mathEditorControllers[cellIndex];
+      if (controller != null) {
+        tokenToBuilderIndex[_cellToken(controller)] = i;
+      }
+    }
+
+    return ListView.builder(
+      key: ValueKey('cell_list_$_globalClearId'),
+      physics: const ClampingScrollPhysics(),
+      reverse: true,
+      padding: EdgeInsets.zero,
+      itemCount: keys.length,
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<int>) {
+          return tokenToBuilderIndex[key.value];
+        }
+        return null;
+      },
+      itemBuilder: (context, index) {
+        final int reversedIndex = keys.length - 1 - index;
+        final int cellIndex = keys[reversedIndex];
+        final controller = mathEditorControllers[cellIndex];
+        if (controller == null) return const SizedBox.shrink();
+
+        final int token = _cellToken(controller);
+        final bool isVisible = _cellVisibilityByToken[token] ?? true;
+        final bool isPendingEntry = _cellsPendingEntry.contains(token);
+        final bool isPendingRemoval = _cellsPendingRemoval.contains(token);
+
+        final Widget cellBody = Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: _buildExpressionDisplay(cellIndex, colors),
+        );
+
+        // DELETION ANIMATION
+        if (isPendingRemoval) {
+          return _AnimatedCellWrapper(
+            key: ValueKey<int>(token),
+            token: token,
+            isEntry: false,
+            isVisible: isVisible,
+            duration: _cellDeleteTransitionDuration,
+            onAnimationComplete: () {
+              // Remove the cell after animation completes
+              if (mounted) {
+                final currentIndex = _findControllerIndex(controller);
+                if (currentIndex != null) {
+                  _removeDisplayNow(currentIndex, token);
+                } else {
+                  // Controller already removed, just clean up state
+                  setState(() {
+                    _cellsPendingRemoval.remove(token);
+                    _cellsPendingEntry.remove(token);
+                    _cellVisibilityByToken.remove(token);
+                  });
+                }
+              }
+            },
+            child: cellBody,
+          );
+        }
+
+        // CREATION ANIMATION
+        if (isPendingEntry) {
+          return _AnimatedCellWrapper(
+            key: ValueKey<int>(token),
+            token: token,
+            isEntry: true,
+            isVisible: true,
+            duration: _cellCreateTransitionDuration,
+            onAnimationComplete: () {
+              if (mounted) {
+                setState(() {
+                  _cellsPendingEntry.remove(token);
+                });
+              }
+            },
+            child: cellBody,
+          );
+        }
+
+        // STATIC CELL
+        return KeyedSubtree(key: ValueKey<int>(token), child: cellBody);
+      },
+    );
+  }
+
   double _calculateDecimalResultHeight(int index) {
     final resController = textDisplayControllers[index];
     String text = resController?.text ?? '';
+    final bool isDecimalEmpty = text.trim().isEmpty;
 
-    if (text.isEmpty) return 80.0;
+    if (isDecimalEmpty) {
+      final exactNodes = exactResultNodes[index];
+      if (!_nodesEffectivelyEmpty(exactNodes)) {
+        final decimalNodes = decimalizeExactNodes(exactNodes!);
+        if (decimalNodes.isNotEmpty) {
+          double measuredHeight = MathResultDisplay.calculateTotalHeight(
+            decimalNodes,
+            FONTSIZE,
+          );
+          double totalHeight = measuredHeight + 20 + 10;
+          return totalHeight.clamp(65.0, 500.0);
+        }
+      }
+      return 65.0;
+    }
 
-    // Use the same measurement logic as Exact
-    double measuredHeight = MathResultDisplay.calculateTotalHeight([
-      LiteralNode(text: text),
-    ], FONTSIZE);
+    // Use the same measurement logic as Exact, but handle newlines properly.
+    double measuredHeight = MathResultDisplay.calculateTextHeight(
+      text,
+      FONTSIZE,
+    );
 
-    double totalHeight = measuredHeight + 16 + 10;
-    return totalHeight.clamp(80.0, 300.0);
+    double totalHeight = measuredHeight + 20 + 10;
+    return totalHeight.clamp(65.0, 500.0);
   }
 
   double _calculateExactResultHeight(int index) {
     final exactNodes = exactResultNodes[index];
 
     if (exactNodes == null || exactNodes.isEmpty) {
-      return 80.0;
+      return 65.0;
     }
 
     // Use the precise measurement from the display widget logic
@@ -436,8 +648,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
 
     // Add identical padding and clamping as Decimal
-    double totalHeight = measuredHeight + 16 + 10;
-    return totalHeight.clamp(80.0, 300.0);
+    double totalHeight = measuredHeight + 20 + 10;
+    return totalHeight.clamp(65.0, 500.0);
   }
 
   int _estimateNodesHeight(List<MathNode> nodes) {
@@ -476,11 +688,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     _deleteTimer?.cancel();
+    _cancelCellAnimationState();
+    _computeService.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _saveCells();
 
     _walkthroughService.removeListener(_onWalkthroughChanged);
     _walkthroughService.dispose();
+    if (_listenerAdded) {
+      _settingsProvider?.removeListener(_onSettingsChanged);
+    }
 
     for (MathEditorController controller in mathEditorControllers.values) {
       controller.dispose();
@@ -498,9 +715,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       scrollController.dispose();
     }
 
-    for (PageController pageController in resultPageControllers.values) {
-      pageController.dispose();
-    }
+    // Result page controllers are owned by _ResultPageViewWidgetState.
+    // Each widget disposes its own PageController in its dispose method.
 
     for (ValueNotifier<double> notifier in resultPageProgressNotifiers.values) {
       notifier.dispose();
@@ -522,6 +738,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
+    if (state == AppLifecycleState.resumed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        for (final controller in mathEditorControllers.values) {
+          controller.refreshDisplay();
+        }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          mathEditorControllers[activeIndex]?.recalculateCursorRect();
+        });
+      });
+      return;
+    }
+
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
@@ -535,15 +767,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     if (!_listenerAdded) {
       _settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+      _captureSettingsSnapshot(_settingsProvider!);
       _settingsProvider?.addListener(_onSettingsChanged);
       _listenerAdded = true;
     }
   }
 
-  // In main.dart, REPLACE _loadCells():
   Future<void> _loadCells() async {
+    _computeService.cancelAll();
+
     List<CellData> savedCells = await CellPersistence.loadCells();
     int savedIndex = await CellPersistence.loadActiveIndex();
+    if (!mounted) return;
 
     if (savedCells.isEmpty) {
       _createControllers(0);
@@ -556,21 +791,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         List<MathNode> nodes = MathExpressionSerializer.deserializeFromJson(
           savedCells[i].expressionJson,
         );
-        mathEditorControllers[i]?.setExpression(nodes);
-
-        textDisplayControllers[i]?.text = savedCells[i].answer;
+        final mathController = mathEditorControllers[i];
+        mathController?.setExpression(nodes);
+        mathController?.result = savedCells[i].answer;
+        mathController?.updateAnswer(textDisplayControllers[i]);
       }
 
       count = savedCells.length;
       activeIndex = savedIndex.clamp(0, count - 1);
     }
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     // Update exact results for all cells after loading
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       for (int i = 0; i < count; i++) {
-        _updateExactResult(i);
+        _requestComputation(i);
       }
     });
   }
@@ -595,48 +833,99 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await CellPersistence.saveActiveIndex(activeIndex);
   }
 
-  void _onSettingsChanged() {
-    updateMathEditor();
+  void _captureSettingsSnapshot(SettingsProvider settings) {
+    _lastThemeType = settings.themeType;
+    _lastPrecision = settings.precision;
+    _lastNumberFormat = settings.numberFormat;
+    _lastMultiplicationSign = settings.multiplicationSign;
+    _lastFontFamily = settings.fontFamily;
+  }
 
-    for (final controller in mathEditorControllers.values) {
-      controller.refreshDisplay();
+  void _onSettingsChanged() {
+    final settings = _settingsProvider;
+    if (settings == null) return;
+
+    final bool themeChanged = _lastThemeType != settings.themeType;
+    final bool mathRenderChanged =
+        _lastPrecision != settings.precision ||
+        _lastNumberFormat != settings.numberFormat ||
+        _lastMultiplicationSign != settings.multiplicationSign ||
+        _lastFontFamily != settings.fontFamily;
+
+    _captureSettingsSnapshot(settings);
+
+    if (themeChanged) {
+      // Only clear texture cache when the actual theme changes.
+      TextureGenerator.clearCache();
+      unawaited(_prewarmCellTexture());
+    }
+
+    if (mathRenderChanged) {
+      updateMathEditor();
+      for (final controller in mathEditorControllers.values) {
+        controller.refreshDisplay();
+      }
+    }
+
+    if (themeChanged || mathRenderChanged) {
+      setState(() {});
     }
   }
 
-  void _cascadeUpdates(int changedIndex) {
-    if (_isUpdating) return;
-    _isUpdating = true;
+  Future<void> _prewarmCellTexture() async {
+    if (!mounted) return;
 
-    try {
-      mathEditorControllers[changedIndex]?.updateAnswer(
-        textDisplayControllers[changedIndex],
-      );
+    final colors = AppColors.of(context, listen: false);
+    final cached = TextureGenerator.peekCachedTexture(
+      colors.containerBackground,
+    );
+    if (cached != null) return;
 
-      // NEW: Update exact result
-      _updateExactResult(changedIndex);
+    await TextureGenerator.getTexture(
+      colors.containerBackground,
+      const Size(400, 300),
+      intensity: colors.textureIntensity,
+      scale: colors.textureScale,
+      softness: colors.textureSoftness,
+    );
+  }
 
-      List<int> keys = mathEditorControllers.keys.toList()..sort();
+  /// Cascade computation to cells that depend on the changed cell.
+  /// Uses immediate (non-debounced) computation since the trigger
+  /// has already been debounced.
+  void _cascadeToDependents(int changedIndex) {
+    List<int> keys = mathEditorControllers.keys.toList()..sort();
 
-      for (int key in keys) {
-        if (key > changedIndex) {
-          String expr = mathEditorControllers[key]?.expr ?? '';
+    for (int key in keys) {
+      if (key > changedIndex) {
+        String expr = mathEditorControllers[key]?.expr ?? '';
 
-          if (expr.contains('ans$changedIndex') || expr.contains('ans')) {
-            Map<int, String> ansValues = _getAnsValues();
-            mathEditorControllers[key]?.onCalculate(ansValues: ansValues);
-            mathEditorControllers[key]?.updateAnswer(
-              textDisplayControllers[key],
-            );
-            // NEW: Update exact result for cascaded cells
-            _updateExactResult(key);
+        if (expr.contains('ans$changedIndex') || expr.contains('ans')) {
+          final controller = mathEditorControllers[key];
+          if (controller == null) continue;
+
+          // Collect ans expressions for exact engine
+          Map<int, Expr> ansExprs = {};
+          for (int prevKey in keys) {
+            if (prevKey < key) {
+              Expr? prevExpr = exactResultExprs[prevKey];
+              if (prevExpr != null) {
+                ansExprs[prevKey] = prevExpr;
+              }
+            }
           }
+
+          Map<int, String> ansValues = _getAnsValues();
+
+          _computeService.computeForCellImmediate(
+            cellIndex: key,
+            expression: controller.expression,
+            ansValues: ansValues,
+            ansExpressions: ansExprs,
+          );
         }
       }
-    } finally {
-      _isUpdating = false;
     }
-
-    setState(() {});
   }
 
   void focusManager(int index) {
@@ -677,6 +966,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     // Schedule scroll after layout is complete
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       if (scrollController.hasClients) {
         // With reverse: true, position 0 is the RIGHT end (where cursor is)
         if (scrollController.offset != 0) {
@@ -686,17 +976,115 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _addDisplay() {
-    int newIndex = count;
-    _createControllers(newIndex);
+  void _addDisplay({int? insertAt}) async {
+    _computeService.cancelAll();
+
+    // Get colors first
+    final colors = AppColors.of(context, listen: false);
+
+    // Ensure texture is FULLY loaded before creating cell
+    // This is the key - we wait for the actual texture, not just start loading
+    // ignore: unused_local_variable
+    final texture = await TextureGenerator.getTexture(
+      colors.containerBackground,
+      const Size(400, 300),
+      intensity: colors.textureIntensity,
+      scale: colors.textureScale,
+      softness: colors.textureSoftness,
+    );
+
+    if (!mounted) return;
+
+    // Texture is now guaranteed to be in cache
+
+    int insertIndex = insertAt ?? (activeIndex + 1);
+    insertIndex = insertIndex.clamp(0, count);
+
+    if (insertIndex < count) {
+      _shiftControllersUp(insertIndex);
+    }
+
+    _createControllers(insertIndex, animateEntry: true);
+
     setState(() {
       count += 1;
-      activeIndex = newIndex;
+      activeIndex = insertIndex;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(_cellCreateTransitionDuration, () {
+        if (!mounted) return;
+        for (int i = insertIndex + 1; i < count; i++) {
+          _requestComputation(i);
+        }
+      });
     });
   }
 
-  void _removeDisplay(int indexToRemove) {
-    if (count <= 1) return;
+  void _shiftControllersUp(int fromIndex) {
+    // NEW: Update ANS indices in all existing controllers
+    for (final controller in mathEditorControllers.values) {
+      controller.updateAnsReferences(fromIndex, 1);
+    }
+
+    // Work backwards from the end to avoid overwriting
+    for (int i = count - 1; i >= fromIndex; i--) {
+      int newIndex = i + 1;
+
+      // Move all controller references
+      mathEditorControllers[newIndex] = mathEditorControllers[i]!;
+      textDisplayControllers[newIndex] = textDisplayControllers[i]!;
+      focusNodes[newIndex] = focusNodes[i]!;
+      scrollControllers[newIndex] = scrollControllers[i]!;
+      mathEditorKeys[newIndex] = mathEditorKeys[i]!;
+      exactResultNodes[newIndex] = exactResultNodes[i];
+      exactResultExprs[newIndex] = exactResultExprs[i];
+      currentResultPage[newIndex] = currentResultPage[i] ?? 0;
+      currentResultPageNotifiers[newIndex] = currentResultPageNotifiers[i]!;
+      resultPageProgressNotifiers[newIndex] = resultPageProgressNotifiers[i]!;
+      exactResultVersionNotifiers[newIndex] = exactResultVersionNotifiers[i]!;
+
+      // Move resultPageControllers if it exists
+      if (resultPageControllers.containsKey(i)) {
+        resultPageControllers[newIndex] = resultPageControllers[i]!;
+      }
+
+      // Move plot expanded state
+      if (_plotExpanded.containsKey(i)) {
+        _plotExpanded[newIndex] = _plotExpanded[i]!;
+      }
+    }
+
+    // Clear the old references at fromIndex (will be replaced by _createControllers)
+    mathEditorControllers.remove(fromIndex);
+    textDisplayControllers.remove(fromIndex);
+    focusNodes.remove(fromIndex);
+    scrollControllers.remove(fromIndex);
+    mathEditorKeys.remove(fromIndex);
+    resultPageControllers.remove(fromIndex);
+    exactResultNodes.remove(fromIndex);
+    exactResultExprs.remove(fromIndex);
+    currentResultPage.remove(fromIndex);
+    currentResultPageNotifiers.remove(fromIndex);
+    resultPageProgressNotifiers.remove(fromIndex);
+    exactResultVersionNotifiers.remove(fromIndex);
+    _plotExpanded.remove(fromIndex);
+  }
+
+  void _removeDisplayNow(int indexToRemove, int token) {
+    if (count <= 1) {
+      _cellsPendingRemoval.remove(token);
+      _cellsPendingEntry.remove(token);
+      _cellVisibilityByToken.remove(token);
+      return;
+    }
+    _computeService.cancelAll();
+
+    // NEW: Update ANS indices in all remaining controllers
+    // Any reference to a cell AFTER the removed one must be decremented
+    for (final controller in mathEditorControllers.values) {
+      controller.updateAnsReferences(indexToRemove + 1, -1);
+    }
 
     mathEditorControllers[indexToRemove]?.dispose();
     mathEditorControllers.remove(indexToRemove);
@@ -708,7 +1096,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     scrollControllers.remove(indexToRemove);
     mathEditorKeys.remove(indexToRemove);
 
-    resultPageControllers[indexToRemove]?.dispose();
     resultPageControllers.remove(indexToRemove);
     exactResultNodes.remove(indexToRemove);
     currentResultPage.remove(indexToRemove);
@@ -733,11 +1120,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     setState(() {
       count -= 1;
       activeIndex = newActiveIndex;
+      _cellsPendingRemoval.remove(token);
+      _cellsPendingEntry.remove(token);
+      _cellVisibilityByToken.remove(token);
     });
   }
 
+  void _removeDisplay(int indexToRemove) {
+    if (count <= 1) return;
+    final controller = mathEditorControllers[indexToRemove];
+    if (controller == null) return;
+
+    final int token = _cellToken(controller);
+    if (_cellsPendingRemoval.contains(token)) return;
+
+    _computeService.cancelAll();
+
+    setState(() {
+      _cellsPendingRemoval.add(token);
+      _cellVisibilityByToken[token] = false;
+    });
+
+    // Note: The actual removal now happens via onAnimationComplete callback
+    // in _buildAnimatedCellList, not via a timer
+  }
+
   void _clearAllDisplays() {
+    _computeService.cancelAll();
     _saveAppStateForUndo();
+    _cancelCellAnimationState();
 
     for (var controller in mathEditorControllers.values) {
       controller.dispose();
@@ -811,7 +1222,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       newFocusNodes[newIndex] = focusNodes[oldKey]!;
       newScrollControllers[newIndex] = scrollControllers[oldKey]!;
       newMathEditorKeys[newIndex] = mathEditorKeys[oldKey]!;
-      newResultPageControllers[newIndex] = resultPageControllers[oldKey]!;
+      if (resultPageControllers.containsKey(oldKey)) {
+        newResultPageControllers[newIndex] = resultPageControllers[oldKey]!;
+      }
       newExactResultNodes[newIndex] = exactResultNodes[oldKey];
       newExactResultExprs[newIndex] = exactResultExprs[oldKey];
       newCurrentResultPage[newIndex] = currentResultPage[oldKey] ?? 0;
@@ -838,6 +1251,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _restoreAppState(AppState state) {
+    _computeService.cancelAll();
+    _cancelCellAnimationState();
+
     for (var controller in mathEditorControllers.values) {
       controller.dispose();
     }
@@ -879,10 +1295,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     for (int i = 0; i < state.expressions.length; i++) {
       _createControllers(i);
-      mathEditorControllers[i]?.setExpression(
+      final mathController = mathEditorControllers[i];
+      mathController?.setExpression(
         MathClipboard.deepCopyNodes(state.expressions[i]),
       );
-      textDisplayControllers[i]?.text = state.answers[i];
+      mathController?.result = state.answers[i];
+      mathController?.updateAnswer(textDisplayControllers[i]);
     }
 
     if (state.expressions.isEmpty) {
@@ -998,67 +1416,60 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               child: Column(
                 children: <Widget>[
                   Expanded(
-                    child: ListView.builder(
-                      reverse: true,
-                      padding: EdgeInsets.zero,
-                      itemCount: count,
-                      itemBuilder: (context, index) {
-                        List<int> keys =
-                            mathEditorControllers.keys.toList()..sort();
-                        int reversedIndex = keys.length - 1 - index;
-
-                        if (reversedIndex >= 0 && reversedIndex < keys.length) {
-                          return Padding(
-                            padding: EdgeInsets.only(top: 5),
-                            child: _buildExpressionDisplay(
-                              keys[reversedIndex],
-                              colors,
-                            ),
-                          );
-                        }
-                        return SizedBox.shrink();
-                      },
-                    ),
+                    child:
+                        _isKeypadVisible
+                            ? _buildAnimatedCellList(colors)
+                            : _buildActiveCellFullscreen(colors),
                   ),
-                  Builder(
-                    builder: (context) {
-                      final mediaQuery = MediaQuery.of(context);
-                      double screenWidth = mediaQuery.size.width;
-                      bool isLandscape =
-                          mediaQuery.orientation == Orientation.landscape;
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    child:
+                        _isKeypadVisible
+                            ? Builder(
+                              builder: (context) {
+                                final mediaQuery = MediaQuery.of(context);
+                                double screenWidth = mediaQuery.size.width;
+                                bool isLandscape =
+                                    mediaQuery.orientation ==
+                                    Orientation.landscape;
 
-                      return CalculatorKeypad(
-                        screenWidth: screenWidth,
-                        isLandscape: isLandscape,
-                        colors: colors,
-                        activeIndex: activeIndex,
-                        mathEditorControllers: mathEditorControllers,
-                        textDisplayControllers: textDisplayControllers,
-                        settingsProvider: _settingsProvider!,
-                        onUpdateMathEditor: updateMathEditor,
-                        onAddDisplay: _addDisplay,
-                        onRemoveDisplay: _removeDisplay,
-                        onClearAllDisplays: _clearAllDisplays,
-                        countVariablesInExpressions:
-                            countVariablesInExpressions,
-                        onSetState: () => setState(() {}),
-                        onClearSelectionOverlay: _clearAllSelectionOverlays,
-                        canUndoAppState: canUndoAppState,
-                        canRedoAppState: canRedoAppState,
-                        onUndoAppState: _undoAppState,
-                        onRedoAppState: _redoAppState,
-                        // Walkthrough
-                        walkthroughService: _walkthroughService,
-                        basicKeypadKey: _basicKeypadKey,
-                        basicKeypadHandleKey: _basicKeypadHandleKey,
-                        scientificKeypadKey: _scientificKeypadKey,
-                        numberKeypadKey: _numberKeypadKey,
-                        extrasKeypadKey: _extrasKeypadKey,
-                        commandButtonKey: _commandButtonKey,
-                        mainKeypadAreaKey: _mainKeypadAreaKey,
-                        settingsButtonKey: _settingsButtonKey,
-                      );
-                    },
+                                return CalculatorKeypad(
+                                  screenWidth: screenWidth,
+                                  isLandscape: isLandscape,
+                                  colors: colors,
+                                  activeIndex: activeIndex,
+                                  mathEditorControllers: mathEditorControllers,
+                                  textDisplayControllers:
+                                      textDisplayControllers,
+                                  settingsProvider: _settingsProvider!,
+                                  onUpdateMathEditor: updateMathEditor,
+                                  onAddDisplay: _addDisplay,
+                                  onRemoveDisplay: _removeDisplay,
+                                  onClearAllDisplays: _clearAllDisplays,
+                                  countVariablesInExpressions:
+                                      countVariablesInExpressions,
+                                  onSetState: () => setState(() {}),
+                                  onClearSelectionOverlay:
+                                      _clearAllSelectionOverlays,
+                                  canUndoAppState: canUndoAppState,
+                                  canRedoAppState: canRedoAppState,
+                                  onUndoAppState: _undoAppState,
+                                  onRedoAppState: _redoAppState,
+                                  // Walkthrough
+                                  walkthroughService: _walkthroughService,
+                                  basicKeypadKey: _basicKeypadKey,
+                                  basicKeypadHandleKey: _basicKeypadHandleKey,
+                                  scientificKeypadKey: _scientificKeypadKey,
+                                  numberKeypadKey: _numberKeypadKey,
+                                  extrasKeypadKey: _extrasKeypadKey,
+                                  commandButtonKey: _commandButtonKey,
+                                  mainKeypadAreaKey: _mainKeypadAreaKey,
+                                  settingsButtonKey: _settingsButtonKey,
+                                );
+                              },
+                            )
+                            : const SizedBox.shrink(),
                   ),
                 ],
               ),
@@ -1105,19 +1516,47 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       List<int> keys = mathEditorControllers.keys.toList()..sort();
 
       for (int key in keys) {
-        Map<int, String> ansValues = _getAnsValues();
-        mathEditorControllers[key]?.onCalculate(ansValues: ansValues);
-        mathEditorControllers[key]?.updateAnswer(textDisplayControllers[key]);
-
-        // NEW: Update exact result
-        _updateExactResult(key);
+        // Trigger the async compute pipeline for each cell
+        _requestComputation(key);
       }
     } finally {
       _isUpdating = false;
     }
 
-    setState(() {});
     _saveCells();
+  }
+
+  int _getFullscreenIndex() {
+    if (_plotExpanded[activeIndex] ?? false) return activeIndex;
+    for (final entry in _plotExpanded.entries) {
+      if (entry.value) return entry.key;
+    }
+    return activeIndex;
+  }
+
+  Widget _buildActiveCellFullscreen(AppColors colors) {
+    final index = _getFullscreenIndex();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final page = currentResultPage[index] ?? 0;
+        final resultHeight =
+            page == 0
+                ? _calculateDecimalResultHeight(index)
+                : _calculateExactResultHeight(index);
+        final expressionHeight = (FONTSIZE * 1.5) + 20;
+        final available = (constraints.maxHeight -
+                expressionHeight -
+                resultHeight)
+            .clamp(120.0, constraints.maxHeight);
+
+        return _buildExpressionDisplay(
+          index,
+          colors,
+          maxPlotHeight: available,
+          forcePlotExpanded: true,
+        );
+      },
+    );
   }
 
   bool isOperator(String x) {
@@ -1126,8 +1565,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     return false;
   }
-
-  // Replace the countVariablesInExpressions method with this improved version:
 
   int countVariablesInExpressions(String expressions) {
     // First, remove all known function names and keywords to avoid false matches
@@ -1145,8 +1582,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       'log',
       'ln',
       'abs',
+      'arg',
+      're',
+      'im',
+      'sgn',
+      'Re',
+      'Im',
       'perm',
       'comb',
+      'sum',
+      'prod',
+      'diff',
+      'int',
       'ans',
       'exp',
     ];
@@ -1180,10 +1627,215 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 }
 
-// ============================================
-// NEW WIDGET - Add this at the end of the file
-// ============================================
+/// Handles smooth entry and exit animations for cells
+class _AnimatedCellWrapper extends StatefulWidget {
+  final int token;
+  final bool isEntry;
+  final bool isVisible;
+  final Duration duration;
+  final Widget child;
+  final VoidCallback? onAnimationComplete;
 
+  const _AnimatedCellWrapper({
+    super.key,
+    required this.token,
+    required this.isEntry,
+    required this.isVisible,
+    required this.duration,
+    required this.child,
+    this.onAnimationComplete,
+  });
+
+  @override
+  State<_AnimatedCellWrapper> createState() => _AnimatedCellWrapperState();
+}
+
+class _AnimatedCellWrapperState extends State<_AnimatedCellWrapper>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _opacityAnimation;
+  late Animation<double> _sizeAnimation;
+  bool _animationCompleted = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(duration: widget.duration, vsync: this);
+
+    // Listen for animation completion
+    _controller.addStatusListener(_onAnimationStatusChanged);
+
+    if (widget.isEntry) {
+      // Entry: animate from 0 to 1
+      _opacityAnimation = CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
+      );
+      _sizeAnimation = CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      );
+
+      // Start entry animation after frame
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _controller.forward();
+        }
+      });
+    } else {
+      // Exit: start fully visible, then animate out
+      _controller.value = 1.0;
+
+      _opacityAnimation = CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.3, 1.0, curve: Curves.easeIn),
+      );
+      _sizeAnimation = CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeInCubic,
+      );
+
+      // Start exit animation immediately if marked for removal
+      if (!widget.isVisible) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _controller.reverse();
+          }
+        });
+      }
+    }
+  }
+
+  void _onAnimationStatusChanged(AnimationStatus status) {
+    if (_animationCompleted) return;
+
+    if (widget.isEntry && status == AnimationStatus.completed) {
+      _animationCompleted = true;
+      widget.onAnimationComplete?.call();
+    } else if (!widget.isEntry && status == AnimationStatus.dismissed) {
+      _animationCompleted = true;
+      widget.onAnimationComplete?.call();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedCellWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Handle visibility change for exit animation (in case it wasn't started in initState)
+    if (!widget.isEntry && oldWidget.isVisible && !widget.isVisible) {
+      _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeStatusListener(_onAnimationStatusChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final double sizeValue = _sizeAnimation.value;
+        final double opacityValue = _opacityAnimation.value;
+
+        // Fully collapsed - return empty
+        if (sizeValue <= 0.001) {
+          return const SizedBox.shrink();
+        }
+
+        return Opacity(
+          opacity: opacityValue.clamp(0.0, 1.0),
+          child: ClipRect(
+            child: Align(
+              alignment: Alignment.topCenter,
+              heightFactor: sizeValue.clamp(0.0, 1.0),
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+bool _nodesEffectivelyEmpty(List<MathNode>? nodes) {
+  if (nodes == null || nodes.isEmpty) return true;
+  if (nodes.length == 1 && nodes.first is LiteralNode) {
+    return (nodes.first as LiteralNode).text.trim().isEmpty;
+  }
+  return false;
+}
+
+const bool _debugDecimalNodes = false;
+
+void _debugLogDecimalNodes(int index, List<MathNode> nodes) {
+  assert(() {
+    if (!_debugDecimalNodes) return true;
+
+    final summary = _describeMathNodes(nodes);
+    debugPrint('DECIMAL[$index] nodes: $summary');
+    return true;
+  }());
+}
+
+String _describeMathNodes(List<MathNode> nodes) {
+  if (nodes.isEmpty) return '[]';
+  final parts = nodes.map(_describeMathNode).toList();
+  return '[${parts.join(', ')}]';
+}
+
+String _describeMathNode(MathNode node) {
+  if (node is LiteralNode) return 'Literal("${node.text}")';
+  if (node is FractionNode) {
+    return 'Fraction(num:${_describeMathNodes(node.numerator)}, den:${_describeMathNodes(node.denominator)})';
+  }
+  if (node is ExponentNode) {
+    return 'Exponent(base:${_describeMathNodes(node.base)}, pow:${_describeMathNodes(node.power)})';
+  }
+  if (node is ParenthesisNode) {
+    return 'Paren(${_describeMathNodes(node.content)})';
+  }
+  if (node is RootNode) {
+    return 'Root(idx:${_describeMathNodes(node.index)}, rad:${_describeMathNodes(node.radicand)})';
+  }
+  if (node is LogNode) {
+    return 'Log(base:${_describeMathNodes(node.base)}, arg:${_describeMathNodes(node.argument)})';
+  }
+  if (node is TrigNode) {
+    return 'Trig(${node.function}, arg:${_describeMathNodes(node.argument)})';
+  }
+  if (node is SummationNode) {
+    return 'Sum(var:${_describeMathNodes(node.variable)}, low:${_describeMathNodes(node.lower)}, up:${_describeMathNodes(node.upper)}, body:${_describeMathNodes(node.body)})';
+  }
+  if (node is ProductNode) {
+    return 'Prod(var:${_describeMathNodes(node.variable)}, low:${_describeMathNodes(node.lower)}, up:${_describeMathNodes(node.upper)}, body:${_describeMathNodes(node.body)})';
+  }
+  if (node is DerivativeNode) {
+    return 'Diff(var:${_describeMathNodes(node.variable)}, at:${_describeMathNodes(node.at)}, body:${_describeMathNodes(node.body)})';
+  }
+  if (node is IntegralNode) {
+    return 'Int(var:${_describeMathNodes(node.variable)}, low:${_describeMathNodes(node.lower)}, up:${_describeMathNodes(node.upper)}, body:${_describeMathNodes(node.body)})';
+  }
+  if (node is AnsNode) {
+    return 'Ans(${_describeMathNodes(node.index)})';
+  }
+  if (node is ConstantNode) return 'Const(${node.constant})';
+  if (node is UnitVectorNode) return 'Unit(${node.axis})';
+  if (node is NewlineNode) return 'Newline';
+  if (node is ComplexNode) {
+    return 'Complex(${_describeMathNodes(node.content)})';
+  }
+  return node.runtimeType.toString();
+}
+
+/// Isolated widget for the result PageView to prevent unnecessary rebuilds
 /// Isolated widget for the result PageView to prevent unnecessary rebuilds
 class _ResultPageViewWidget extends StatefulWidget {
   final int index;
@@ -1201,6 +1853,7 @@ class _ResultPageViewWidget extends StatefulWidget {
   final GlobalKey? resultKey;
   final double Function(int) calculateDecimalResultHeight;
   final double Function(int) calculateExactResultHeight;
+  final bool useTransparentBackground;
 
   const _ResultPageViewWidget({
     super.key,
@@ -1219,22 +1872,19 @@ class _ResultPageViewWidget extends StatefulWidget {
     required this.resultKey,
     required this.calculateDecimalResultHeight,
     required this.calculateExactResultHeight,
+    this.useTransparentBackground = false, // ADD THIS
   });
 
   @override
   State<_ResultPageViewWidget> createState() => _ResultPageViewWidgetState();
 }
 
-// ============================================
-// Replace the _ResultPageViewWidgetState class
-// ============================================
-
-// ============================================
-// Replace _ResultPageViewWidgetState class
-// ============================================
-
 class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
   late PageController _pageController;
+  final ValueNotifier<int> _fallbackVersionNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<double> _fallbackProgressNotifier = ValueNotifier<double>(
+    0.0,
+  );
   int _currentPage = 0;
   double _lastDecimalHeight = 70.0;
   double _lastExactHeight = 70.0;
@@ -1245,21 +1895,22 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
     _currentPage = widget.currentResultPage[widget.index] ?? 0;
     _pageController = PageController(initialPage: _currentPage);
 
-    // Store the controller in the parent's map
     widget.resultPageControllers[widget.index] = _pageController;
-
-    // Add scroll listener
     _pageController.addListener(_onPageScroll);
 
-    // Initialize heights
     _lastDecimalHeight = widget.calculateDecimalResultHeight(widget.index);
     _lastExactHeight = widget.calculateExactResultHeight(widget.index);
   }
 
   @override
   void dispose() {
+    if (widget.resultPageControllers[widget.index] == _pageController) {
+      widget.resultPageControllers.remove(widget.index);
+    }
     _pageController.removeListener(_onPageScroll);
     _pageController.dispose();
+    _fallbackVersionNotifier.dispose();
+    _fallbackProgressNotifier.dispose();
     super.dispose();
   }
 
@@ -1282,13 +1933,24 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
     setState(() {});
   }
 
+  // Helper to get background color
+  Color get _backgroundColor =>
+      widget.useTransparentBackground
+          ? Colors.transparent
+          : widget.colors.containerBackground;
+
   @override
   Widget build(BuildContext context) {
+    final versionNotifier =
+        widget.exactResultVersionNotifiers[widget.index] ??
+        _fallbackVersionNotifier;
+    final progressNotifier =
+        widget.resultPageProgressNotifiers[widget.index] ??
+        _fallbackProgressNotifier;
+
     return ValueListenableBuilder<int>(
-      valueListenable:
-          widget.exactResultVersionNotifiers[widget.index] ?? ValueNotifier(0),
+      valueListenable: versionNotifier,
       builder: (context, version, _) {
-        // Calculate target heights
         double targetDecimalHeight = widget.calculateDecimalResultHeight(
           widget.index,
         );
@@ -1301,9 +1963,8 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
           targetExactHeight: targetExactHeight,
           lastDecimalHeight: _lastDecimalHeight,
           lastExactHeight: _lastExactHeight,
-          progressNotifier:
-              widget.resultPageProgressNotifiers[widget.index] ??
-              ValueNotifier(0.0),
+          resultVersion: version, // Pass version here
+          progressNotifier: progressNotifier,
           onHeightsAnimated: (decimal, exact) {
             _lastDecimalHeight = decimal;
             _lastExactHeight = exact;
@@ -1321,6 +1982,19 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
 
   Widget _buildDecimalResultPage() {
     final resController = widget.textDisplayControllers[widget.index];
+    final String decimalText = resController?.text ?? '';
+    final bool isDecimalEmpty = decimalText.trim().isEmpty;
+    final exactNodes = widget.exactResultNodes[widget.index];
+    final bool hasExactFallback = !_nodesEffectivelyEmpty(exactNodes);
+    final List<MathNode> decimalNodes =
+        (!isDecimalEmpty)
+            ? _textToResultNodes(decimalText)
+            : (hasExactFallback
+                ? decimalizeExactNodes(exactNodes!)
+                : const <MathNode>[]);
+    final bool hasResult = decimalNodes.isNotEmpty;
+
+    _debugLogDecimalNodes(widget.index, decimalNodes);
 
     return Column(
       mainAxisSize: MainAxisSize.max,
@@ -1329,31 +2003,40 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
         Expanded(
           child: Container(
             key: widget.shouldAddKeys ? widget.resultKey : null,
-            color: widget.colors.containerBackground,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            alignment: Alignment.center,
-            child: AnimatedOpacity(
-              curve: Curves.easeIn,
-              duration: const Duration(milliseconds: 500),
-              opacity: widget.isVisible ? 1.0 : 0.0,
-              child: SingleChildScrollView(
-                child: TextField(
-                  controller: resController,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  textAlign: TextAlign.center,
-                  autofocus: false,
-                  readOnly: true,
-                  showCursor: false,
-                  style: TextStyle(
-                    fontSize: FONTSIZE,
-                    color: widget.colors.textPrimary,
-                  ),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
+            color: _backgroundColor,
+            child: Align(
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                child: AnimatedOpacity(
+                  curve: Curves.easeIn,
+                  duration: const Duration(milliseconds: 500),
+                  opacity: widget.isVisible ? 1.0 : 0.0,
+                  child:
+                      hasResult
+                          ? Builder(
+                            builder: (context) {
+                              final scope = _AnimatedContentScope.of(context);
+                              final animValue = scope?.animationValue ?? 1.0;
+                              final isAnimating = scope?.isAnimating ?? false;
+
+                              return AnimatedResultContent(
+                                animationValue: animValue,
+                                isAnimating: isAnimating,
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: SingleChildScrollView(
+                                    child: MathResultDisplay(
+                                      nodes: decimalNodes,
+                                      fontSize: FONTSIZE,
+                                      textColor: widget.colors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          )
+                          : const SizedBox.shrink(),
                 ),
               ),
             ),
@@ -1363,9 +2046,21 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
     );
   }
 
-  // ============================================
-  // In _ResultPageViewWidgetState, REPLACE _buildExactResultPage():
-  // ============================================
+  List<MathNode> _textToResultNodes(String text) {
+    if (text.isEmpty) return const <MathNode>[];
+
+    final lines = text.split('\n');
+    final nodes = <MathNode>[];
+
+    for (int i = 0; i < lines.length; i++) {
+      nodes.add(LiteralNode(text: lines[i]));
+      if (i < lines.length - 1) {
+        nodes.add(NewlineNode());
+      }
+    }
+
+    return nodes;
+  }
 
   Widget _buildExactResultPage() {
     final exactNodes = widget.exactResultNodes[widget.index];
@@ -1377,38 +2072,42 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
         _buildResultDivider(1, "EXACT"),
         Expanded(
           child: Container(
-            color: widget.colors.containerBackground,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            alignment: Alignment.center,
-            child: AnimatedOpacity(
-              curve: Curves.easeIn,
-              duration: const Duration(milliseconds: 500),
-              opacity: widget.isVisible ? 1.0 : 0.0,
-              child:
-                  hasResult
-                      ? Builder(
-                        builder: (context) {
-                          final scope = _AnimatedContentScope.of(context);
-                          final animValue = scope?.animationValue ?? 1.0;
-                          final isAnimating = scope?.isAnimating ?? false;
+            color: _backgroundColor, // CHANGED
+            child: Align(
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                child: AnimatedOpacity(
+                  curve: Curves.easeIn,
+                  duration: const Duration(milliseconds: 500),
+                  opacity: widget.isVisible ? 1.0 : 0.0,
+                  child:
+                      hasResult
+                          ? Builder(
+                            builder: (context) {
+                              final scope = _AnimatedContentScope.of(context);
+                              final animValue = scope?.animationValue ?? 1.0;
+                              final isAnimating = scope?.isAnimating ?? false;
 
-                          return AnimatedResultContent(
-                            animationValue: animValue,
-                            isAnimating: isAnimating,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: SingleChildScrollView(
-                                child: MathResultDisplay(
-                                  nodes: exactNodes,
-                                  fontSize: FONTSIZE,
-                                  textColor: widget.colors.textPrimary,
+                              return AnimatedResultContent(
+                                animationValue: animValue,
+                                isAnimating: isAnimating,
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: SingleChildScrollView(
+                                    child: MathResultDisplay(
+                                      nodes: exactNodes,
+                                      fontSize: FONTSIZE,
+                                      textColor: widget.colors.textPrimary,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          );
-                        },
-                      )
-                      : const SizedBox.shrink(),
+                              );
+                            },
+                          )
+                          : const SizedBox.shrink(),
+                ),
+              ),
             ),
           ),
         ),
@@ -1500,6 +2199,7 @@ class _AnimatedHeightContainer extends StatefulWidget {
   final double lastExactHeight;
   final ValueNotifier<double> progressNotifier;
   final void Function(double decimal, double exact) onHeightsAnimated;
+  final int resultVersion;
   final Widget child;
 
   const _AnimatedHeightContainer({
@@ -1507,6 +2207,7 @@ class _AnimatedHeightContainer extends StatefulWidget {
     required this.targetExactHeight,
     required this.lastDecimalHeight,
     required this.lastExactHeight,
+    required this.resultVersion,
     required this.progressNotifier,
     required this.onHeightsAnimated,
     required this.child,
@@ -1516,10 +2217,6 @@ class _AnimatedHeightContainer extends StatefulWidget {
   State<_AnimatedHeightContainer> createState() =>
       _AnimatedHeightContainerState();
 }
-
-// ============================================
-// Replace _AnimatedHeightContainerState class
-// ============================================
 
 class _AnimatedHeightContainerState extends State<_AnimatedHeightContainer>
     with SingleTickerProviderStateMixin {
@@ -1597,7 +2294,9 @@ class _AnimatedHeightContainerState extends State<_AnimatedHeightContainer>
     bool exactHeightChanged =
         (widget.targetExactHeight - _animatedExactHeight).abs() > 0.5;
 
-    if (decimalHeightChanged || exactHeightChanged) {
+    bool versionChanged = widget.resultVersion != oldWidget.resultVersion;
+
+    if (decimalHeightChanged || exactHeightChanged || versionChanged) {
       _setupAnimations();
       _animationController.forward(from: 0.0);
     }
@@ -1659,10 +2358,6 @@ class _AnimatedContentScope extends InheritedWidget {
         isAnimating != oldWidget.isAnimating;
   }
 }
-
-// ============================================
-// Add this widget at the end of the file
-// ============================================
 
 /// Widget that animates content appearance in sync with height changes
 class AnimatedResultContent extends StatelessWidget {

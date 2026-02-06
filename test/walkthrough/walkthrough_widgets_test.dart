@@ -175,8 +175,7 @@ void main() {
 
       // Use a more specific finder - find CustomPaint with our specific painter
       final customPaintFinder = find.byWidgetPredicate(
-        (widget) =>
-            widget is CustomPaint && widget.painter is SpotlightPainter,
+        (widget) => widget is CustomPaint && widget.painter is SpotlightPainter,
       );
 
       expect(customPaintFinder, findsOneWidget);
