@@ -65,9 +65,7 @@ void main() {
     });
 
     test('creates with specified content', () {
-      final node = ParenthesisNode(
-        content: [LiteralNode(text: '2+3')],
-      );
+      final node = ParenthesisNode(content: [LiteralNode(text: '2+3')]);
       expect((node.content[0] as LiteralNode).text, equals('2+3'));
     });
   });
@@ -170,10 +168,27 @@ void main() {
     });
 
     test('creates with specified index', () {
-      final node = AnsNode(
-        index: [LiteralNode(text: '5')],
-      );
+      final node = AnsNode(index: [LiteralNode(text: '5')]);
       expect((node.index[0] as LiteralNode).text, equals('5'));
+    });
+  });
+
+  group('MathNode - ComplexNode', () {
+    test('creates with default content', () {
+      final node = ComplexNode();
+      expect(node.content.length, equals(1));
+    });
+
+    test('creates with specified content', () {
+      final node = ComplexNode(content: [LiteralNode(text: 'i')]);
+      expect((node.content[0] as LiteralNode).text, equals('i'));
+    });
+  });
+
+  group('MathNode - ConstantNode', () {
+    test('creates with specified constant', () {
+      final node = ConstantNode('\u03C0');
+      expect(node.constant, equals('\u03C0'));
     });
   });
 
@@ -209,7 +224,7 @@ void main() {
     test('copyWith creates new cursor with updated values', () {
       const original = EditorCursor(index: 1, subIndex: 2);
       final copied = original.copyWith(subIndex: 5);
-      
+
       expect(copied.index, equals(1));
       expect(copied.subIndex, equals(5));
       expect(original.subIndex, equals(2)); // Original unchanged
@@ -219,9 +234,35 @@ void main() {
       const cursor1 = EditorCursor(index: 1, subIndex: 2);
       const cursor2 = EditorCursor(index: 1, subIndex: 2);
       const cursor3 = EditorCursor(index: 1, subIndex: 3);
-      
+
       expect(cursor1, equals(cursor2));
       expect(cursor1, isNot(equals(cursor3)));
+    });
+  });
+
+  group('EditorState - Deep Copy', () {
+    test('captures and clones ConstantNode', () {
+      final constant = ConstantNode('\u03BC\u2080');
+      final originalNodes = [constant];
+      const cursor = EditorCursor();
+      final state = EditorState.capture(originalNodes, cursor);
+      expect(state.expression[0], isA<ConstantNode>());
+      expect((state.expression[0] as ConstantNode).constant, '\u03BC\u2080');
+      expect(state.expression[0].id, isNot(constant.id));
+    });
+
+    test('captures and clones ComplexNode', () {
+      final complex = ComplexNode(content: [LiteralNode(text: '5')]);
+      final state = EditorState.capture([complex], const EditorCursor());
+      expect(state.expression[0], isA<ComplexNode>());
+      expect(state.expression[0].id, isNot(complex.id));
+      expect(
+        identical(
+          (state.expression[0] as ComplexNode).content[0],
+          complex.content[0],
+        ),
+        isFalse,
+      );
     });
   });
 }

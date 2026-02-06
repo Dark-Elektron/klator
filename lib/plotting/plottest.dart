@@ -60,14 +60,16 @@ class MathParser {
     if (char.contains(RegExp(r'[0-9.]'))) {
       final start = _pos;
       while (_pos < expression.length &&
-          expression[_pos].contains(RegExp(r'[0-9.]'))) _pos++;
+          expression[_pos].contains(RegExp(r'[0-9.]')))
+        _pos++;
       _currentToken = expression.substring(start, _pos);
       return;
     }
     if (char.contains(RegExp(r'[a-zA-Z]'))) {
       final start = _pos;
       while (_pos < expression.length &&
-          expression[_pos].contains(RegExp(r'[a-zA-Z0-9]'))) _pos++;
+          expression[_pos].contains(RegExp(r'[a-zA-Z0-9]')))
+        _pos++;
       _currentToken = expression.substring(start, _pos);
       return;
     }
@@ -80,9 +82,10 @@ class MathParser {
     while (_currentToken == '+' || _currentToken == '-') {
       final op = _currentToken;
       _nextToken();
-      result = op == '+' 
-          ? result + _parseTerm(x, y, z) 
-          : result - _parseTerm(x, y, z);
+      result =
+          op == '+'
+              ? result + _parseTerm(x, y, z)
+              : result - _parseTerm(x, y, z);
     }
     return result;
   }
@@ -92,9 +95,10 @@ class MathParser {
     while (_currentToken == '*' || _currentToken == '/') {
       final op = _currentToken;
       _nextToken();
-      result = op == '*' 
-          ? result * _parsePower(x, y, z) 
-          : result / _parsePower(x, y, z);
+      result =
+          op == '*'
+              ? result * _parsePower(x, y, z)
+              : result / _parsePower(x, y, z);
     }
     return result;
   }
@@ -154,30 +158,55 @@ class MathParser {
 
   double _evaluateFunction(String name, double arg1, [double? arg2]) {
     switch (name) {
-      case 'sin': return sin(arg1);
-      case 'cos': return cos(arg1);
-      case 'tan': return tan(arg1);
-      case 'asin': return asin(arg1);
-      case 'acos': return acos(arg1);
-      case 'atan': return atan(arg1);
-      case 'atan2': return atan2(arg1, arg2 ?? 1);
-      case 'sinh': return (exp(arg1) - exp(-arg1)) / 2;
-      case 'cosh': return (exp(arg1) + exp(-arg1)) / 2;
-      case 'tanh': return (exp(arg1) - exp(-arg1)) / (exp(arg1) + exp(-arg1));
-      case 'exp': return exp(arg1);
-      case 'log': case 'ln': return log(arg1);
-      case 'log10': return log(arg1) / ln10;
-      case 'sqrt': return sqrt(arg1);
-      case 'abs': return arg1.abs();
-      case 'floor': return arg1.floorToDouble();
-      case 'ceil': return arg1.ceilToDouble();
-      case 'round': return arg1.roundToDouble();
-      case 'sign': return arg1.sign;
-      case 'min': return min(arg1, arg2 ?? arg1);
-      case 'max': return max(arg1, arg2 ?? arg1);
-      case 'pow': return pow(arg1, arg2 ?? 1).toDouble();
-      case 'mod': return arg1 % (arg2 ?? 1);
-      default: return 0;
+      case 'sin':
+        return sin(arg1);
+      case 'cos':
+        return cos(arg1);
+      case 'tan':
+        return tan(arg1);
+      case 'asin':
+        return asin(arg1);
+      case 'acos':
+        return acos(arg1);
+      case 'atan':
+        return atan(arg1);
+      case 'atan2':
+        return atan2(arg1, arg2 ?? 1);
+      case 'sinh':
+        return (exp(arg1) - exp(-arg1)) / 2;
+      case 'cosh':
+        return (exp(arg1) + exp(-arg1)) / 2;
+      case 'tanh':
+        return (exp(arg1) - exp(-arg1)) / (exp(arg1) + exp(-arg1));
+      case 'exp':
+        return exp(arg1);
+      case 'log':
+      case 'ln':
+        return log(arg1);
+      case 'log10':
+        return log(arg1) / ln10;
+      case 'sqrt':
+        return sqrt(arg1);
+      case 'abs':
+        return arg1.abs();
+      case 'floor':
+        return arg1.floorToDouble();
+      case 'ceil':
+        return arg1.ceilToDouble();
+      case 'round':
+        return arg1.roundToDouble();
+      case 'sign':
+        return arg1.sign;
+      case 'min':
+        return min(arg1, arg2 ?? arg1);
+      case 'max':
+        return max(arg1, arg2 ?? arg1);
+      case 'pow':
+        return pow(arg1, arg2 ?? 1).toDouble();
+      case 'mod':
+        return arg1 % (arg2 ?? 1);
+      default:
+        return 0;
     }
   }
 }
@@ -194,7 +223,7 @@ class VectorFieldParser {
   final String? xComponent;
   final String? yComponent;
   final String? zComponent;
-  
+
   late final MathParser? _xParser;
   late final MathParser? _yParser;
   late final MathParser? _zParser;
@@ -209,7 +238,7 @@ class VectorFieldParser {
   /// Looks for i, j, k at end of terms (followed by +, -, or end of string)
   static bool isVectorField(String expr) {
     String normalized = expr.replaceAll(' ', '').toLowerCase();
-    
+
     // Look for i, j, or k that are at the end of terms
     // (followed by +, -, or end of string, but not by letters or '(')
     // This avoids matching 'i' in 'sin', 'min', etc.
@@ -221,21 +250,21 @@ class VectorFieldParser {
     if (!isVectorField(expr)) return null;
 
     String? xComp, yComp, zComp;
-    
+
     // Normalize the expression - remove spaces
     String normalized = expr.replaceAll(' ', '');
-    
+
     // Split into terms (keeping signs)
     List<String> terms = [];
     String currentTerm = '';
     int parenDepth = 0;
-    
+
     for (int i = 0; i < normalized.length; i++) {
       final char = normalized[i];
-      
+
       if (char == '(') parenDepth++;
       if (char == ')') parenDepth--;
-      
+
       // Only split on + or - when not inside parentheses
       if ((char == '+' || char == '-') && i > 0 && parenDepth == 0) {
         if (currentTerm.isNotEmpty) terms.add(currentTerm);
@@ -250,17 +279,19 @@ class VectorFieldParser {
     for (String term in terms) {
       String component;
       String coefficient;
-      
+
       // Check which component (i, j, or k) this term represents
       String termLower = term.toLowerCase();
-      
+
       if (termLower.endsWith('i') && !_endsWithFunction(termLower, 'i')) {
         coefficient = term.substring(0, term.length - 1);
         component = 'i';
-      } else if (termLower.endsWith('j') && !_endsWithFunction(termLower, 'j')) {
+      } else if (termLower.endsWith('j') &&
+          !_endsWithFunction(termLower, 'j')) {
         coefficient = term.substring(0, term.length - 1);
         component = 'j';
-      } else if (termLower.endsWith('k') && !_endsWithFunction(termLower, 'k')) {
+      } else if (termLower.endsWith('k') &&
+          !_endsWithFunction(termLower, 'k')) {
         coefficient = term.substring(0, term.length - 1);
         component = 'k';
       } else {
@@ -278,9 +309,15 @@ class VectorFieldParser {
       }
 
       switch (component) {
-        case 'i': xComp = coefficient; break;
-        case 'j': yComp = coefficient; break;
-        case 'k': zComp = coefficient; break;
+        case 'i':
+          xComp = coefficient;
+          break;
+        case 'j':
+          yComp = coefficient;
+          break;
+        case 'k':
+          zComp = coefficient;
+          break;
       }
     }
 
@@ -301,8 +338,8 @@ class VectorFieldParser {
   static bool _endsWithFunction(String term, String letter) {
     // Common function names that contain i, j, or k
     const functionsWithI = ['sin', 'asin', 'sinh', 'min', 'ceil'];
-    const functionsWithK = ['sqrt']; // None really, but for safety
-    
+    // None really, but for safety
+
     if (letter == 'i') {
       for (final func in functionsWithI) {
         if (term.endsWith(func)) return true;
@@ -313,7 +350,8 @@ class VectorFieldParser {
   }
 
   bool get is3D => zComponent != null;
-  bool get is2D => zComponent == null && (xComponent != null || yComponent != null);
+  bool get is2D =>
+      zComponent == null && (xComponent != null || yComponent != null);
 
   (double, double, double) evaluate(double x, double y, [double z = 0]) {
     final fx = _xParser?.evaluate(x, y, z) ?? 0;
@@ -333,7 +371,7 @@ class VectorFieldParser {
     if (mag < 1e-10) return (0, 0, 0);
     return (fx / mag, fy / mag, fz / mag);
   }
-  
+
   @override
   String toString() {
     return 'VectorFieldParser(x: $xComponent, y: $yComponent, z: $zComponent)';
@@ -346,7 +384,7 @@ class VectorFieldParser {
 
 Color jetColormap(double t) {
   t = t.clamp(0.0, 1.0);
-  
+
   if (t < 0.125) {
     return Color.lerp(
       const Color(0xFF000080), // Dark blue
@@ -385,7 +423,9 @@ Color jetColormap(double t) {
 // ============================================================
 
 enum Tool3DMode { zoom, pan }
+
 enum PlotMode { function, field }
+
 enum FieldType { scalar, vector }
 
 class HomeScreen extends StatefulWidget {
@@ -476,9 +516,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _togglePlotMode() {
     setState(() {
-      _plotMode = _plotMode == PlotMode.function 
-          ? PlotMode.field 
-          : PlotMode.function;
+      _plotMode =
+          _plotMode == PlotMode.function ? PlotMode.field : PlotMode.function;
     });
   }
 
@@ -552,21 +591,26 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 48,
                             height: 48,
                             decoration: BoxDecoration(
-                              color: _plotMode == PlotMode.field
-                                  ? Colors.orangeAccent.withOpacity(0.3)
-                                  : Colors.black.withOpacity(0.5),
+                              color:
+                                  _plotMode == PlotMode.field
+                                      ? Colors.orangeAccent.withValues(
+                                        alpha: 0.3,
+                                      )
+                                      : Colors.black.withValues(alpha: 0.5),
                               border: Border.all(
-                                color: _plotMode == PlotMode.field
-                                    ? Colors.orangeAccent
-                                    : Colors.white24,
+                                color:
+                                    _plotMode == PlotMode.field
+                                        ? Colors.orangeAccent
+                                        : Colors.white24,
                                 width: _plotMode == PlotMode.field ? 2 : 1,
                               ),
                             ),
                             child: Icon(
                               Icons.grain,
-                              color: _plotMode == PlotMode.field
-                                  ? Colors.orangeAccent
-                                  : Colors.white54,
+                              color:
+                                  _plotMode == PlotMode.field
+                                      ? Colors.orangeAccent
+                                      : Colors.white54,
                               size: 20,
                             ),
                           ),
@@ -578,11 +622,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 48,
                             height: 48,
                             decoration: BoxDecoration(
-                              color: _show3D
-                                  ? Colors.tealAccent.withOpacity(0.3)
-                                  : Colors.black.withOpacity(0.5),
+                              color:
+                                  _show3D
+                                      ? Colors.tealAccent.withValues(alpha: 0.3)
+                                      : Colors.black.withValues(alpha: 0.5),
                               border: Border.all(
-                                color: _show3D ? Colors.tealAccent : Colors.white24,
+                                color:
+                                    _show3D
+                                        ? Colors.tealAccent
+                                        : Colors.white24,
                                 width: _show3D ? 2 : 1,
                               ),
                             ),
@@ -590,7 +638,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Text(
                                 '3D',
                                 style: TextStyle(
-                                  color: _show3D ? Colors.tealAccent : Colors.white54,
+                                  color:
+                                      _show3D
+                                          ? Colors.tealAccent
+                                          : Colors.white54,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 14,
                                 ),
@@ -605,11 +656,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             width: 48,
                             height: 48,
                             decoration: BoxDecoration(
-                              color: !_show3D
-                                  ? Colors.tealAccent.withOpacity(0.3)
-                                  : Colors.black.withOpacity(0.5),
+                              color:
+                                  !_show3D
+                                      ? Colors.tealAccent.withValues(alpha: 0.3)
+                                      : Colors.black.withValues(alpha: 0.5),
                               border: Border.all(
-                                color: !_show3D ? Colors.tealAccent : Colors.white24,
+                                color:
+                                    !_show3D
+                                        ? Colors.tealAccent
+                                        : Colors.white24,
                                 width: !_show3D ? 2 : 1,
                               ),
                             ),
@@ -617,7 +672,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Text(
                                 '2D',
                                 style: TextStyle(
-                                  color: !_show3D ? Colors.tealAccent : Colors.white54,
+                                  color:
+                                      !_show3D
+                                          ? Colors.tealAccent
+                                          : Colors.white54,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 14,
                                 ),
@@ -634,14 +692,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     bottom: 8,
                     left: 8,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
+                        color: Colors.black.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         _getModeDescription(),
-                        style: const TextStyle(color: Colors.white70, fontSize: 11),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
                       ),
                     ),
                   ),
@@ -653,24 +717,28 @@ class _HomeScreenState extends State<HomeScreen> {
                       left: 0,
                       right: 0,
                       child: Container(
-                        color: Colors.red.withOpacity(0.8),
+                        color: Colors.red.withValues(alpha: 0.8),
                         padding: const EdgeInsets.all(4),
                         child: Text(
                           _errorMessage!,
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                       ),
                     ),
 
                   // Vector field hint
-                  if (_fieldType == FieldType.vector && _plotMode == PlotMode.function)
+                  if (_fieldType == FieldType.vector &&
+                      _plotMode == PlotMode.function)
                     Positioned(
                       top: 0,
                       left: 0,
                       right: 48,
                       child: Container(
-                        color: Colors.blue.withOpacity(0.8),
+                        color: Colors.blue.withValues(alpha: 0.8),
                         padding: const EdgeInsets.all(4),
                         child: const Text(
                           'Vector field detected — showing arrows',
@@ -746,7 +814,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       decoration: InputDecoration(
                         hintText: 'sin(x), x^2+y^2, xi+yj, xi+yj+zk',
                         hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           fontFamily: 'monospace',
                           fontSize: 12,
                         ),
@@ -762,7 +830,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.play_arrow, color: Colors.tealAccent),
+                    icon: const Icon(
+                      Icons.play_arrow,
+                      color: Colors.tealAccent,
+                    ),
                     onPressed: _parseFunction,
                   ),
                 ],
@@ -785,9 +856,10 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           height: 44,
           decoration: BoxDecoration(
-            color: isSelected
-                ? Colors.tealAccent.withOpacity(0.2)
-                : Colors.transparent,
+            color:
+                isSelected
+                    ? Colors.tealAccent.withValues(alpha: 0.2)
+                    : Colors.transparent,
             border: Border.all(
               color: isSelected ? Colors.tealAccent : Colors.white12,
               width: isSelected ? 1.5 : 0.5,
@@ -858,11 +930,20 @@ class _Plot2DScreenState extends State<Plot2DScreen> {
 
                 if ((scaleDelta - 1.0).abs() < 1e-3) return;
 
-                final focalPointX = details.localFocalPoint.dx.clamp(0, constraints.maxWidth);
-                final focalPointY = details.localFocalPoint.dy.clamp(0, constraints.maxHeight);
+                final focalPointX = details.localFocalPoint.dx.clamp(
+                  0,
+                  constraints.maxWidth,
+                );
+                final focalPointY = details.localFocalPoint.dy.clamp(
+                  0,
+                  constraints.maxHeight,
+                );
 
-                final focalX = xMin + (focalPointX / constraints.maxWidth) * (xMax - xMin);
-                final focalY = yMax - (focalPointY / constraints.maxHeight) * (yMax - yMin);
+                final focalX =
+                    xMin + (focalPointX / constraints.maxWidth) * (xMax - xMin);
+                final focalY =
+                    yMax -
+                    (focalPointY / constraints.maxHeight) * (yMax - yMin);
 
                 xMin = focalX - (focalX - xMin) / scaleDelta;
                 xMax = focalX + (xMax - focalX) / scaleDelta;
@@ -923,7 +1004,8 @@ class Plot2DPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     double toScreenX(double x) => (x - xMin) / (xMax - xMin) * size.width;
-    double toScreenY(double y) => size.height - (y - yMin) / (yMax - yMin) * size.height;
+    double toScreenY(double y) =>
+        size.height - (y - yMin) / (yMax - yMin) * size.height;
 
     _drawGrid(canvas, size, toScreenX, toScreenY);
     _drawAxes(canvas, size, toScreenX, toScreenY);
@@ -945,41 +1027,88 @@ class Plot2DPainter extends CustomPainter {
     _drawLabels(canvas, size, toScreenX, toScreenY);
   }
 
-  void _drawGrid(Canvas canvas, Size size, double Function(double) toScreenX, double Function(double) toScreenY) {
-    final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.2)
-      ..strokeWidth = 1.2;
-    final subGridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.1)
-      ..strokeWidth = 0.8;
+  void _drawGrid(
+    Canvas canvas,
+    Size size,
+    double Function(double) toScreenX,
+    double Function(double) toScreenY,
+  ) {
+    final gridPaint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.2)
+          ..strokeWidth = 1.2;
+    final subGridPaint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.1)
+          ..strokeWidth = 0.8;
     double gridSpacing = _calculateGridSpacing(xMax - xMin);
 
-    for (double x = (xMin / gridSpacing).floor() * gridSpacing; x <= xMax; x += gridSpacing / 5) {
-      canvas.drawLine(Offset(toScreenX(x), 0), Offset(toScreenX(x), size.height), subGridPaint);
+    for (
+      double x = (xMin / gridSpacing).floor() * gridSpacing;
+      x <= xMax;
+      x += gridSpacing / 5
+    ) {
+      canvas.drawLine(
+        Offset(toScreenX(x), 0),
+        Offset(toScreenX(x), size.height),
+        subGridPaint,
+      );
     }
-    for (double y = (yMin / gridSpacing).floor() * gridSpacing; y <= yMax; y += gridSpacing / 5) {
-      canvas.drawLine(Offset(0, toScreenY(y)), Offset(size.width, toScreenY(y)), subGridPaint);
+    for (
+      double y = (yMin / gridSpacing).floor() * gridSpacing;
+      y <= yMax;
+      y += gridSpacing / 5
+    ) {
+      canvas.drawLine(
+        Offset(0, toScreenY(y)),
+        Offset(size.width, toScreenY(y)),
+        subGridPaint,
+      );
     }
-    for (double x = (xMin / gridSpacing).floor() * gridSpacing; x <= xMax; x += gridSpacing) {
-      canvas.drawLine(Offset(toScreenX(x), 0), Offset(toScreenX(x), size.height), gridPaint);
+    for (
+      double x = (xMin / gridSpacing).floor() * gridSpacing;
+      x <= xMax;
+      x += gridSpacing
+    ) {
+      canvas.drawLine(
+        Offset(toScreenX(x), 0),
+        Offset(toScreenX(x), size.height),
+        gridPaint,
+      );
     }
-    for (double y = (yMin / gridSpacing).floor() * gridSpacing; y <= yMax; y += gridSpacing) {
-      canvas.drawLine(Offset(0, toScreenY(y)), Offset(size.width, toScreenY(y)), gridPaint);
+    for (
+      double y = (yMin / gridSpacing).floor() * gridSpacing;
+      y <= yMax;
+      y += gridSpacing
+    ) {
+      canvas.drawLine(
+        Offset(0, toScreenY(y)),
+        Offset(size.width, toScreenY(y)),
+        gridPaint,
+      );
     }
   }
 
-  void _drawAxes(Canvas canvas, Size size, double Function(double) toScreenX, double Function(double) toScreenY) {
-    final axisPaint = Paint()
-      ..color = Colors.white.withOpacity(0.6)
-      ..strokeWidth = 2;
-    final arrowPaint = Paint()
-      ..color = Colors.white.withOpacity(0.6)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    final tickPaint = Paint()
-      ..color = Colors.white.withOpacity(0.4)
-      ..strokeWidth = 1;
+  void _drawAxes(
+    Canvas canvas,
+    Size size,
+    double Function(double) toScreenX,
+    double Function(double) toScreenY,
+  ) {
+    final axisPaint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.6)
+          ..strokeWidth = 2;
+    final arrowPaint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.6)
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+    final tickPaint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.4)
+          ..strokeWidth = 1;
 
     if (yMin <= 0 && yMax >= 0) {
       final y0 = toScreenY(0);
@@ -1005,27 +1134,49 @@ class Plot2DPainter extends CustomPainter {
     }
 
     double gridSpacing = _calculateGridSpacing(xMax - xMin);
-    for (double x = (xMin / gridSpacing).ceil() * gridSpacing; x <= xMax; x += gridSpacing) {
+    for (
+      double x = (xMin / gridSpacing).ceil() * gridSpacing;
+      x <= xMax;
+      x += gridSpacing
+    ) {
       if (x.abs() > 0.001) {
         final y0 = toScreenY(0).clamp(10.0, size.height - 10);
-        canvas.drawLine(Offset(toScreenX(x), y0 - 5), Offset(toScreenX(x), y0 + 5), tickPaint);
+        canvas.drawLine(
+          Offset(toScreenX(x), y0 - 5),
+          Offset(toScreenX(x), y0 + 5),
+          tickPaint,
+        );
       }
     }
-    for (double y = (yMin / gridSpacing).ceil() * gridSpacing; y <= yMax; y += gridSpacing) {
+    for (
+      double y = (yMin / gridSpacing).ceil() * gridSpacing;
+      y <= yMax;
+      y += gridSpacing
+    ) {
       if (y.abs() > 0.001) {
         final x0 = toScreenX(0).clamp(10.0, size.width - 10);
-        canvas.drawLine(Offset(x0 - 5, toScreenY(y)), Offset(x0 + 5, toScreenY(y)), tickPaint);
+        canvas.drawLine(
+          Offset(x0 - 5, toScreenY(y)),
+          Offset(x0 + 5, toScreenY(y)),
+          tickPaint,
+        );
       }
     }
   }
 
-  void _drawFunction(Canvas canvas, Size size, double Function(double) toScreenX, double Function(double) toScreenY) {
-    final paint = Paint()
-      ..color = const Color(0xFF58C4DD)
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
+  void _drawFunction(
+    Canvas canvas,
+    Size size,
+    double Function(double) toScreenX,
+    double Function(double) toScreenY,
+  ) {
+    final paint =
+        Paint()
+          ..color = const Color(0xFF58C4DD)
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
 
     final parser = MathParser(function);
     final path = Path();
@@ -1045,7 +1196,9 @@ class Plot2DPainter extends CustomPainter {
       }
 
       if (y.isFinite && y.abs() < 1000) {
-        if (lastY != null && (y - lastY!).abs() > (yMax - yMin) * 0.5) started = false;
+        if (lastY != null && (y - lastY).abs() > (yMax - yMin) * 0.5) {
+          started = false;
+        }
         if (!started) {
           path.moveTo(toScreenX(x), toScreenY(y));
           started = true;
@@ -1061,7 +1214,12 @@ class Plot2DPainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
-  void _drawScalarField(Canvas canvas, Size size, double Function(double) toScreenX, double Function(double) toScreenY) {
+  void _drawScalarField(
+    Canvas canvas,
+    Size size,
+    double Function(double) toScreenX,
+    double Function(double) toScreenY,
+  ) {
     final parser = MathParser(function);
     const gridCount = 25;
     final circleRadius = min(size.width, size.height) / gridCount / 3;
@@ -1069,7 +1227,7 @@ class Plot2DPainter extends CustomPainter {
     // First pass: find min/max values
     double minVal = double.infinity;
     double maxVal = double.negativeInfinity;
-    
+
     for (int i = 0; i <= gridCount; i++) {
       for (int j = 0; j <= gridCount; j++) {
         final x = xMin + (xMax - xMin) * i / gridCount;
@@ -1080,6 +1238,7 @@ class Plot2DPainter extends CustomPainter {
             minVal = min(minVal, val);
             maxVal = max(maxVal, val);
           }
+        // ignore: empty_catches
         } catch (e) {}
       }
     }
@@ -1093,7 +1252,7 @@ class Plot2DPainter extends CustomPainter {
       for (int j = 0; j <= gridCount; j++) {
         final x = xMin + (xMax - xMin) * i / gridCount;
         final y = yMin + (yMax - yMin) * j / gridCount;
-        
+
         try {
           final val = parser.evaluate(x, y);
           if (!val.isFinite) continue;
@@ -1104,8 +1263,9 @@ class Plot2DPainter extends CustomPainter {
           canvas.drawCircle(
             Offset(toScreenX(x), toScreenY(y)),
             circleRadius,
-            Paint()..color = color.withOpacity(0.8),
+            Paint()..color = color.withValues(alpha: 0.8),
           );
+        // ignore: empty_catches
         } catch (e) {}
       }
     }
@@ -1114,11 +1274,16 @@ class Plot2DPainter extends CustomPainter {
     _drawColorbar(canvas, size, minVal, maxVal);
   }
 
-  void _drawVectorField(Canvas canvas, Size size, double Function(double) toScreenX, double Function(double) toScreenY) {
+  void _drawVectorField(
+    Canvas canvas,
+    Size size,
+    double Function(double) toScreenX,
+    double Function(double) toScreenY,
+  ) {
     if (vectorParser == null) return;
 
     const gridCount = 20;
-    final arrowLength = min(size.width, size.height) / gridCount / 2.5;
+    final arrowLength = min(size.width, size.height) / gridCount / 1.0;
 
     // First pass: find max magnitude
     double maxMag = 0;
@@ -1149,15 +1314,16 @@ class Plot2DPainter extends CustomPainter {
 
         final startX = toScreenX(x);
         final startY = toScreenY(y);
-        
+
         // Note: screen Y is inverted
         final endX = startX + nx * arrowLength;
         final endY = startY - ny * arrowLength;
 
-        final paint = Paint()
-          ..color = color
-          ..strokeWidth = 2
-          ..strokeCap = StrokeCap.round;
+        final paint =
+            Paint()
+              ..color = color
+              ..strokeWidth = 2
+              ..strokeCap = StrokeCap.round;
 
         canvas.drawLine(Offset(startX, startY), Offset(endX, endY), paint);
 
@@ -1189,7 +1355,12 @@ class Plot2DPainter extends CustomPainter {
     _drawColorbar(canvas, size, 0, maxMag);
   }
 
-  void _drawVectorMagnitudeField(Canvas canvas, Size size, double Function(double) toScreenX, double Function(double) toScreenY) {
+  void _drawVectorMagnitudeField(
+    Canvas canvas,
+    Size size,
+    double Function(double) toScreenX,
+    double Function(double) toScreenY,
+  ) {
     if (vectorParser == null) return;
 
     const gridCount = 25;
@@ -1223,7 +1394,7 @@ class Plot2DPainter extends CustomPainter {
         canvas.drawCircle(
           Offset(toScreenX(x), toScreenY(y)),
           circleRadius,
-          Paint()..color = color.withOpacity(0.8),
+          Paint()..color = color.withValues(alpha: 0.8),
         );
       }
     }
@@ -1236,7 +1407,7 @@ class Plot2DPainter extends CustomPainter {
     const barWidth = 15.0;
     const barHeight = 100.0;
     const margin = 10.0;
-    
+
     final barRect = Rect.fromLTWH(
       margin,
       size.height / 2 - barHeight / 2,
@@ -1266,7 +1437,7 @@ class Plot2DPainter extends CustomPainter {
 
     // Draw labels
     final textStyle = TextStyle(color: Colors.white70, fontSize: 10);
-    
+
     final maxTp = TextPainter(
       text: TextSpan(text: _formatNumber(maxVal), style: textStyle),
       textDirection: TextDirection.ltr,
@@ -1280,11 +1451,23 @@ class Plot2DPainter extends CustomPainter {
     minTp.paint(canvas, Offset(barRect.right + 4, barRect.bottom - 6));
   }
 
-  void _drawLabels(Canvas canvas, Size size, double Function(double) toScreenX, double Function(double) toScreenY) {
-    final textStyle = TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12);
+  void _drawLabels(
+    Canvas canvas,
+    Size size,
+    double Function(double) toScreenX,
+    double Function(double) toScreenY,
+  ) {
+    final textStyle = TextStyle(
+      color: Colors.white.withValues(alpha: 0.6),
+      fontSize: 12,
+    );
     double gridSpacing = _calculateGridSpacing(xMax - xMin);
 
-    for (double x = (xMin / gridSpacing).ceil() * gridSpacing; x <= xMax; x += gridSpacing) {
+    for (
+      double x = (xMin / gridSpacing).ceil() * gridSpacing;
+      x <= xMax;
+      x += gridSpacing
+    ) {
       if (x.abs() > 0.001) {
         final y0 = toScreenY(0).clamp(20.0, size.height - 20);
         final tp = TextPainter(
@@ -1294,14 +1477,21 @@ class Plot2DPainter extends CustomPainter {
         tp.paint(canvas, Offset(toScreenX(x) - tp.width / 2, y0 + 8));
       }
     }
-    for (double y = (yMin / gridSpacing).ceil() * gridSpacing; y <= yMax; y += gridSpacing) {
+    for (
+      double y = (yMin / gridSpacing).ceil() * gridSpacing;
+      y <= yMax;
+      y += gridSpacing
+    ) {
       if (y.abs() > 0.001) {
         final x0 = toScreenX(0).clamp(30.0, size.width - 30);
         final tp = TextPainter(
           text: TextSpan(text: _formatNumber(y), style: textStyle),
           textDirection: TextDirection.ltr,
         )..layout();
-        tp.paint(canvas, Offset(x0 - tp.width - 8, toScreenY(y) - tp.height / 2));
+        tp.paint(
+          canvas,
+          Offset(x0 - tp.width - 8, toScreenY(y) - tp.height / 2),
+        );
       }
     }
   }
@@ -1396,8 +1586,10 @@ class _Plot3DScreenState extends State<Plot3DScreen> {
                   panX += details.focalPointDelta.dx;
                   panY += details.focalPointDelta.dy;
                 } else {
-                  final hScaleDelta = details.horizontalScale / _lastHorizontalScale;
-                  final vScaleDelta = details.verticalScale / _lastVerticalScale;
+                  final hScaleDelta =
+                      details.horizontalScale / _lastHorizontalScale;
+                  final vScaleDelta =
+                      details.verticalScale / _lastVerticalScale;
                   _lastHorizontalScale = details.horizontalScale;
                   _lastVerticalScale = details.verticalScale;
 
@@ -1536,58 +1728,77 @@ class Plot3DPainter extends CustomPainter {
   }
 
   void _drawFloorGrid(Canvas canvas, Size size, double focalLength) {
-    final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.2)
-      ..strokeWidth = 1.2;
-    final subGridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.1)
-      ..strokeWidth = 0.8;
+    final gridPaint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.2)
+          ..strokeWidth = 1.2;
+    final subGridPaint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.1)
+          ..strokeWidth = 0.8;
 
     final gridSpacingX = _calculateGridSpacing(rangeX);
     final gridSpacingY = _calculateGridSpacing(rangeY);
 
     for (double i = -rangeX; i <= rangeX; i += gridSpacingX / 5) {
-      var start = Point3D(i * scaleX, -rangeY * scaleY, 0)
-          .rotateX(rotationX)
-          .rotateZ(rotationZ);
-      var end = Point3D(i * scaleX, rangeY * scaleY, 0)
-          .rotateX(rotationX)
-          .rotateZ(rotationZ);
+      var start = Point3D(
+        i * scaleX,
+        -rangeY * scaleY,
+        0,
+      ).rotateX(rotationX).rotateZ(rotationZ);
+      var end = Point3D(
+        i * scaleX,
+        rangeY * scaleY,
+        0,
+      ).rotateX(rotationX).rotateZ(rotationZ);
       _drawClippedLine(canvas, size, focalLength, start, end, subGridPaint);
     }
     for (double i = -rangeY; i <= rangeY; i += gridSpacingY / 5) {
-      var start = Point3D(-rangeX * scaleX, i * scaleY, 0)
-          .rotateX(rotationX)
-          .rotateZ(rotationZ);
-      var end = Point3D(rangeX * scaleX, i * scaleY, 0)
-          .rotateX(rotationX)
-          .rotateZ(rotationZ);
+      var start = Point3D(
+        -rangeX * scaleX,
+        i * scaleY,
+        0,
+      ).rotateX(rotationX).rotateZ(rotationZ);
+      var end = Point3D(
+        rangeX * scaleX,
+        i * scaleY,
+        0,
+      ).rotateX(rotationX).rotateZ(rotationZ);
       _drawClippedLine(canvas, size, focalLength, start, end, subGridPaint);
     }
     for (double i = -rangeX; i <= rangeX; i += gridSpacingX) {
-      var start = Point3D(i * scaleX, -rangeY * scaleY, 0)
-          .rotateX(rotationX)
-          .rotateZ(rotationZ);
-      var end = Point3D(i * scaleX, rangeY * scaleY, 0)
-          .rotateX(rotationX)
-          .rotateZ(rotationZ);
+      var start = Point3D(
+        i * scaleX,
+        -rangeY * scaleY,
+        0,
+      ).rotateX(rotationX).rotateZ(rotationZ);
+      var end = Point3D(
+        i * scaleX,
+        rangeY * scaleY,
+        0,
+      ).rotateX(rotationX).rotateZ(rotationZ);
       _drawClippedLine(canvas, size, focalLength, start, end, gridPaint);
     }
     for (double i = -rangeY; i <= rangeY; i += gridSpacingY) {
-      var start = Point3D(-rangeX * scaleX, i * scaleY, 0)
-          .rotateX(rotationX)
-          .rotateZ(rotationZ);
-      var end = Point3D(rangeX * scaleX, i * scaleY, 0)
-          .rotateX(rotationX)
-          .rotateZ(rotationZ);
+      var start = Point3D(
+        -rangeX * scaleX,
+        i * scaleY,
+        0,
+      ).rotateX(rotationX).rotateZ(rotationZ);
+      var end = Point3D(
+        rangeX * scaleX,
+        i * scaleY,
+        0,
+      ).rotateX(rotationX).rotateZ(rotationZ);
       _drawClippedLine(canvas, size, focalLength, start, end, gridPaint);
     }
   }
 
   void _drawFloorBoundary(Canvas canvas, Size size, double focalLength) {
-    final boundaryPaint = Paint()
-      ..color = Colors.white.withOpacity(0.5)
-      ..strokeWidth = 2;
+    final boundaryPaint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.5)
+          ..strokeWidth = 2;
 
     final corners = [
       Point3D(-rangeX * scaleX, -rangeY * scaleY, 0),
@@ -1640,10 +1851,11 @@ class Plot3DPainter extends CustomPainter {
       final range = axis.$5;
       final scale = axis.$6;
 
-      final axisPaint = Paint()
-        ..color = color.withOpacity(0.8)
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round;
+      final axisPaint =
+          Paint()
+            ..color = color.withValues(alpha: 0.8)
+            ..strokeWidth = 2
+            ..strokeCap = StrokeCap.round;
 
       final negPoint = Point3D(
         -dir.x * range * 2 * scale,
@@ -1656,7 +1868,14 @@ class Plot3DPainter extends CustomPainter {
         dir.z * range * 2 * scale,
       ).rotateX(rotationX).rotateZ(rotationZ);
 
-      _drawClippedLine(canvas, size, focalLength, negPoint, posPoint, axisPaint);
+      _drawClippedLine(
+        canvas,
+        size,
+        focalLength,
+        negPoint,
+        posPoint,
+        axisPaint,
+      );
 
       final arrowPos = Point3D(
         dir.x * range * 0.9 * scale,
@@ -1669,7 +1888,11 @@ class Plot3DPainter extends CustomPainter {
         arrowProj,
         Rect.fromLTWH(-20, -20, size.width + 40, size.height + 40),
       )) {
-        final origin = const Point3D(0, 0, 0).rotateX(rotationX).rotateZ(rotationZ);
+        final origin = const Point3D(
+          0,
+          0,
+          0,
+        ).rotateX(rotationX).rotateZ(rotationZ);
         final originProj = origin.project(focalLength, size, panX, panY);
         final direction = Offset(
           arrowProj.dx - originProj.dx,
@@ -1684,13 +1907,21 @@ class Plot3DPainter extends CustomPainter {
           canvas.drawPath(
             Path()
               ..moveTo(
-                arrowProj.dx - normalized.dx * arrowSize + perpendicular.dx * arrowSize / 2,
-                arrowProj.dy - normalized.dy * arrowSize + perpendicular.dy * arrowSize / 2,
+                arrowProj.dx -
+                    normalized.dx * arrowSize +
+                    perpendicular.dx * arrowSize / 2,
+                arrowProj.dy -
+                    normalized.dy * arrowSize +
+                    perpendicular.dy * arrowSize / 2,
               )
               ..lineTo(arrowProj.dx, arrowProj.dy)
               ..lineTo(
-                arrowProj.dx - normalized.dx * arrowSize - perpendicular.dx * arrowSize / 2,
-                arrowProj.dy - normalized.dy * arrowSize - perpendicular.dy * arrowSize / 2,
+                arrowProj.dx -
+                    normalized.dx * arrowSize -
+                    perpendicular.dx * arrowSize / 2,
+                arrowProj.dy -
+                    normalized.dy * arrowSize -
+                    perpendicular.dy * arrowSize / 2,
               ),
             axisPaint..style = PaintingStyle.stroke,
           );
@@ -1710,9 +1941,10 @@ class Plot3DPainter extends CustomPainter {
         tp.paint(canvas, Offset(arrowProj.dx + 8, arrowProj.dy - 8));
       }
 
-      final tickPaint = Paint()
-        ..color = color.withOpacity(0.5)
-        ..strokeWidth = 1;
+      final tickPaint =
+          Paint()
+            ..color = color.withValues(alpha: 0.5)
+            ..strokeWidth = 1;
       for (double t = -range; t <= range; t += gridSpacing) {
         if (t.abs() < gridSpacing * 0.1) continue;
 
@@ -1723,40 +1955,95 @@ class Plot3DPainter extends CustomPainter {
         ).rotateX(rotationX).rotateZ(rotationZ);
         final tickProj = tickPos.project(focalLength, size, panX, panY);
 
-        if (!_isPointInRect(tickProj, Rect.fromLTWH(0, 0, size.width, size.height))) continue;
+        if (!_isPointInRect(
+          tickProj,
+          Rect.fromLTWH(0, 0, size.width, size.height),
+        )) {
+          continue;
+        }
 
         const tickLen = 5.0;
         Point3D tick1End, tick2End;
 
         if (label == 'X') {
-          tick1End = Point3D(t * scale, tickLen, 0).rotateX(rotationX).rotateZ(rotationZ);
-          tick2End = Point3D(t * scale, 0, tickLen).rotateX(rotationX).rotateZ(rotationZ);
+          tick1End = Point3D(
+            t * scale,
+            tickLen,
+            0,
+          ).rotateX(rotationX).rotateZ(rotationZ);
+          tick2End = Point3D(
+            t * scale,
+            0,
+            tickLen,
+          ).rotateX(rotationX).rotateZ(rotationZ);
         } else if (label == 'Y') {
-          tick1End = Point3D(tickLen, t * scale, 0).rotateX(rotationX).rotateZ(rotationZ);
-          tick2End = Point3D(0, t * scale, tickLen).rotateX(rotationX).rotateZ(rotationZ);
+          tick1End = Point3D(
+            tickLen,
+            t * scale,
+            0,
+          ).rotateX(rotationX).rotateZ(rotationZ);
+          tick2End = Point3D(
+            0,
+            t * scale,
+            tickLen,
+          ).rotateX(rotationX).rotateZ(rotationZ);
         } else {
-          tick1End = Point3D(tickLen, 0, t * scale).rotateX(rotationX).rotateZ(rotationZ);
-          tick2End = Point3D(0, tickLen, t * scale).rotateX(rotationX).rotateZ(rotationZ);
+          tick1End = Point3D(
+            tickLen,
+            0,
+            t * scale,
+          ).rotateX(rotationX).rotateZ(rotationZ);
+          tick2End = Point3D(
+            0,
+            tickLen,
+            t * scale,
+          ).rotateX(rotationX).rotateZ(rotationZ);
         }
 
-        canvas.drawLine(tickProj, tick1End.project(focalLength, size, panX, panY), tickPaint);
-        canvas.drawLine(tickProj, tick2End.project(focalLength, size, panX, panY), tickPaint);
+        canvas.drawLine(
+          tickProj,
+          tick1End.project(focalLength, size, panX, panY),
+          tickPaint,
+        );
+        canvas.drawLine(
+          tickProj,
+          tick2End.project(focalLength, size, panX, panY),
+          tickPaint,
+        );
 
         Point3D labelPos;
         if (label == 'X') {
-          labelPos = Point3D(t * scale, -15, -10).rotateX(rotationX).rotateZ(rotationZ);
+          labelPos = Point3D(
+            t * scale,
+            -15,
+            -10,
+          ).rotateX(rotationX).rotateZ(rotationZ);
         } else if (label == 'Y') {
-          labelPos = Point3D(-15, t * scale, -10).rotateX(rotationX).rotateZ(rotationZ);
+          labelPos = Point3D(
+            -15,
+            t * scale,
+            -10,
+          ).rotateX(rotationX).rotateZ(rotationZ);
         } else {
-          labelPos = Point3D(-15, -15, t * scale).rotateX(rotationX).rotateZ(rotationZ);
+          labelPos = Point3D(
+            -15,
+            -15,
+            t * scale,
+          ).rotateX(rotationX).rotateZ(rotationZ);
         }
 
         final labelProj = labelPos.project(focalLength, size, panX, panY);
-        if (_isPointInRect(labelProj, Rect.fromLTWH(0, 0, size.width, size.height))) {
+        if (_isPointInRect(
+          labelProj,
+          Rect.fromLTWH(0, 0, size.width, size.height),
+        )) {
           final ltp = TextPainter(
             text: TextSpan(
               text: _formatNumber(t),
-              style: TextStyle(color: color.withOpacity(0.6), fontSize: 10),
+              style: TextStyle(
+                color: color.withValues(alpha: 0.6),
+                fontSize: 10,
+              ),
             ),
             textDirection: TextDirection.ltr,
           )..layout();
@@ -1870,9 +2157,11 @@ class Plot3DPainter extends CustomPainter {
         }
 
         row.add(
-          Point3D(x * scaleX, y * scaleY, z * scaleZ)
-              .rotateX(rotationX)
-              .rotateZ(rotationZ),
+          Point3D(
+            x * scaleX,
+            y * scaleY,
+            z * scaleZ,
+          ).rotateX(rotationX).rotateZ(rotationZ),
         );
         zRow.add(z);
       }
@@ -1891,7 +2180,8 @@ class Plot3DPainter extends CustomPainter {
         if (p1 == null || p2 == null || p3 == null || p4 == null) continue;
 
         final avgY = (p1.y + p2.y + p3.y + p4.y) / 4;
-        final avgValue = (zValues[i][j] +
+        final avgValue =
+            (zValues[i][j] +
                 zValues[i + 1][j] +
                 zValues[i + 1][j + 1] +
                 zValues[i][j + 1]) /
@@ -1911,22 +2201,23 @@ class Plot3DPainter extends CustomPainter {
       final normalizedValue = (quad.avgValue + rangeZ) / (2 * rangeZ);
       final color = _getGradientColor(normalizedValue.clamp(0.0, 1.0));
 
-      final path = Path()
-        ..moveTo(o1.dx, o1.dy)
-        ..lineTo(o2.dx, o2.dy)
-        ..lineTo(o3.dx, o3.dy)
-        ..lineTo(o4.dx, o4.dy)
-        ..close();
+      final path =
+          Path()
+            ..moveTo(o1.dx, o1.dy)
+            ..lineTo(o2.dx, o2.dy)
+            ..lineTo(o3.dx, o3.dy)
+            ..lineTo(o4.dx, o4.dy)
+            ..close();
       canvas.drawPath(
         path,
         Paint()
-          ..color = color.withOpacity(0.7)
+          ..color = color.withValues(alpha: 0.7)
           ..style = PaintingStyle.fill,
       );
       canvas.drawPath(
         path,
         Paint()
-          ..color = Colors.white.withOpacity(0.1)
+          ..color = Colors.white.withValues(alpha: 0.1)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 0.5,
       );
@@ -1937,18 +2228,21 @@ class Plot3DPainter extends CustomPainter {
     final parser = MathParser(function);
     const steps = 300;
 
-    final paint = Paint()
-      ..color = const Color(0xFF58C4DD)
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    final shadowPaint = Paint()
-      ..color = const Color(0xFF58C4DD).withOpacity(0.2)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-    final verticalPaint = Paint()
-      ..color = const Color(0xFF58C4DD).withOpacity(0.1)
-      ..strokeWidth = 1;
+    final paint =
+        Paint()
+          ..color = const Color(0xFF58C4DD)
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+    final shadowPaint =
+        Paint()
+          ..color = const Color(0xFF58C4DD).withValues(alpha: 0.2)
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke;
+    final verticalPaint =
+        Paint()
+          ..color = const Color(0xFF58C4DD).withValues(alpha: 0.1)
+          ..strokeWidth = 1;
 
     final path = Path();
     final shadowPath = Path();
@@ -1979,16 +2273,20 @@ class Plot3DPainter extends CustomPainter {
         continue;
       }
 
-      final point = Point3D(x * scaleX, 0, z * scaleZ)
-          .rotateX(rotationX)
-          .rotateZ(rotationZ);
-      final shadowPoint = Point3D(x * scaleX, 0, 0)
-          .rotateX(rotationX)
-          .rotateZ(rotationZ);
+      final point = Point3D(
+        x * scaleX,
+        0,
+        z * scaleZ,
+      ).rotateX(rotationX).rotateZ(rotationZ);
+      final shadowPoint = Point3D(
+        x * scaleX,
+        0,
+        0,
+      ).rotateX(rotationX).rotateZ(rotationZ);
       final proj = point.project(focalLength, size, panX, panY);
       final shadowProj = shadowPoint.project(focalLength, size, panX, panY);
 
-      if (lastZ != null && (z - lastZ!).abs() > rangeZ * 0.5) started = false;
+      if (lastZ != null && (z - lastZ).abs() > rangeZ * 0.5) started = false;
 
       if (!started) {
         path.moveTo(proj.dx, proj.dy);
@@ -2034,11 +2332,14 @@ class Plot3DPainter extends CustomPainter {
             minVal = min(minVal, val);
             maxVal = max(maxVal, val);
 
-            final point3D = Point3D(x * scaleX, y * scaleY, z * scaleZ)
-                .rotateX(rotationX)
-                .rotateZ(rotationZ);
+            final point3D = Point3D(
+              x * scaleX,
+              y * scaleY,
+              z * scaleZ,
+            ).rotateX(rotationX).rotateZ(rotationZ);
 
             points.add(_FieldPoint3D(point3D, val));
+          // ignore: empty_catches
           } catch (e) {}
         }
       }
@@ -2053,7 +2354,8 @@ class Plot3DPainter extends CustomPainter {
     // Draw spheres
     for (final fp in points) {
       final proj = fp.point.project(focalLength, size, panX, panY);
-      if (!_isPointInRect(proj, Rect.fromLTWH(0, 0, size.width, size.height))) continue;
+      if (!_isPointInRect(proj, Rect.fromLTWH(0, 0, size.width, size.height)))
+        continue;
 
       final normalized = (fp.value - minVal) / (maxVal - minVal);
       final color = jetColormap(normalized);
@@ -2063,13 +2365,14 @@ class Plot3DPainter extends CustomPainter {
       final radius = 6.0 * depthScale;
 
       // Draw sphere with gradient effect
-      final paint = Paint()..color = color.withOpacity(0.8);
+      final paint = Paint()..color = color.withValues(alpha: 0.8);
       canvas.drawCircle(proj, radius, paint);
 
       // Highlight
-      final highlightPaint = Paint()
-        ..color = Colors.white.withOpacity(0.3)
-        ..style = PaintingStyle.fill;
+      final highlightPaint =
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.3)
+            ..style = PaintingStyle.fill;
       canvas.drawCircle(
         Offset(proj.dx - radius * 0.3, proj.dy - radius * 0.3),
         radius * 0.3,
@@ -2107,7 +2410,7 @@ class Plot3DPainter extends CustomPainter {
 
             final (nx, ny, nz) = vectorParser!.normalized(x, y, z);
             final startPoint = Point3D(x * scaleX, y * scaleY, z * scaleZ);
-            
+
             arrows.add(_Arrow3D(startPoint, nx, ny, nz, mag));
           }
         }
@@ -2126,7 +2429,7 @@ class Plot3DPainter extends CustomPainter {
 
           final (nx, ny, _) = vectorParser!.normalized(x, y, 0);
           final startPoint = Point3D(x * scaleX, y * scaleY, 0);
-          
+
           arrows.add(_Arrow3D(startPoint, nx, ny, 0, mag));
         }
       }
@@ -2142,12 +2445,16 @@ class Plot3DPainter extends CustomPainter {
     });
 
     // Draw arrows
-    const arrowLength = 15.0;
+    const arrowLength = 25.0;
     for (final arrow in arrows) {
       final startRotated = arrow.start.rotateX(rotationX).rotateZ(rotationZ);
       final startProj = startRotated.project(focalLength, size, panX, panY);
 
-      if (!_isPointInRect(startProj, Rect.fromLTWH(-50, -50, size.width + 100, size.height + 100))) continue;
+      if (!_isPointInRect(
+        startProj,
+        Rect.fromLTWH(-50, -50, size.width + 100, size.height + 100),
+      ))
+        continue;
 
       // Calculate end point in 3D space
       final endPoint = Point3D(
@@ -2161,10 +2468,11 @@ class Plot3DPainter extends CustomPainter {
       final normalized = arrow.magnitude / maxMag;
       final color = jetColormap(normalized);
 
-      final paint = Paint()
-        ..color = color
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round;
+      final paint =
+          Paint()
+            ..color = color
+            ..strokeWidth = 2
+            ..strokeCap = StrokeCap.round;
 
       canvas.drawLine(startProj, endProj, paint);
 
@@ -2181,16 +2489,20 @@ class Plot3DPainter extends CustomPainter {
         canvas.drawLine(
           endProj,
           Offset(
-            endProj.dx - headLength * (ux * cos(headAngle) - uy * sin(headAngle)),
-            endProj.dy - headLength * (ux * sin(headAngle) + uy * cos(headAngle)),
+            endProj.dx -
+                headLength * (ux * cos(headAngle) - uy * sin(headAngle)),
+            endProj.dy -
+                headLength * (ux * sin(headAngle) + uy * cos(headAngle)),
           ),
           paint,
         );
         canvas.drawLine(
           endProj,
           Offset(
-            endProj.dx - headLength * (ux * cos(-headAngle) - uy * sin(-headAngle)),
-            endProj.dy - headLength * (ux * sin(-headAngle) + uy * cos(-headAngle)),
+            endProj.dx -
+                headLength * (ux * cos(-headAngle) - uy * sin(-headAngle)),
+            endProj.dy -
+                headLength * (ux * sin(-headAngle) + uy * cos(-headAngle)),
           ),
           paint,
         );
@@ -2201,7 +2513,11 @@ class Plot3DPainter extends CustomPainter {
     _drawColorbar3D(canvas, size, 0, maxMag);
   }
 
-  void _drawVectorMagnitudeField3D(Canvas canvas, Size size, double focalLength) {
+  void _drawVectorMagnitudeField3D(
+    Canvas canvas,
+    Size size,
+    double focalLength,
+  ) {
     if (vectorParser == null) return;
 
     const gridCount = 12;
@@ -2223,9 +2539,11 @@ class Plot3DPainter extends CustomPainter {
 
             maxMag = max(maxMag, mag);
 
-            final point3D = Point3D(x * scaleX, y * scaleY, z * scaleZ)
-                .rotateX(rotationX)
-                .rotateZ(rotationZ);
+            final point3D = Point3D(
+              x * scaleX,
+              y * scaleY,
+              z * scaleZ,
+            ).rotateX(rotationX).rotateZ(rotationZ);
 
             points.add(_FieldPoint3D(point3D, mag));
           }
@@ -2242,9 +2560,11 @@ class Plot3DPainter extends CustomPainter {
 
           maxMag = max(maxMag, mag);
 
-          final point3D = Point3D(x * scaleX, y * scaleY, 0)
-              .rotateX(rotationX)
-              .rotateZ(rotationZ);
+          final point3D = Point3D(
+            x * scaleX,
+            y * scaleY,
+            0,
+          ).rotateX(rotationX).rotateZ(rotationZ);
 
           points.add(_FieldPoint3D(point3D, mag));
         }
@@ -2259,7 +2579,8 @@ class Plot3DPainter extends CustomPainter {
     // Draw spheres
     for (final fp in points) {
       final proj = fp.point.project(focalLength, size, panX, panY);
-      if (!_isPointInRect(proj, Rect.fromLTWH(0, 0, size.width, size.height))) continue;
+      if (!_isPointInRect(proj, Rect.fromLTWH(0, 0, size.width, size.height)))
+        continue;
 
       final normalized = fp.value / maxMag;
       final color = jetColormap(normalized);
@@ -2267,13 +2588,17 @@ class Plot3DPainter extends CustomPainter {
       final depthScale = focalLength / (focalLength + fp.point.y);
       final radius = 6.0 * depthScale;
 
-      canvas.drawCircle(proj, radius, Paint()..color = color.withOpacity(0.8));
+      canvas.drawCircle(
+        proj,
+        radius,
+        Paint()..color = color.withValues(alpha: 0.8),
+      );
 
       // Highlight
       canvas.drawCircle(
         Offset(proj.dx - radius * 0.3, proj.dy - radius * 0.3),
         radius * 0.3,
-        Paint()..color = Colors.white.withOpacity(0.3),
+        Paint()..color = Colors.white.withValues(alpha: 0.3),
       );
     }
 

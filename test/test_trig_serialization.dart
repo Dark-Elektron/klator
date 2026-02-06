@@ -13,7 +13,7 @@ void main() {
 
     final serialized = MathExpressionSerializer.serialize([trigNode]);
 
-    print('Serialized TrigNode: "$serialized"');
+    // print('Serialized TrigNode: "$serialized"');
 
     expect(serialized.trim(), equals('sin(6)'));
   });

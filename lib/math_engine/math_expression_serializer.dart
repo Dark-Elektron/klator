@@ -250,7 +250,7 @@ class MathExpressionSerializer {
       RegExp varRegex = RegExp(r'[a-zA-Z]+');
       for (Match match in varRegex.allMatches(node.text)) {
         String potential = match.group(0)!;
-        // Exclude common function names
+        // Exclude common function names and imaginary unit
         if (![
           'sin',
           'cos',
@@ -261,6 +261,7 @@ class MathExpressionSerializer {
           'abs',
           'P',
           'C',
+          'i', // imaginary unit
         ].contains(potential)) {
           variables.add(potential);
         }

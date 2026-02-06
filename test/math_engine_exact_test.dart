@@ -68,7 +68,7 @@ void main() {
     test('negative integer toMathNode', () {
       final nodes = IntExpr.from(-42).toMathNode();
       expect(nodes.length, 1);
-      expect((nodes[0] as LiteralNode).text, '-42');
+      expect((nodes[0] as LiteralNode).text, '\u221242');
     });
 
     test('add integers', () {
@@ -154,7 +154,7 @@ void main() {
 
     test('toString', () {
       expect(IntExpr.from(42).toString(), '42');
-      expect(IntExpr.from(-7).toString(), '-7');
+      expect(IntExpr.from(-7).toString(), '\u22127');
     });
 
     test('add integer to fraction', () {
@@ -1436,7 +1436,7 @@ void main() {
     });
 
     test('toString', () {
-      expect(AbsExpr(IntExpr.from(-5)).toString(), '|-5|');
+      expect(AbsExpr(IntExpr.from(-5)).toString(), '|\u22125|');
     });
   });
 
@@ -2548,10 +2548,10 @@ void main() {
     test('toNumericalString for negative infinity', () {
       final result = ExactResult(
         expr: IntExpr.one,
-        mathNodes: [LiteralNode(text: '-∞')],
+        mathNodes: [LiteralNode(text: '\u2212∞')],
         numerical: double.negativeInfinity,
       );
-      expect(result.toNumericalString(), '-∞');
+      expect(result.toNumericalString(), '\u2212∞');
     });
 
     test('toNumericalString strips trailing zeros', () {

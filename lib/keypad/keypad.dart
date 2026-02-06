@@ -746,6 +746,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           return MyButton(
             buttontapped: () {
               _activeController?.clear();
+              widget.onUpdateMathEditor();
               _activeController?.updateAnswer(
                 widget.textDisplayControllers[widget.activeIndex],
               );
@@ -1051,8 +1052,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
-        }
-        else if (index == 0) {
+        } else if (index == 0) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter(_buttonsSci[index]);
@@ -1474,17 +1474,17 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         }
-        // if (index == 5) {
-        //   return MyButton(
-        //     buttontapped: () {
-        //       _activeController?.insertCharacter(_buttonsR[index]);
-        //       widget.onUpdateMathEditor();
-        //     },
-        //     buttonText: _buttonsR[index],
-        //     color: Colors.white,
-        //     textColor: Colors.grey,
-        //   );
-        // } else
+        if (index == 5) {
+          return MyButton(
+            buttontapped: () {
+              _activeController?.insertCharacter('i');
+              widget.onUpdateMathEditor();
+            },
+            buttonText: _buttonsR[index],
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
         if (index == 6) {
           return MyButton(
             buttontapped: () {

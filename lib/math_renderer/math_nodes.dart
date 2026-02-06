@@ -83,6 +83,12 @@ class CombinationNode extends MathNode {
       r = r ?? [LiteralNode()];
 }
 
+/// A complex number node (i * content).
+class ComplexNode extends MathNode {
+  List<MathNode> content; // The coefficient of i
+  ComplexNode({List<MathNode>? content}) : content = content ?? [LiteralNode()];
+}
+
 /// A newline node for multi-line expressions.
 class NewlineNode extends MathNode {
   NewlineNode() : super();

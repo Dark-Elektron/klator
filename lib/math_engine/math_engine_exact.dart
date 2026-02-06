@@ -54,6 +54,9 @@ abstract class Expr {
   /// Create a deep copy
   Expr copy();
 
+  /// Does this expression contain imaginary parts?
+  bool get hasImaginary;
+
   @override
   String toString();
 }
@@ -122,7 +125,10 @@ class ExactNumberFormatter {
       return value < BigInt.zero ? '−$result' : result;
     }
 
-    return value.toString();
+    if (value < BigInt.zero) {
+      return '\u2212${absVal.toString()}';
+    }
+    return absVal.toString();
   }
 }
 
@@ -140,6 +146,9 @@ class IntExpr extends Expr {
   static final IntExpr one = IntExpr(BigInt.one);
   static final IntExpr two = IntExpr(BigInt.two);
   static final IntExpr negOne = IntExpr(-BigInt.one);
+
+  @override
+  bool get hasImaginary => false;
 
   @override
   Expr simplify() => this;
@@ -189,7 +198,8 @@ class IntExpr extends Expr {
   Expr copy() => IntExpr(value);
 
   @override
-  String toString() => value.toString();
+  String toString() =>
+      ExactNumberFormatter.formatBigInt(value, isWholeNumber: true);
 
   /// Arithmetic operations returning Expr
   Expr add(Expr other) {
@@ -279,6 +289,9 @@ class FracExpr extends Expr {
   FracExpr.from(int n, int d)
     : numerator = IntExpr.from(n),
       denominator = IntExpr.from(d);
+
+  @override
+  bool get hasImaginary => false;
 
   @override
   Expr simplify() {
@@ -416,7 +429,7 @@ class FracExpr extends Expr {
   String toString() {
     Expr s = simplify();
     if (s is IntExpr) return s.toString();
-    return '${numerator.value}/${denominator.value}';
+    return '$numerator/$denominator';
   }
 
   /// Add another expression to this fraction
@@ -483,6 +496,9 @@ class ConstExpr extends Expr {
   final ConstType type;
 
   ConstExpr(this.type);
+
+  @override
+  bool get hasImaginary => false;
 
   static final ConstExpr pi = ConstExpr(ConstType.pi);
   static final ConstExpr e = ConstExpr(ConstType.e);
@@ -590,6 +606,63 @@ class ConstExpr extends Expr {
 enum ConstType { pi, e, phi, epsilon0, mu0, c0, eMinus }
 
 // ============================================================
+// SECTION 4.5: IMAGINARY UNIT
+// ============================================================
+
+/// Represents the imaginary unit i = √(-1)
+class ImaginaryExpr extends Expr {
+  ImaginaryExpr();
+
+  /// Singleton instance
+  static final ImaginaryExpr i = ImaginaryExpr();
+
+  @override
+  Expr simplify() => this;
+
+  @override
+  double toDouble() => double.nan; // i has no real value
+
+  @override
+  bool structurallyEquals(Expr other) => other is ImaginaryExpr;
+
+  @override
+  String get termSignature => 'i:1';
+
+  @override
+  Expr get coefficient => IntExpr.one;
+
+  @override
+  Expr get baseExpr => this;
+
+  @override
+  bool get isZero => false;
+
+  @override
+  bool get isOne => false;
+
+  @override
+  bool get isRational => false;
+
+  @override
+  bool get isInteger => false;
+
+  @override
+  Expr negate() => ProdExpr([IntExpr.negOne, this]);
+
+  @override
+  List<MathNode> toMathNode() => [LiteralNode(text: 'i')];
+
+  @override
+  bool get hasImaginary => true;
+
+  @override
+  Expr copy() => ImaginaryExpr();
+
+  @override
+  String toString() => 'i';
+}
+
+// ============================================================
 // SECTION 5: SUM EXPRESSION
 // ============================================================
 
@@ -602,6 +675,9 @@ class SumExpr extends Expr {
   final List<Expr> terms;
 
   SumExpr(this.terms);
+
+  @override
+  bool get hasImaginary => terms.any((t) => t.hasImaginary);
 
   @override
   Expr simplify() {
@@ -685,7 +761,26 @@ class SumExpr extends Expr {
     if (result.isEmpty) return IntExpr.zero;
     if (result.length == 1) return result[0];
 
+    // Step 5: Sort so real terms come before imaginary terms
+    result = _sortRealBeforeImaginary(result);
+
     return SumExpr(result);
+  }
+
+  /// Sort terms so real parts come before imaginary parts
+  List<Expr> _sortRealBeforeImaginary(List<Expr> terms) {
+    List<Expr> realTerms = [];
+    List<Expr> imaginaryTerms = [];
+
+    for (Expr term in terms) {
+      if (term.hasImaginary) {
+        imaginaryTerms.add(term);
+      } else {
+        realTerms.add(term);
+      }
+    }
+
+    return [...realTerms, ...imaginaryTerms];
   }
 
   /// Sum the coefficients of a list of like terms
@@ -756,24 +851,19 @@ class SumExpr extends Expr {
   List<MathNode> toMathNode() {
     if (terms.isEmpty) return [LiteralNode(text: '0')];
 
+    // Sort terms: real before imaginary for display
+    List<Expr> sortedTerms = _sortRealBeforeImaginary(terms);
+
     List<MathNode> nodes = [];
 
-    for (int i = 0; i < terms.length; i++) {
-      Expr term = terms[i];
+    for (int i = 0; i < sortedTerms.length; i++) {
+      Expr term = sortedTerms[i];
 
       bool isNegative = _isNegativeTerm(term);
       Expr absTerm = isNegative ? _absoluteTerm(term) : term;
 
       if (i == 0) {
         if (isNegative) {
-          // The user's instruction was to "Add print to evaluate and fix the third test in repro_issue.dart."
-          // However, the provided code edit is a test case itself, not a print statement,
-          // and inserting it here would cause a syntax error and is not a fix for this method.
-          // As per instructions to maintain syntactic correctness and make faithful edits,
-          // I cannot insert the provided test block directly into this method.
-          // If the intention was to add a print statement for debugging, please provide the specific print statement.
-          // If the intention was to add a test, it should be in a test file.
-          // For now, I will not insert the syntactically incorrect test block.
           nodes.add(LiteralNode(text: '−'));
         }
         nodes.addAll(absTerm.toMathNode());
@@ -789,9 +879,6 @@ class SumExpr extends Expr {
 
     return nodes;
   }
-
-  /// Check if a term is negative
-  // In math_engine_exact.dart, update the _isNegativeTerm method in SumExpr class:
 
   /// Check if a term is negative
   bool _isNegativeTerm(Expr term) {
@@ -812,9 +899,6 @@ class SumExpr extends Expr {
     }
     return false;
   }
-
-  /// Get absolute value of a term
-  // In math_engine_exact.dart, update the _absoluteTerm method in SumExpr class:
 
   /// Get absolute value of a term
   Expr _absoluteTerm(Expr term) {
@@ -881,6 +965,9 @@ class ProdExpr extends Expr {
   ProdExpr(this.factors);
 
   @override
+  bool get hasImaginary => factors.any((f) => f.hasImaginary);
+
+  @override
   Expr simplify() {
     if (factors.isEmpty) return IntExpr.one;
     if (factors.length == 1) return factors[0].simplify();
@@ -925,12 +1012,68 @@ class ProdExpr extends Expr {
     if (flat.isEmpty) return IntExpr.one;
     if (flat.length == 1) return flat[0];
 
-    // Step 2: Combine like bases (e.g., √2 * √2 = 2)
+    // Step 2: Distribute over sums if any factor is a SumExpr
+    // Find all SumExpr indices
+    List<int> sumIndices = [];
+    for (int i = 0; i < flat.length; i++) {
+      if (flat[i] is SumExpr) sumIndices.add(i);
+    }
+
+    // Handle two or more SumExprs with FOIL-style expansion: (a+b)*(c+d) = ac + ad + bc + bd
+    if (sumIndices.length >= 2) {
+      SumExpr first = flat[sumIndices[0]] as SumExpr;
+      SumExpr second = flat[sumIndices[1]] as SumExpr;
+
+      List<Expr> otherFactors = [];
+      for (int i = 0; i < flat.length; i++) {
+        if (i != sumIndices[0] && i != sumIndices[1]) {
+          otherFactors.add(flat[i]);
+        }
+      }
+
+      List<Expr> expandedTerms = [];
+      for (Expr a in first.terms) {
+        for (Expr b in second.terms) {
+          if (otherFactors.isEmpty) {
+            expandedTerms.add(ProdExpr([a, b]).simplify());
+          } else {
+            expandedTerms.add(ProdExpr([a, b, ...otherFactors]).simplify());
+          }
+        }
+      }
+
+      return SumExpr(expandedTerms).simplify();
+    }
+
+    // Handle single SumExpr: (a + b) * c = a*c + b*c
+    if (sumIndices.length == 1) {
+      int sumIndex = sumIndices[0];
+      SumExpr sumFactor = flat[sumIndex] as SumExpr;
+      List<Expr> otherFactors = [
+        ...flat.sublist(0, sumIndex),
+        ...flat.sublist(sumIndex + 1),
+      ];
+
+      // Distribute: multiply each term in the sum by the other factors
+      List<Expr> distributedTerms = [];
+      for (Expr term in sumFactor.terms) {
+        if (otherFactors.isEmpty) {
+          distributedTerms.add(term);
+        } else {
+          Expr product = ProdExpr([term, ...otherFactors]).simplify();
+          distributedTerms.add(product);
+        }
+      }
+
+      return SumExpr(distributedTerms).simplify();
+    }
+
+    // Step 3: Combine like bases (e.g., √2 * √2 = 2, i * i = -1)
     flat = _combineLikeBases(flat);
 
     if (flat.isEmpty) return IntExpr.one;
 
-    // Step 2.5: Ensure all rationals are combined (including those from Step 2)
+    // Step 3.5: Ensure all rationals are combined (including those from Step 3)
     List<Expr> finalFactors = [];
     Expr finalNumeric = IntExpr.one;
     for (Expr f in flat) {
@@ -949,7 +1092,7 @@ class ProdExpr extends Expr {
     if (finalFactors.length == 1 && finalFactors[0].isOne) return IntExpr.one;
     if (finalFactors.length == 1) return finalFactors[0];
 
-    // Step 3: Sort for canonical order
+    // Step 4: Sort for canonical order
     finalFactors.sort((a, b) => _compareFactors(a, b));
 
     return ProdExpr(finalFactors);
@@ -983,11 +1126,55 @@ class ProdExpr extends Expr {
 
   /// Combine factors with the same base (e.g., √2 * √3 = √6, √2 * √2 = 2)
   static List<Expr> _combineLikeBases(List<Expr> factors) {
+    // Handle imaginary units first: i * i = -1
+    int imaginaryCount = 0;
+    List<Expr> nonImaginary = [];
+
+    for (Expr f in factors) {
+      if (f is ImaginaryExpr) {
+        imaginaryCount++;
+      } else {
+        nonImaginary.add(f);
+      }
+    }
+
+    // i^1 = i, i^2 = -1, i^3 = -i, i^4 = 1, i^5 = i, ...
+    int mod = imaginaryCount % 4;
+    Expr imaginaryResult;
+    switch (mod) {
+      case 0:
+        imaginaryResult = IntExpr.one;
+        break;
+      case 1:
+        imaginaryResult = ImaginaryExpr.i;
+        break;
+      case 2:
+        imaginaryResult = IntExpr.negOne;
+        break;
+      case 3:
+        imaginaryResult = ProdExpr([IntExpr.negOne, ImaginaryExpr.i]);
+        break;
+      default:
+        imaginaryResult = IntExpr.one;
+    }
+
+    // If we have imaginary result, add it
+    if (imaginaryCount > 0 && !imaginaryResult.isOne) {
+      if (imaginaryResult is ProdExpr) {
+        // -i case: add factors separately
+        for (Expr f in imaginaryResult.factors) {
+          nonImaginary.add(f);
+        }
+      } else {
+        nonImaginary.add(imaginaryResult);
+      }
+    }
+
     // Group RootExpr with same index
     Map<int, List<RootExpr>> rootGroups = {};
     List<Expr> others = [];
 
-    for (Expr f in factors) {
+    for (Expr f in nonImaginary) {
       if (f is RootExpr && f.index is IntExpr) {
         int idx = (f.index as IntExpr).value.toInt();
         rootGroups.putIfAbsent(idx, () => []);
@@ -1121,7 +1308,9 @@ class ProdExpr extends Expr {
         // But skip if it's coefficient * root (implicit multiplication)
         bool implicit =
             factors[i - 1].isRational &&
-            (factors[i] is RootExpr || factors[i] is ConstExpr);
+            (factors[i] is RootExpr ||
+                factors[i] is ConstExpr ||
+                factors[i] is ImaginaryExpr);
         if (!implicit) {
           nodes.add(LiteralNode(text: '·'));
         }
@@ -1167,6 +1356,14 @@ class PowExpr extends Expr {
     // 1^n = 1
     if (b.isOne) return IntExpr.one;
 
+    // Handle e^(ix) = cos(x) + i*sin(x) (Euler's formula)
+    if (b is ConstExpr && b.type == ConstType.e && e.hasImaginary) {
+      Expr? eulerResult = _tryEulerFormula(e);
+      if (eulerResult != null) {
+        return eulerResult.simplify();
+      }
+    }
+
     // Integer^Integer: compute if reasonable
     if (b is IntExpr && e is IntExpr) {
       BigInt baseVal = b.value;
@@ -1209,6 +1406,176 @@ class PowExpr extends Expr {
     return PowExpr(b, e);
   }
 
+  /// Try to apply Euler's formula: e^(ix) = cos(x) + i*sin(x)
+  /// Also handles e^(a + ix) = e^a * (cos(x) + i*sin(x))
+  Expr? _tryEulerFormula(Expr exponent) {
+    // First, try to split the exponent into real and imaginary parts
+    var parts = _splitRealAndImaginary(exponent);
+    if (parts == null) return null;
+
+    Expr? realPart = parts.$1;
+    Expr? imagCoefficient = parts.$2; // This is x in ix
+
+    // If there's no imaginary part, this isn't for Euler's formula
+    if (imagCoefficient == null) return null;
+
+    // Build cos(x) + i*sin(x)
+    Expr eulerPart = SumExpr([
+      TrigExpr(TrigFunc.cos, imagCoefficient),
+      ProdExpr([ImaginaryExpr.i, TrigExpr(TrigFunc.sin, imagCoefficient)]),
+    ]);
+
+    // If there's a real part, multiply by e^(real)
+    if (realPart != null && !realPart.isZero) {
+      Expr eToReal = PowExpr(ConstExpr.e, realPart);
+      return ProdExpr([eToReal, eulerPart]);
+    }
+
+    return eulerPart;
+  }
+
+  /// Split an expression into real and imaginary coefficient parts
+  /// Returns (realPart, imaginaryCoefficient) where the full expression = realPart + i * imaginaryCoefficient
+  /// Returns null if unable to parse
+  (Expr?, Expr?)? _splitRealAndImaginary(Expr expr) {
+    // Case 1: Just i alone -> (null, 1)
+    if (expr is ImaginaryExpr) {
+      return (null, IntExpr.one);
+    }
+
+    // Case 2: Product containing i (could be i*π, π*i, 2*i*π, etc.)
+    if (expr is ProdExpr) {
+      bool hasI = false;
+      List<Expr> nonIFactors = [];
+
+      for (Expr factor in expr.factors) {
+        if (factor is ImaginaryExpr) {
+          hasI = true;
+        } else {
+          nonIFactors.add(factor);
+        }
+      }
+
+      if (hasI) {
+        // The imaginary coefficient is the product of all non-i factors
+        Expr imagCoeff;
+        if (nonIFactors.isEmpty) {
+          imagCoeff = IntExpr.one;
+        } else if (nonIFactors.length == 1) {
+          imagCoeff = nonIFactors[0];
+        } else {
+          imagCoeff = ProdExpr(nonIFactors).simplify();
+        }
+        return (null, imagCoeff);
+      }
+
+      // No i in product - it's purely real
+      return (expr, null);
+    }
+
+    // Case 3: Sum - split into real and imaginary terms
+    if (expr is SumExpr) {
+      List<Expr> realTerms = [];
+      List<Expr> imagCoefficients = [];
+
+      for (Expr term in expr.terms) {
+        var termParts = _splitRealAndImaginary(term);
+        if (termParts == null) return null;
+
+        if (termParts.$1 != null && !termParts.$1!.isZero) {
+          realTerms.add(termParts.$1!);
+        }
+        if (termParts.$2 != null && !termParts.$2!.isZero) {
+          imagCoefficients.add(termParts.$2!);
+        }
+      }
+
+      Expr? realPart;
+      if (realTerms.isEmpty) {
+        realPart = null;
+      } else if (realTerms.length == 1) {
+        realPart = realTerms[0];
+      } else {
+        realPart = SumExpr(realTerms).simplify();
+      }
+
+      Expr? imagCoeff;
+      if (imagCoefficients.isEmpty) {
+        imagCoeff = null;
+      } else if (imagCoefficients.length == 1) {
+        imagCoeff = imagCoefficients[0];
+      } else {
+        imagCoeff = SumExpr(imagCoefficients).simplify();
+      }
+
+      return (realPart, imagCoeff);
+    }
+
+    // Case 4: Division containing i in numerator
+    if (expr is DivExpr) {
+      if (expr.numerator.hasImaginary && !expr.denominator.hasImaginary) {
+        var numParts = _splitRealAndImaginary(expr.numerator);
+        if (numParts != null) {
+          Expr? newReal =
+              numParts.$1 != null
+                  ? DivExpr(numParts.$1!, expr.denominator).simplify()
+                  : null;
+          Expr? newImag =
+              numParts.$2 != null
+                  ? DivExpr(numParts.$2!, expr.denominator).simplify()
+                  : null;
+          return (newReal, newImag);
+        }
+      }
+      // Real division
+      if (!expr.hasImaginary) {
+        return (expr, null);
+      }
+    }
+
+    // Case 5: Negated imaginary
+    if (expr is ProdExpr && expr.factors.length >= 2) {
+      // Check for patterns like -1 * i * something
+      bool hasNegOne = false;
+      bool hasI = false;
+      List<Expr> others = [];
+
+      for (Expr factor in expr.factors) {
+        if (factor is IntExpr && factor.value == -BigInt.one) {
+          hasNegOne = true;
+        } else if (factor is ImaginaryExpr) {
+          hasI = true;
+        } else {
+          others.add(factor);
+        }
+      }
+
+      if (hasI) {
+        Expr imagCoeff;
+        if (others.isEmpty) {
+          imagCoeff = hasNegOne ? IntExpr.negOne : IntExpr.one;
+        } else if (others.length == 1) {
+          imagCoeff = hasNegOne ? others[0].negate() : others[0];
+        } else {
+          Expr prod = ProdExpr(others).simplify();
+          imagCoeff = hasNegOne ? prod.negate() : prod;
+        }
+        return (null, imagCoeff);
+      }
+    }
+
+    // Not a form we can handle - check if it has imaginary
+    if (expr.hasImaginary) {
+      return null;
+    }
+
+    // Purely real
+    return (expr, null);
+  }
+
+  @override
+  bool get hasImaginary => base.hasImaginary || exponent.hasImaginary;
+
   @override
   double toDouble() =>
       math.pow(base.toDouble(), exponent.toDouble()).toDouble();
@@ -1219,8 +1586,6 @@ class PowExpr extends Expr {
         base.structurallyEquals(other.base) &&
         exponent.structurallyEquals(other.exponent);
   }
-
-  // In PowExpr class, replace the termSignature getter:
 
   @override
   String get termSignature {
@@ -1285,6 +1650,9 @@ class RootExpr extends Expr {
 
   RootExpr(this.radicand, this.index);
 
+  @override
+  bool get hasImaginary => radicand.hasImaginary || index.hasImaginary;
+
   /// Convenience constructor for square root
   RootExpr.sqrt(this.radicand) : index = IntExpr.two;
 
@@ -1308,6 +1676,13 @@ class RootExpr extends Expr {
 
     // For integer radicands, extract perfect nth powers
     if (rad is IntExpr) {
+      if (n == 2 && rad.value < BigInt.zero) {
+        // sqrt(-x) = i * sqrt(x)
+        return ProdExpr([
+          ImaginaryExpr.i,
+          RootExpr.sqrt(IntExpr(rad.value.abs())).simplify(),
+        ]).simplify();
+      }
       return _simplifyIntegerRoot(rad.value, n);
     }
 
@@ -1517,6 +1892,9 @@ class LogExpr extends Expr {
 
   LogExpr(this.base, this.argument, {this.isNaturalLog = false});
 
+  @override
+  bool get hasImaginary => base.hasImaginary || argument.hasImaginary;
+
   /// Natural logarithm
   LogExpr.ln(this.argument) : base = ConstExpr.e, isNaturalLog = true;
 
@@ -1678,6 +2056,9 @@ class TrigExpr extends Expr {
   final Expr argument;
 
   TrigExpr(this.func, this.argument);
+
+  @override
+  bool get hasImaginary => argument.hasImaginary;
 
   @override
   Expr simplify() {
@@ -2094,6 +2475,9 @@ class AbsExpr extends Expr {
   AbsExpr(this.operand);
 
   @override
+  bool get hasImaginary => operand.hasImaginary;
+
+  @override
   Expr simplify() {
     Expr op = operand.simplify();
 
@@ -2353,6 +2737,9 @@ class DivExpr extends Expr {
   }
 
   @override
+  bool get hasImaginary => numerator.hasImaginary || denominator.hasImaginary;
+
+  @override
   double toDouble() => numerator.toDouble() / denominator.toDouble();
 
   @override
@@ -2463,6 +2850,9 @@ class PermExpr extends Expr {
   PermExpr(this.n, this.r);
 
   @override
+  bool get hasImaginary => n.hasImaginary || r.hasImaginary;
+
+  @override
   Expr simplify() {
     Expr nSimp = n.simplify();
     Expr rSimp = r.simplify();
@@ -2561,6 +2951,9 @@ class CombExpr extends Expr {
   final Expr r;
 
   CombExpr(this.n, this.r);
+
+  @override
+  bool get hasImaginary => n.hasImaginary || r.hasImaginary;
 
   @override
   Expr simplify() {
@@ -2677,6 +3070,9 @@ class VarExpr extends Expr {
   final String name;
 
   VarExpr(this.name);
+
+  @override
+  bool get hasImaginary => false;
 
   @override
   Expr simplify() => this;
@@ -2962,6 +3358,7 @@ class MathNodeToExpr {
         case '\u03B5\u2080':
           type = ConstType.epsilon0;
           break;
+        case '\u03BC\u2080':
         case '\u00B5\u2080':
           type = ConstType.mu0;
           break;
@@ -3095,30 +3492,35 @@ class MathNodeToExpr {
         continue;
       }
 
+      // Check for π (pi constant)
       if (char == 'π' || char == '\u03C0') {
         tokens.add(_Token.fromExpr(ConstExpr.pi));
         i++;
         continue;
       }
 
+      // Check for standalone 'e' (Euler's number) - must not be followed by letter
       if (char == 'e' && (i + 1 >= text.length || !_isLetter(text[i + 1]))) {
         tokens.add(_Token.fromExpr(ConstExpr.e));
         i++;
         continue;
       }
 
+      // Check for φ (phi / golden ratio)
       if (char == 'φ') {
         tokens.add(_Token.fromExpr(ConstExpr.phi));
         i++;
         continue;
       }
 
+      // Check for ε₀ (vacuum permittivity)
       if (char == '\u03B5' && i + 1 < text.length && text[i + 1] == '\u2080') {
         tokens.add(_Token.fromExpr(ConstExpr.epsilon0));
         i += 2;
         continue;
       }
 
+      // Check for μ₀ (vacuum permeability)
       if ((char == '\u03BC' || char == '\u00B5') &&
           i + 1 < text.length &&
           text[i + 1] == '\u2080') {
@@ -3127,16 +3529,49 @@ class MathNodeToExpr {
         continue;
       }
 
+      // Check for c₀ (speed of light)
       if (char == 'c' && i + 1 < text.length && text[i + 1] == '\u2080') {
         tokens.add(_Token.fromExpr(ConstExpr.c0));
         i += 2;
         continue;
       }
 
+      // Check for imaginary unit 'i' - MUST check this BEFORE general letter handling
+      // 'i' is imaginary if it's standalone (not part of a word like 'sin')
+      if (char == 'i') {
+        // Check if it's standalone
+        bool isStandalone = true;
+
+        // Check previous character - if it's a letter, 'i' is part of a word
+        if (i > 0 && _isLetter(text[i - 1])) {
+          isStandalone = false;
+        }
+
+        // Check next character - if it's a letter (not π or other special), 'i' is part of a word
+        if (i + 1 < text.length) {
+          String next = text[i + 1];
+          // Allow i followed by π, digits, operators, etc.
+          // But not i followed by regular letters (like 'in', 'if')
+          if (_isLetter(next) && next != 'π' && next != '\u03C0') {
+            isStandalone = false;
+          }
+        }
+
+        if (isStandalone) {
+          tokens.add(_Token.fromExpr(ImaginaryExpr.i));
+          i++;
+          continue;
+        }
+      }
+
       // Letters (variables or function names)
       if (_isLetter(char)) {
         String word = '';
         while (i < text.length && (_isLetter(text[i]) || _isDigit(text[i]))) {
+          // Stop if we hit a special character like π
+          if (text[i] == 'π' || text[i] == '\u03C0') {
+            break;
+          }
           word += text[i];
           i++;
         }
@@ -3147,14 +3582,18 @@ class MathNodeToExpr {
           continue;
         }
         if (word == 'e' && (i >= text.length || !_isLetter(text[i]))) {
-          // Standalone 'e' is Euler's number
           tokens.add(_Token.fromExpr(ConstExpr.e));
+          continue;
+        }
+
+        // Check for imaginary unit (single 'i' that wasn't caught above)
+        if (word == 'i') {
+          tokens.add(_Token.fromExpr(ImaginaryExpr.i));
           continue;
         }
 
         // Check for reserved function names (handled by nodes, but just in case)
         if (_reservedNames.contains(word.toLowerCase())) {
-          // This shouldn't happen if nodes are used, but treat as variable for safety
           tokens.add(_Token.fromExpr(VarExpr(word)));
           continue;
         }
@@ -3246,20 +3685,36 @@ class _TokenParser {
 
     while (pos < tokens.length) {
       _Token token = tokens[pos];
-      if (token.type != _TokenType.operator) break;
-      if (token.value != '*' && token.value != '/') break;
 
-      pos++;
-      Expr right = _parsePower();
-
-      if (token.value == '*') {
+      // Explicit multiplication or division
+      if (token.type == _TokenType.operator &&
+          (token.value == '*' || token.value == '/')) {
+        pos++;
+        Expr right = _parsePower();
+        if (token.value == '*') {
+          left = ProdExpr([left, right]);
+        } else {
+          left = DivExpr(left, right);
+        }
+      }
+      // Implicit multiplication (e.g., 2i, 2(3), (2)3)
+      else if (_isNextPrimary()) {
+        Expr right = _parsePower();
         left = ProdExpr([left, right]);
       } else {
-        left = DivExpr(left, right);
+        break;
       }
     }
 
     return left;
+  }
+
+  bool _isNextPrimary() {
+    if (pos >= tokens.length) return false;
+    _Token token = tokens[pos];
+    return token.type == _TokenType.number ||
+        token.type == _TokenType.lparen ||
+        token.type == _TokenType.expr;
   }
 
   Expr _parsePower() {
@@ -3350,21 +3805,67 @@ class _TokenParser {
   }
 
   /// Convert a double to a fraction (for simple decimals)
+  /// Convert a double to a fraction (for simple decimals and scientific notation)
   Expr _doubleToFraction(double value) {
+    // Handle zero
+    if (value == 0) {
+      return IntExpr.zero;
+    }
+
     // Check if it's effectively an integer
-    if ((value - value.roundToDouble()).abs() < 1e-10) {
+    if (value.abs() >= 1 && (value - value.roundToDouble()).abs() < 1e-10) {
       return IntExpr.from(value.round());
     }
 
-    // Try to find a simple fraction representation
-    // For terminating decimals like 0.5, 0.25, 0.125, etc.
-
+    // Handle scientific notation properly
+    // Convert to a fraction: 1e-7 = 1/10000000
     String str = value.toString();
-    if (str.contains('e') || str.contains('E')) {
-      // Scientific notation - just use approximation
-      return IntExpr.from(value.round());
+
+    // Check for scientific notation in the string representation
+    int eIndex = str.toLowerCase().indexOf('e');
+    if (eIndex != -1) {
+      // Parse mantissa and exponent
+      String mantissaStr = str.substring(0, eIndex);
+      String expStr = str.substring(eIndex + 1);
+
+      double mantissa = double.parse(mantissaStr);
+      int exponent = int.parse(expStr);
+
+      // Convert mantissa to fraction first
+      Expr mantissaExpr = _mantissaToFraction(mantissa);
+
+      if (exponent >= 0) {
+        // Positive exponent: multiply by 10^exponent
+        BigInt multiplier = BigInt.from(10).pow(exponent);
+        if (mantissaExpr is IntExpr) {
+          return IntExpr(mantissaExpr.value * multiplier);
+        } else if (mantissaExpr is FracExpr) {
+          return FracExpr(
+            IntExpr(mantissaExpr.numerator.value * multiplier),
+            mantissaExpr.denominator,
+          ).simplify();
+        }
+      } else {
+        // Negative exponent: divide by 10^|exponent|
+        BigInt divisor = BigInt.from(10).pow(-exponent);
+        if (mantissaExpr is IntExpr) {
+          return FracExpr(mantissaExpr, IntExpr(divisor)).simplify();
+        } else if (mantissaExpr is FracExpr) {
+          return FracExpr(
+            mantissaExpr.numerator,
+            IntExpr(mantissaExpr.denominator.value * divisor),
+          ).simplify();
+        }
+      }
+
+      // Fallback
+      return FracExpr(
+        IntExpr.one,
+        IntExpr(BigInt.from(10).pow(-exponent)),
+      ).simplify();
     }
 
+    // Regular decimal handling
     int decimalIndex = str.indexOf('.');
     if (decimalIndex == -1) {
       return IntExpr.from(value.toInt());
@@ -3374,14 +3875,34 @@ class _TokenParser {
     int decimalPlaces = decimalPart.length;
 
     // Limit decimal places for sanity
-    if (decimalPlaces > 10) {
-      // Too many decimals - approximate
-      return IntExpr.from(value.round());
+    if (decimalPlaces > 15) {
+      decimalPlaces = 15;
     }
 
     // Create fraction: value = intPart + decPart/10^decimalPlaces
     BigInt denominator = BigInt.from(10).pow(decimalPlaces);
     BigInt numerator = BigInt.from((value * denominator.toDouble()).round());
+
+    return FracExpr(IntExpr(numerator), IntExpr(denominator)).simplify();
+  }
+
+  /// Helper to convert a mantissa (like 1.5) to a fraction
+  Expr _mantissaToFraction(double mantissa) {
+    if (mantissa == mantissa.roundToDouble()) {
+      return IntExpr.from(mantissa.round());
+    }
+
+    String str = mantissa.toString();
+    int decimalIndex = str.indexOf('.');
+    if (decimalIndex == -1) {
+      return IntExpr.from(mantissa.toInt());
+    }
+
+    String decimalPart = str.substring(decimalIndex + 1);
+    int decimalPlaces = decimalPart.length;
+
+    BigInt denominator = BigInt.from(10).pow(decimalPlaces);
+    BigInt numerator = BigInt.from((mantissa * denominator.toDouble()).round());
 
     return FracExpr(IntExpr(numerator), IntExpr(denominator)).simplify();
   }
@@ -3439,13 +3960,18 @@ class ExactMathEngine {
       }
 
       if (numerical != null && numerical.isNaN) {
-        return ExactResult.empty();
+        // If it's NaN but has imaginary parts, that's expected for pure 'i' expressions
+        if (!(simplified.hasImaginary)) {
+          return ExactResult.empty();
+        }
       }
 
       if (numerical != null && numerical.isInfinite) {
         return ExactResult(
           expr: simplified,
-          mathNodes: [LiteralNode(text: numerical.isNegative ? '-∞' : '∞')],
+          mathNodes: [
+            LiteralNode(text: numerical.isNegative ? '\u2212∞' : '∞'),
+          ],
           numerical: numerical,
         );
       }
@@ -4330,6 +4856,71 @@ class ExactMathEngine {
     return badPatterns.hasMatch(s);
   }
 
+  /// Format a complex expression numerically
+  static String _formatComplexNumerical(Expr expr, int precision) {
+    // Try to split into real and imaginary parts
+    // Very simple split for Sum and Prod
+    double real = 0;
+    double imag = 0;
+
+    void process(Expr e, double multiplier) {
+      if (e is SumExpr) {
+        for (var t in e.terms) process(t, multiplier);
+      } else if (e is ProdExpr) {
+        double rPart = 1.0;
+        bool hasI = false;
+        for (var f in e.factors) {
+          if (f is ImaginaryExpr) {
+            hasI = true;
+          } else {
+            rPart *= f.toDouble();
+          }
+        }
+        if (hasI) {
+          imag += multiplier * rPart;
+        } else {
+          real += multiplier * rPart;
+        }
+      } else if (e is ImaginaryExpr) {
+        imag += multiplier;
+      } else {
+        real += multiplier * e.toDouble();
+      }
+    }
+
+    process(expr, 1.0);
+
+    String formatPart(double d) {
+      if ((d - d.roundToDouble()).abs() < 1e-10) {
+        return d.round().toString();
+      }
+      String f = d.toStringAsFixed(precision);
+      if (f.contains('.')) {
+        f = f.replaceAll(RegExp(r'0+$'), '');
+        f = f.replaceAll(RegExp(r'\.$'), '');
+      }
+      return f;
+    }
+
+    if (imag == 0) return formatPart(real);
+    if (real == 0) {
+      if (imag == 1) return 'i';
+      if (imag == -1) return '\u2212i';
+      String iPartStr = formatPart(imag);
+      if (iPartStr.startsWith('-') || iPartStr.startsWith('\u2212')) {
+        String absPart = iPartStr.substring(1);
+        return '\u2212${absPart}i';
+      }
+      return '${iPartStr}i';
+    }
+
+    String sign = imag < 0 ? ' \u2212 ' : ' + ';
+    double absImag = imag.abs();
+    String iPartStr = absImag == 1 ? 'i' : '${formatPart(absImag)}i';
+
+    return '${formatPart(real)}$sign$iPartStr';
+  }
+
   /// Check if expression has irrational parts
   static bool _hasIrrationalParts(Expr expr) {
     if (expr is RootExpr) {
@@ -4416,22 +5007,28 @@ class ExactResult {
 
   String toNumericalString({int precision = 6}) {
     if (isEmpty) return '';
+
+    if (expr != null && expr!.hasImaginary) {
+      return ExactMathEngine._formatComplexNumerical(expr!, precision);
+    }
+
     if (numerical == null) return '';
     if (numerical!.isNaN) return '';
     if (numerical!.isInfinite) {
-      return numerical!.isNegative ? '-∞' : '∞';
+      return numerical!.isNegative ? '\u2212∞' : '∞';
     }
 
     if ((numerical! - numerical!.roundToDouble()).abs() < 1e-10) {
-      return numerical!.round().toString();
+      String s = numerical!.round().abs().toString();
+      return numerical!.isNegative ? '\u2212$s' : s;
     }
 
-    String formatted = numerical!.toStringAsFixed(precision);
+    String formatted = numerical!.abs().toStringAsFixed(precision);
     if (formatted.contains('.')) {
       formatted = formatted.replaceAll(RegExp(r'0+$'), '');
       formatted = formatted.replaceAll(RegExp(r'\.$'), '');
     }
-    return formatted;
+    return numerical!.isNegative ? '\u2212$formatted' : formatted;
   }
 }
 

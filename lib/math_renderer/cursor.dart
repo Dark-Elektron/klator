@@ -1,6 +1,5 @@
 import 'renderer.dart';
 
-
 class EditorCursor {
   final String? parentId;
   final String? path;
@@ -108,6 +107,12 @@ class EditorState {
     }
     if (node is AnsNode) {
       return AnsNode(index: _deepCopyNodes(node.index));
+    }
+    if (node is ConstantNode) {
+      return ConstantNode(node.constant);
+    }
+    if (node is ComplexNode) {
+      return ComplexNode(content: _deepCopyNodes(node.content));
     }
     if (node is NewlineNode) {
       return NewlineNode();

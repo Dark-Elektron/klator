@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:klator/math_engine/math_engine.dart';
 
 void main() {
+  // ignore: no_leading_underscores_for_local_identifiers
   double _parse(String? s) {
     if (s == null || s.isEmpty) return 0.0;
     return double.parse(s.replaceAll('\u1D07', 'e').replaceAll(',', '').trim());

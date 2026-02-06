@@ -3,6 +3,7 @@ import 'renderer.dart';
 import 'selection_wrapper.dart';
 import '../math_engine/math_expression_serializer.dart';
 import '../math_engine/math_engine.dart';
+import '../math_engine/math_engine_exact.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'expression_selection.dart';
@@ -2648,7 +2649,25 @@ class MathEditorController extends ChangeNotifier {
   void onCalculate({Map<int, String>? ansValues}) {
     // Get expression from the math editor
     expr = MathExpressionSerializer.serialize(expression);
-    // Solve it
+
+    // Try exact engine first (better for i, fractions, etc.)
+    final exactResult = ExactMathEngine.evaluate(expression);
+
+    if (!exactResult.isEmpty && !exactResult.hasError) {
+      // Use exact result if it has imaginary parts OR if the input expression contains 'i'
+      // This ensures 5i*5i = -25 is correctly displayed as a numerical result.
+      if ((exactResult.expr?.hasImaginary ?? false) || expr.contains('i')) {
+        result = exactResult.toNumericalString();
+        onResultChanged?.call();
+        // return;
+      }
+
+      // If it's a simple exact result, we can use it.
+      // But for now, let's fall back to MathSolverNew for regular decimals
+      // to maintain exactly the same behavior as before.
+    }
+
+    // Solve it with decimal engine
     result = MathSolverNew.solve(expr, ansValues: ansValues) ?? '';
     // Notify that result changed (for cascading updates)
     onResultChanged?.call();
