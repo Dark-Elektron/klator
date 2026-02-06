@@ -1017,6 +1017,19 @@ class _ExpressionParser {
       _pos++;
       dynamic right = _parsePower();
 
+      if (op == '/' && left is! Complex && right is! Complex) {
+        final l = _toDouble(left);
+        final r = _toDouble(right);
+        if (r == 0) {
+          if (l == 0) {
+            left = double.nan;
+          } else {
+            left = l.isNegative ? double.negativeInfinity : double.infinity;
+          }
+          continue;
+        }
+      }
+
       // Convert to Complex for operation
       Complex l = _toComplex(left);
       Complex r = _toComplex(right);

@@ -124,10 +124,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Map<int, ValueNotifier<int>> currentResultPageNotifiers = {};
 
   Map<int, ValueNotifier<int>> exactResultVersionNotifiers = {};
-  // OLD:
-  // Map<int, double> resultPageProgress = {};
 
-  // NEW:
   Map<int, ValueNotifier<double>> resultPageProgressNotifiers = {};
   int activeIndex = 0;
   PageController pgViewController = PageController(
@@ -247,11 +244,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  // ============================================
-  // COMPREHENSIVE FIX - Replace these sections
-  // ============================================
-
-  // 2. REPLACE _createControllers entirely:
   void _createControllers(int index) {
     mathEditorControllers[index] = MathEditorController();
 
@@ -277,7 +269,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     exactResultExprs[index] = null;
   }
 
-  // 4. REPLACE _updateExactResult:
   void _updateExactResult(int index) {
     final controller = mathEditorControllers[index];
     if (controller == null) return;
@@ -322,10 +313,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  // 5. REPLACE _buildExpressionDisplay ENTIRELY:
   Container _buildExpressionDisplay(int index, AppColors colors) {
     final mathEditorController = mathEditorControllers[index];
-    // final resController = textDisplayControllers[index];
     final mathEditorKey = mathEditorKeys[index];
     final scrollController = scrollControllers[index];
     final bool isFocused = (activeIndex == index);
@@ -406,17 +395,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  // 8. Keep these height calculation methods in _HomePageState:
   double _calculateDecimalResultHeight(int index) {
     final resController = textDisplayControllers[index];
     String text = resController?.text ?? '';
 
     if (text.isEmpty) return 80.0;
 
-    // Use the same measurement logic as Exact
-    double measuredHeight = MathResultDisplay.calculateTotalHeight([
-      LiteralNode(text: text),
-    ], FONTSIZE);
+    // Use the same measurement logic as Exact, but handle newlines properly.
+    double measuredHeight = MathResultDisplay.calculateTextHeight(
+      text,
+      FONTSIZE,
+    );
 
     double totalHeight = measuredHeight + 16 + 10;
     return totalHeight.clamp(80.0, 300.0);
@@ -540,7 +529,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  // In main.dart, REPLACE _loadCells():
   Future<void> _loadCells() async {
     List<CellData> savedCells = await CellPersistence.loadCells();
     int savedIndex = await CellPersistence.loadActiveIndex();
@@ -1127,8 +1115,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return false;
   }
 
-  // Replace the countVariablesInExpressions method with this improved version:
-
   int countVariablesInExpressions(String expressions) {
     // First, remove all known function names and keywords to avoid false matches
     String cleaned = expressions;
@@ -1180,10 +1166,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 }
 
-// ============================================
-// NEW WIDGET - Add this at the end of the file
-// ============================================
-
 /// Isolated widget for the result PageView to prevent unnecessary rebuilds
 class _ResultPageViewWidget extends StatefulWidget {
   final int index;
@@ -1224,14 +1206,6 @@ class _ResultPageViewWidget extends StatefulWidget {
   @override
   State<_ResultPageViewWidget> createState() => _ResultPageViewWidgetState();
 }
-
-// ============================================
-// Replace the _ResultPageViewWidgetState class
-// ============================================
-
-// ============================================
-// Replace _ResultPageViewWidgetState class
-// ============================================
 
 class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
   late PageController _pageController;
@@ -1517,10 +1491,6 @@ class _AnimatedHeightContainer extends StatefulWidget {
       _AnimatedHeightContainerState();
 }
 
-// ============================================
-// Replace _AnimatedHeightContainerState class
-// ============================================
-
 class _AnimatedHeightContainerState extends State<_AnimatedHeightContainer>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
@@ -1659,10 +1629,6 @@ class _AnimatedContentScope extends InheritedWidget {
         isAnimating != oldWidget.isAnimating;
   }
 }
-
-// ============================================
-// Add this widget at the end of the file
-// ============================================
 
 /// Widget that animates content appearance in sync with height changes
 class AnimatedResultContent extends StatelessWidget {

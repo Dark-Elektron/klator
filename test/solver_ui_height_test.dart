@@ -23,6 +23,17 @@ void main() {
     print('ESTIMATED HEIGHTS: 1-line: $h1, 2-line-root: $h2');
   });
 
+  test('Decimal Result Height Estimation Logic (multi-line text)', () {
+    const singleLine = 'x = 3';
+    const multiLine = 'x = 3\ny = -1\nz = 2';
+
+    final h1 = MathResultDisplay.calculateTextHeight(singleLine, 20.0);
+    final h3 = MathResultDisplay.calculateTextHeight(multiLine, 20.0);
+
+    expect(h1 > 0, isTrue);
+    expect(h3 > h1, isTrue);
+  });
+
   testWidgets('Exact Result Display Widget Rendering', (
     WidgetTester tester,
   ) async {

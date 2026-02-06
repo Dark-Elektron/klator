@@ -33,6 +33,13 @@ class MathResultDisplay extends StatelessWidget {
     return total;
   }
 
+  /// Estimate height for plain text (supports newline-separated lines).
+  static double calculateTextHeight(String text, double fontSize) {
+    if (text.isEmpty) return 0;
+    final nodes = _staticTextToNodes(text);
+    return calculateTotalHeight(nodes, fontSize);
+  }
+
   /// Calculate estimated height of a single line of nodes.
   static double calculateLineHeight(List<MathNode> nodes, double fontSize) {
     if (nodes.isEmpty) return fontSize;
@@ -63,6 +70,18 @@ class MathResultDisplay extends StatelessWidget {
     }
     if (currentLine.isNotEmpty) lines.add(currentLine);
     return lines;
+  }
+
+  static List<MathNode> _staticTextToNodes(String text) {
+    final lines = text.split('\n');
+    final nodes = <MathNode>[];
+    for (int i = 0; i < lines.length; i++) {
+      nodes.add(LiteralNode(text: lines[i]));
+      if (i < lines.length - 1) {
+        nodes.add(NewlineNode());
+      }
+    }
+    return nodes;
   }
 
   @override

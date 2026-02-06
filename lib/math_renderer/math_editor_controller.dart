@@ -305,6 +305,17 @@ class MathEditorController extends ChangeNotifier {
     // Remove any postFrameCallback here - let registerNodeLayout handle cursor rect
   }
 
+  void _scheduleCursorRecalc() {
+    try {
+      WidgetsFlutterBinding.ensureInitialized();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        recalculateCursorRect();
+      });
+    } catch (_) {
+      // If binding isn't available (unit tests), skip scheduling.
+    }
+  }
+
   void setCursor(EditorCursor c) {
     cursor = c;
     notifyListeners();
@@ -788,37 +799,52 @@ class MathEditorController extends ChangeNotifier {
           index: actualIndex + 2,
           subIndex: 0,
         );
-      } else {
-        // We are at the very end of the literal (or it was empty).
-        // If 'before' is not empty, we keep it and just apppend the constant.
-        // If 'before' IS empty, we replace the LiteralNode with the ConstantNode.
-        if (before.isNotEmpty) {
-          current.text = before;
-          siblings.insert(actualIndex + 1, node);
-          // Insert a NEW empty LiteralNode after the constant so the user has somewhere to type
-          final tail = LiteralNode(text: "");
-          siblings.insert(actualIndex + 2, tail);
-          cursor = EditorCursor(
-            parentId: cursor.parentId,
-            path: cursor.path,
-            index: actualIndex + 2,
-            subIndex: 0,
-          );
         } else {
-          // Both before and after are empty. Replace current Literal with Constant.
-          siblings[actualIndex] = node;
-          // Still need an empty literal after it to allow further typing
-          final tail = LiteralNode(text: "");
-          siblings.insert(actualIndex + 1, tail);
-          cursor = EditorCursor(
-            parentId: cursor.parentId,
-            path: cursor.path,
-            index: actualIndex + 1,
-            subIndex: 0,
-          );
+          // We are at the very end of the literal (or it was empty).
+          // If 'before' is not empty, we keep it and just apppend the constant.
+          // If 'before' IS empty, we replace the LiteralNode with the ConstantNode.
+          if (before.isNotEmpty) {
+            current.text = before;
+            siblings.insert(actualIndex + 1, node);
+            // Insert a NEW empty LiteralNode after the constant so the user has somewhere to type
+            final tail = LiteralNode(text: "");
+            siblings.insert(actualIndex + 2, tail);
+            cursor = EditorCursor(
+              parentId: cursor.parentId,
+              path: cursor.path,
+              index: actualIndex + 2,
+              subIndex: 0,
+            );
+          } else {
+            // Both before and after are empty. Replace current Literal with Constant.
+            final prevNode = actualIndex > 0 ? siblings[actualIndex - 1] : null;
+            if (prevNode is ConstantNode) {
+              // Keep the empty literal as a spacer so the cursor can sit between constants.
+              siblings.insert(actualIndex + 1, node);
+              // Still need an empty literal after it to allow further typing
+              final tail = LiteralNode(text: "");
+              siblings.insert(actualIndex + 2, tail);
+              cursor = EditorCursor(
+                parentId: cursor.parentId,
+                path: cursor.path,
+                index: actualIndex + 2,
+                subIndex: 0,
+              );
+            } else {
+              siblings[actualIndex] = node;
+              // Still need an empty literal after it to allow further typing
+              final tail = LiteralNode(text: "");
+              siblings.insert(actualIndex + 1, tail);
+              cursor = EditorCursor(
+                parentId: cursor.parentId,
+                path: cursor.path,
+                index: actualIndex + 1,
+                subIndex: 0,
+              );
+            }
+          }
         }
       }
-    }
     _notifyStructureChanged();
     onCalculate();
   }
@@ -1808,16 +1834,17 @@ class MathEditorController extends ChangeNotifier {
           power: [LiteralNode(text: "")],
         );
         siblings.insert(newCurrentIndex, exp);
-        cursor = EditorCursor(
-          parentId: exp.id,
-          path: 'pow',
-          index: 0,
-          subIndex: 0,
-        );
-        _notifyStructureChanged();
-        return;
+          cursor = EditorCursor(
+            parentId: exp.id,
+            path: 'pow',
+            index: 0,
+            subIndex: 0,
+          );
+          _notifyStructureChanged();
+          _scheduleCursorRecalc();
+          return;
+        }
       }
-    }
 
     current.text = text.substring(0, operandStart);
     final exp = ExponentNode(
@@ -1826,18 +1853,19 @@ class MathEditorController extends ChangeNotifier {
     );
     final tail = LiteralNode(text: text.substring(cursorClick));
 
-    if (actualIndex >= 0) {
-      siblings.insert(actualIndex + 1, exp);
-      siblings.insert(actualIndex + 2, tail);
-      cursor = EditorCursor(
-        parentId: exp.id,
-        path: 'pow',
-        index: 0,
-        subIndex: 0,
-      );
+      if (actualIndex >= 0) {
+        siblings.insert(actualIndex + 1, exp);
+        siblings.insert(actualIndex + 2, tail);
+        cursor = EditorCursor(
+          parentId: exp.id,
+          path: 'pow',
+          index: 0,
+          subIndex: 0,
+        );
+      }
+      _notifyStructureChanged();
+      _scheduleCursorRecalc();
     }
-    _notifyStructureChanged();
-  }
 
   /// Wraps an entire AnsNode into a fraction's numerator
   void _wrapAnsNodeIntoFraction(AnsNode ans) {
@@ -2371,16 +2399,17 @@ class MathEditorController extends ChangeNotifier {
         );
         siblings.insert(newCurrentIndex, frac);
 
-        cursor = EditorCursor(
-          parentId: frac.id,
-          path: 'den',
-          index: 0,
-          subIndex: 0,
-        );
-        _notifyStructureChanged();
-        return;
+          cursor = EditorCursor(
+            parentId: frac.id,
+            path: 'den',
+            index: 0,
+            subIndex: 0,
+          );
+          _notifyStructureChanged();
+          _scheduleCursorRecalc();
+          return;
+        }
       }
-    }
 
     // === DEFAULT BEHAVIOR ===
     if (numeratorText.startsWith(MathTextStyle.multiplySign)) {
@@ -2394,18 +2423,19 @@ class MathEditorController extends ChangeNotifier {
     );
     final tail = LiteralNode(text: text.substring(cursorClick));
 
-    if (actualIndex >= 0) {
-      siblings.insert(actualIndex + 1, frac);
-      siblings.insert(actualIndex + 2, tail);
-      cursor = EditorCursor(
-        parentId: frac.id,
-        path: 'den',
-        index: 0,
-        subIndex: 0,
-      );
+      if (actualIndex >= 0) {
+        siblings.insert(actualIndex + 1, frac);
+        siblings.insert(actualIndex + 2, tail);
+        cursor = EditorCursor(
+          parentId: frac.id,
+          path: 'den',
+          index: 0,
+          subIndex: 0,
+        );
+      }
+      _notifyStructureChanged();
+      _scheduleCursorRecalc();
     }
-    _notifyStructureChanged();
-  }
 
   void _wrapPreviousNodeIntoPermutation(
     MathNode prevNode,
@@ -2892,15 +2922,20 @@ class MathEditorController extends ChangeNotifier {
     String? prefixToKeep;
     int? prefixNodeIndex;
 
-    int i = startIndex;
-    while (i >= 0) {
-      final node = siblings[i];
+      int i = startIndex;
+      while (i >= 0) {
+        final node = siblings[i];
 
-      if (node is ExponentNode ||
-          node is FractionNode ||
-          node is ParenthesisNode ||
-          node is TrigNode ||
-          node is RootNode ||
+        if (node is LiteralNode && node.text.isEmpty) {
+          i--;
+          continue;
+        }
+
+        if (node is ExponentNode ||
+            node is FractionNode ||
+            node is ParenthesisNode ||
+            node is TrigNode ||
+            node is RootNode ||
           node is AnsNode ||
           node is LogNode ||
           node is ConstantNode || // <-- ADD THIS
@@ -3392,14 +3427,23 @@ class MathEditorController extends ChangeNotifier {
       _moveCursorToEndOfList(lastNode.radicand, lastNode.id, 'radicand');
     } else if (lastNode is LogNode) {
       _moveCursorToEndOfList(lastNode.argument, lastNode.id, 'arg');
-    } else if (lastNode is PermutationNode) {
-      _moveCursorToEndOfList(lastNode.r, lastNode.id, 'r');
-    } else if (lastNode is CombinationNode) {
-      _moveCursorToEndOfList(lastNode.r, lastNode.id, 'r');
-    } else if (lastNode is AnsNode) {
-      _moveCursorToEndOfList(lastNode.index, lastNode.id, 'index');
+      } else if (lastNode is PermutationNode) {
+        _moveCursorToEndOfList(lastNode.r, lastNode.id, 'r');
+      } else if (lastNode is CombinationNode) {
+        _moveCursorToEndOfList(lastNode.r, lastNode.id, 'r');
+      } else if (lastNode is AnsNode) {
+        _moveCursorToEndOfList(lastNode.index, lastNode.id, 'index');
+      } else if (lastNode is ConstantNode) {
+        final insertIndex = lastIndex + 1;
+        nodes.insert(insertIndex, LiteralNode(text: ""));
+        cursor = EditorCursor(
+          parentId: parentId,
+          path: path,
+          index: insertIndex,
+          subIndex: 0,
+        );
+      }
     }
-  }
 
   void _moveCursorToStartOfList(
     List<MathNode> nodes,
@@ -3436,14 +3480,22 @@ class MathEditorController extends ChangeNotifier {
       } else {
         _moveCursorToStartOfList(firstNode.base, firstNode.id, 'base');
       }
-    } else if (firstNode is PermutationNode) {
-      _moveCursorToStartOfList(firstNode.n, firstNode.id, 'n');
-    } else if (firstNode is CombinationNode) {
-      _moveCursorToStartOfList(firstNode.n, firstNode.id, 'n');
-    } else if (firstNode is AnsNode) {
-      _moveCursorToStartOfList(firstNode.index, firstNode.id, 'index');
+      } else if (firstNode is PermutationNode) {
+        _moveCursorToStartOfList(firstNode.n, firstNode.id, 'n');
+      } else if (firstNode is CombinationNode) {
+        _moveCursorToStartOfList(firstNode.n, firstNode.id, 'n');
+      } else if (firstNode is AnsNode) {
+        _moveCursorToStartOfList(firstNode.index, firstNode.id, 'index');
+      } else if (firstNode is ConstantNode) {
+        nodes.insert(0, LiteralNode(text: ""));
+        cursor = EditorCursor(
+          parentId: parentId,
+          path: path,
+          index: 0,
+          subIndex: 0,
+        );
+      }
     }
-  }
 
   void _moveCursorBeforeNode(String nodeId) =>
       _findAndPositionBefore(expression, nodeId, null, null);
@@ -3748,14 +3800,33 @@ class MathEditorController extends ChangeNotifier {
         } else if (node is LogNode) {
           // <== AND THIS
           _moveCursorToEndOfList(node.argument, node.id, 'arg');
-        } else if (node is PermutationNode) {
-          // <-- ADD THIS
-          _moveCursorToEndOfList(node.r, node.id, 'r');
-        } else if (node is CombinationNode) {
-          // <-- ADD THIS
-          _moveCursorToEndOfList(node.r, node.id, 'r');
-        }
-      } else {
+          } else if (node is PermutationNode) {
+            // <-- ADD THIS
+            _moveCursorToEndOfList(node.r, node.id, 'r');
+          } else if (node is CombinationNode) {
+            // <-- ADD THIS
+            _moveCursorToEndOfList(node.r, node.id, 'r');
+          } else if (node is ConstantNode) {
+            if (foundIndex + 1 < parentList.length &&
+                parentList[foundIndex + 1] is LiteralNode) {
+              cursor = EditorCursor(
+                parentId: parentInfo.parentId,
+                path: parentInfo.path,
+                index: foundIndex + 1,
+                subIndex: 0,
+              );
+            } else {
+              final insertIndex = foundIndex + 1;
+              parentList.insert(insertIndex, LiteralNode(text: ""));
+              cursor = EditorCursor(
+                parentId: parentInfo.parentId,
+                path: parentInfo.path,
+                index: insertIndex,
+                subIndex: 0,
+              );
+            }
+          }
+        } else {
         // The last node was a LiteralNode that got merged
         final mergedNode = parentList[mergeStartIndex];
         if (mergedNode is LiteralNode) {
@@ -3908,14 +3979,33 @@ class MathEditorController extends ChangeNotifier {
           _moveCursorToEndOfList(node.radicand, node.id, 'radicand');
         } else if (node is LogNode) {
           _moveCursorToEndOfList(node.argument, node.id, 'arg');
-        } else if (node is PermutationNode) {
-          // <-- ADD THIS
-          _moveCursorToEndOfList(node.r, node.id, 'r');
-        } else if (node is CombinationNode) {
-          // <-- ADD THIS
-          _moveCursorToEndOfList(node.r, node.id, 'r');
-        }
-      } else {
+          } else if (node is PermutationNode) {
+            // <-- ADD THIS
+            _moveCursorToEndOfList(node.r, node.id, 'r');
+          } else if (node is CombinationNode) {
+            // <-- ADD THIS
+            _moveCursorToEndOfList(node.r, node.id, 'r');
+          } else if (node is ConstantNode) {
+            if (foundIndex + 1 < parentList.length &&
+                parentList[foundIndex + 1] is LiteralNode) {
+              cursor = EditorCursor(
+                parentId: parentInfo.parentId,
+                path: parentInfo.path,
+                index: foundIndex + 1,
+                subIndex: 0,
+              );
+            } else {
+              final insertIndex = foundIndex + 1;
+              parentList.insert(insertIndex, LiteralNode(text: ""));
+              cursor = EditorCursor(
+                parentId: parentInfo.parentId,
+                path: parentInfo.path,
+                index: insertIndex,
+                subIndex: 0,
+              );
+            }
+          }
+        } else {
         // The last node was a LiteralNode that got merged
         final mergedNode = parentList[mergeStartIndex];
         if (mergedNode is LiteralNode) {

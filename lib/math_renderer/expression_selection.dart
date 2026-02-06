@@ -143,6 +143,10 @@ class MathClipboard {
       return ParenthesisNode(content: deepCopyNodes(node.content));
     } else if (node is AnsNode) {
       return AnsNode(index: deepCopyNodes(node.index));
+    } else if (node is ConstantNode) {
+      return ConstantNode(node.constant);
+    } else if (node is ComplexNode) {
+      return ComplexNode(content: deepCopyNodes(node.content));
     }
     return LiteralNode(text: '');
   }
