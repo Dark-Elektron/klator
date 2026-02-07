@@ -157,6 +157,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
+
+                ListTile(
+                  title: Text(
+                    'E / % Button',
+                    style: TextStyle(color: colors.textPrimary),
+                  ),
+                  trailing: RadioGroup<bool>(
+                    groupValue: settings.useScientificNotationButton,
+                    onChanged: (val) {
+                      if (val != null) {
+                        settings.setUseScientificNotationButton(val);
+                      }
+                    },
+                    child: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _buildNotationOption(
+                          settings,
+                          false,
+                          '%',
+                          sliderActiveColor,
+                          colors.textPrimary,
+                        ),
+                        const SizedBox(width: 12),
+                        _buildNotationOption(
+                          settings,
+                          true,
+                          '\u1D07',
+                          sliderActiveColor,
+                          colors.textPrimary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -244,6 +279,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Radio<String>(value: value, activeColor: activeColor),
+          Text(
+            displayText,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: textColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotationOption(
+    SettingsProvider settings,
+    bool value,
+    String displayText,
+    Color? activeColor,
+    Color? textColor,
+  ) {
+    final isSelected = settings.useScientificNotationButton == value;
+
+    return InkWell(
+      onTap: () {
+        settings.setUseScientificNotationButton(value);
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Radio<bool>(value: value, activeColor: activeColor),
           Text(
             displayText,
             style: TextStyle(

@@ -3441,15 +3441,16 @@ class MathNodeToExpr {
       }
 
       // Operators
-      if (char == '+' ||
-          char == '-' ||
-          char == '*' ||
-          char == '/' ||
-          char == '^') {
-        tokens.add(_Token(_TokenType.operator, char));
-        i++;
-        continue;
-      }
+        if (char == '+' ||
+            char == '-' ||
+            char == '*' ||
+            char == '/' ||
+            char == '^' ||
+            char == '%') {
+          tokens.add(_Token(_TokenType.operator, char));
+          i++;
+          continue;
+        }
 
       // Equals
       if (char == '=') {
@@ -3648,6 +3649,12 @@ class _Token {
   _Token.fromExpr(Expr e) : type = _TokenType.expr, value = '', expr = e;
 }
 
+class _ParsedExpr {
+  final Expr expr;
+  final bool isPercent;
+  const _ParsedExpr(this.expr, [this.isPercent = false]);
+}
+
 /// Parser for token list into Expr tree
 class _TokenParser {
   final List<_Token> tokens;
@@ -3656,12 +3663,11 @@ class _TokenParser {
   _TokenParser(this.tokens);
 
   Expr parse() {
-    Expr result = _parseAddSub();
-    return result;
+    return _parseAddSub().expr;
   }
 
-  Expr _parseAddSub() {
-    Expr left = _parseMulDiv();
+  _ParsedExpr _parseAddSub() {
+    _ParsedExpr left = _parseMulDiv();
 
     while (pos < tokens.length) {
       _Token token = tokens[pos];
@@ -3674,20 +3680,26 @@ class _TokenParser {
       if (!isPlus && !isMinus) break;
 
       pos++;
-      Expr right = _parseMulDiv();
+      _ParsedExpr right = _parseMulDiv();
+
+      Expr leftExpr = _unwrapPercent(left);
+      Expr rightExpr =
+          right.isPercent ? _percentOf(leftExpr, right.expr) : _unwrapPercent(
+            right,
+          );
 
       if (isPlus) {
-        left = SumExpr([left, right]);
+        left = _ParsedExpr(SumExpr([leftExpr, rightExpr]));
       } else {
-        left = SumExpr([left, right.negate()]);
+        left = _ParsedExpr(SumExpr([leftExpr, rightExpr.negate()]));
       }
     }
 
     return left;
   }
 
-  Expr _parseMulDiv() {
-    Expr left = _parsePower();
+  _ParsedExpr _parseMulDiv() {
+    _ParsedExpr left = _parsePower();
 
     while (pos < tokens.length) {
       _Token token = tokens[pos];
@@ -3696,17 +3708,21 @@ class _TokenParser {
       if (token.type == _TokenType.operator &&
           (token.value == '*' || token.value == '/')) {
         pos++;
-        Expr right = _parsePower();
+        _ParsedExpr right = _parsePower();
+        Expr leftExpr = _unwrapPercent(left);
+        Expr rightExpr = _unwrapPercent(right);
         if (token.value == '*') {
-          left = ProdExpr([left, right]);
+          left = _ParsedExpr(ProdExpr([leftExpr, rightExpr]));
         } else {
-          left = DivExpr(left, right);
+          left = _ParsedExpr(DivExpr(leftExpr, rightExpr));
         }
       }
       // Implicit multiplication (e.g., 2i, 2(3), (2)3)
       else if (_isNextPrimary()) {
-        Expr right = _parsePower();
-        left = ProdExpr([left, right]);
+        _ParsedExpr right = _parsePower();
+        Expr leftExpr = _unwrapPercent(left);
+        Expr rightExpr = _unwrapPercent(right);
+        left = _ParsedExpr(ProdExpr([leftExpr, rightExpr]));
       } else {
         break;
       }
@@ -3723,43 +3739,71 @@ class _TokenParser {
         token.type == _TokenType.expr;
   }
 
-  Expr _parsePower() {
-    Expr base = _parseUnary();
+  _ParsedExpr _consumePercent(_ParsedExpr parsed) {
+    if (pos < tokens.length &&
+        tokens[pos].type == _TokenType.operator &&
+        tokens[pos].value == '%') {
+      pos++;
+      return _ParsedExpr(parsed.expr, true);
+    }
+    return parsed;
+  }
+
+  Expr _unwrapPercent(_ParsedExpr parsed) {
+    if (parsed.isPercent) {
+      return _percentToValue(parsed.expr);
+    }
+    return parsed.expr;
+  }
+
+  Expr _percentToValue(Expr expr) {
+    return DivExpr(expr, IntExpr.from(100)).simplify();
+  }
+
+  Expr _percentOf(Expr base, Expr percentExpr) {
+    return ProdExpr([base, _percentToValue(percentExpr)]).simplify();
+  }
+
+  _ParsedExpr _parsePower() {
+    _ParsedExpr base = _parseUnary();
 
     while (pos < tokens.length) {
       _Token token = tokens[pos];
       if (token.type != _TokenType.operator || token.value != '^') break;
 
       pos++;
-      Expr exponent = _parseUnary();
-      base = PowExpr(base, exponent);
+      _ParsedExpr exponent = _parseUnary();
+      Expr baseExpr = _unwrapPercent(base);
+      Expr expExpr = _unwrapPercent(exponent);
+      base = _ParsedExpr(PowExpr(baseExpr, expExpr));
     }
 
     return base;
   }
 
-  Expr _parseUnary() {
+  _ParsedExpr _parseUnary() {
     if (pos < tokens.length) {
       _Token token = tokens[pos];
 
       if (token.type == _TokenType.operator && token.value == '-') {
         pos++;
-        Expr operand = _parseUnary();
-        return operand.negate();
+        _ParsedExpr operand = _parseUnary();
+        return _ParsedExpr(operand.expr.negate(), operand.isPercent);
       }
 
       if (token.type == _TokenType.operator && token.value == '+') {
         pos++;
-        return _parseUnary();
+        _ParsedExpr operand = _parseUnary();
+        return _ParsedExpr(operand.expr, operand.isPercent);
       }
     }
 
     return _parsePrimary();
   }
 
-  Expr _parsePrimary() {
+  _ParsedExpr _parsePrimary() {
     if (pos >= tokens.length) {
-      return IntExpr.zero;
+      return _ParsedExpr(IntExpr.zero);
     }
 
     _Token token = tokens[pos];
@@ -3767,29 +3811,31 @@ class _TokenParser {
     // Pre-built expression from structured node
     if (token.type == _TokenType.expr) {
       pos++;
-      return token.expr!;
+      _ParsedExpr parsed = _ParsedExpr(token.expr!);
+      return _consumePercent(parsed);
     }
 
     // Number
     if (token.type == _TokenType.number) {
       pos++;
-      return _parseNumber(token.value);
+      _ParsedExpr parsed = _ParsedExpr(_parseNumber(token.value));
+      return _consumePercent(parsed);
     }
 
     // Parenthesized expression
     if (token.type == _TokenType.lparen) {
       pos++; // consume (
-      Expr inner = _parseAddSub();
+      _ParsedExpr inner = _parseAddSub();
 
       if (pos < tokens.length && tokens[pos].type == _TokenType.rparen) {
         pos++; // consume )
       }
 
-      return inner;
+      return _consumePercent(_ParsedExpr(inner.expr));
     }
 
     // Fallback
-    return IntExpr.zero;
+    return _ParsedExpr(IntExpr.zero);
   }
 
   /// Parse a number string into an Expr

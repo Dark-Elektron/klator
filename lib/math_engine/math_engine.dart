@@ -968,6 +968,11 @@ class MathSolverNew {
 
 // ============== EXPRESSION PARSER ==============
 
+class _PercentValue {
+  final dynamic value;
+  _PercentValue(this.value);
+}
+
 /// Recursive descent parser for mathematical expressions
 class _ExpressionParser {
   final String expression;
@@ -975,50 +980,59 @@ class _ExpressionParser {
 
   _ExpressionParser(this.expression);
 
-  dynamic parse() {
-    dynamic result = _parseAddSubtract();
-    if (_pos < expression.length) {
-      throw FormatException(
-        'Unexpected character at position $_pos: ${expression[_pos]}',
-      );
-    }
-    return result;
-  }
-
-  dynamic _parseAddSubtract() {
-    dynamic left = _parseMultiplyDivide();
-
-    while (_pos < expression.length) {
-      String op = _currentChar();
-      if (op != '+' && op != '-') break;
-      _pos++;
-      dynamic right = _parseMultiplyDivide();
-
-      // Convert to Complex for operation
-      Complex l = _toComplex(left);
-      Complex r = _toComplex(right);
-
-      if (op == '+') {
-        left = l + r;
-      } else {
-        left = l - r;
+    dynamic parse() {
+      dynamic result = _parseAddSubtract();
+      if (_pos < expression.length) {
+        throw FormatException(
+          'Unexpected character at position $_pos: ${expression[_pos]}',
+        );
       }
+      return _finalizeResult(result);
     }
 
-    return _simplifyResult(left);
-  }
+    dynamic _parseAddSubtract() {
+      dynamic left = _parseMultiplyDivide();
 
-  dynamic _parseMultiplyDivide() {
-    dynamic left = _parsePower();
+      while (_pos < expression.length) {
+        String op = _currentChar();
+        if (op != '+' && op != '-') break;
+        _pos++;
+        dynamic right = _parseMultiplyDivide();
 
-    while (_pos < expression.length) {
-      String op = _currentChar();
-      if (op != '*' && op != '/') break;
-      _pos++;
-      dynamic right = _parsePower();
+        left = _unwrapPercent(left);
 
-      if (op == '/' && left is! Complex && right is! Complex) {
-        final l = _toDouble(left);
+        // Convert to Complex for operation
+        dynamic rightValue =
+            right is _PercentValue ? _percentOf(left, right.value) : right;
+        rightValue = _unwrapPercent(rightValue);
+
+        Complex l = _toComplex(left);
+        Complex r = _toComplex(rightValue);
+
+        if (op == '+') {
+          left = l + r;
+        } else {
+          left = l - r;
+        }
+      }
+
+      return _simplifyResult(left);
+    }
+
+    dynamic _parseMultiplyDivide() {
+      dynamic left = _parsePower();
+
+      while (_pos < expression.length) {
+        String op = _currentChar();
+        if (op != '*' && op != '/') break;
+        _pos++;
+        dynamic right = _parsePower();
+
+        left = _unwrapPercent(left);
+        right = _unwrapPercent(right);
+
+        if (op == '/' && left is! Complex && right is! Complex) {
+          final l = _toDouble(left);
         final r = _toDouble(right);
         if (r == 0) {
           if (l == 0) {
@@ -1044,12 +1058,14 @@ class _ExpressionParser {
     return _simplifyResult(left);
   }
 
-  dynamic _parsePower() {
-    dynamic base = _parseUnary();
+    dynamic _parsePower() {
+      dynamic base = _parseUnary();
 
-    while (_pos < expression.length && _currentChar() == '^') {
-      _pos++;
-      dynamic exponent = _parseUnary();
+      while (_pos < expression.length && _currentChar() == '^') {
+        _pos++;
+        dynamic exponent = _parseUnary();
+        base = _unwrapPercent(base);
+        exponent = _unwrapPercent(exponent);
 
       // Check if base is Euler's number e
       bool baseIsE = false;
@@ -1083,23 +1099,30 @@ class _ExpressionParser {
     return _simplifyResult(base);
   }
 
-  dynamic _parseUnary() {
-    if (_pos < expression.length) {
-      if (_currentChar() == '-') {
-        _pos++;
-        dynamic val = _parseUnary();
-        if (val is Complex) {
-          return Complex(-val.real, -val.imag);
+    dynamic _parseUnary() {
+      if (_pos < expression.length) {
+        if (_currentChar() == '-') {
+          _pos++;
+          dynamic val = _parseUnary();
+          if (val is _PercentValue) {
+            return _PercentValue(_negate(val.value));
+          }
+          if (val is Complex) {
+            return Complex(-val.real, -val.imag);
+          }
+          return -_toDouble(val);
         }
-        return -_toDouble(val);
+        if (_currentChar() == '+') {
+          _pos++;
+          dynamic val = _parseUnary();
+          if (val is _PercentValue) {
+            return _PercentValue(val.value);
+          }
+          return val;
+        }
       }
-      if (_currentChar() == '+') {
-        _pos++;
-        return _parseUnary();
-      }
+      return _parsePrimary();
     }
-    return _parsePrimary();
-  }
 
   dynamic _parsePrimary() {
     // Parentheses
@@ -1110,12 +1133,20 @@ class _ExpressionParser {
         throw FormatException('Missing closing parenthesis');
       }
       _pos++;
+      if (_pos < expression.length && _currentChar() == '%') {
+        _pos++;
+        return _PercentValue(result);
+      }
       return result;
     }
 
     // Check for standalone 'i' (imaginary unit)
     if (_currentChar() == 'i' && _isStandaloneI()) {
       _pos++;
+      if (_pos < expression.length && _currentChar() == '%') {
+        _pos++;
+        return _PercentValue(Complex(0, 1));
+      }
       return Complex(0, 1);
     }
 
@@ -1131,11 +1162,21 @@ class _ExpressionParser {
         throw FormatException('Missing closing parenthesis for $func');
       }
       _pos++;
-      return _applyFunction(func, arg);
+      dynamic result = _applyFunction(func, arg);
+      if (_pos < expression.length && _currentChar() == '%') {
+        _pos++;
+        return _PercentValue(result);
+      }
+      return result;
     }
 
     // Number (possibly with imaginary part)
-    return _parseNumberOrComplex();
+    dynamic result = _parseNumberOrComplex();
+    if (_pos < expression.length && _currentChar() == '%') {
+      _pos++;
+      return _PercentValue(result);
+    }
+    return result;
   }
 
   /// Check if 'i' at current position is standalone (imaginary unit)
@@ -1385,23 +1426,56 @@ class _ExpressionParser {
   double _toDouble(dynamic val) {
     if (val is double) return val;
     if (val is int) return val.toDouble();
+    if (val is _PercentValue) return _toDouble(_percentToValue(val.value));
     if (val is Complex) return val.real;
     return 0.0;
   }
 
   Complex _toComplex(dynamic val) {
     if (val is Complex) return val;
+    if (val is _PercentValue) return _toComplex(_percentToValue(val.value));
     if (val is double) return Complex(val, 0);
     if (val is int) return Complex(val.toDouble(), 0);
     return Complex(0, 0);
   }
 
   /// Simplify result - convert Complex with zero imaginary to double
-  dynamic _simplifyResult(dynamic val) {
-    if (val is Complex && val.imag.abs() < 1e-10) {
-      return val.real;
+    dynamic _simplifyResult(dynamic val) {
+      if (val is Complex && val.imag.abs() < 1e-10) {
+        return val.real;
+      }
+      return val;
     }
-    return val;
+
+    dynamic _unwrapPercent(dynamic val) {
+      if (val is _PercentValue) {
+        return _percentToValue(val.value);
+      }
+      return val;
+    }
+
+    dynamic _finalizeResult(dynamic val) {
+      return _simplifyResult(_unwrapPercent(val));
+    }
+
+  dynamic _percentToValue(dynamic val) {
+    if (val is Complex) {
+      return Complex(val.real / 100, val.imag / 100);
+    }
+    return _toDouble(val) / 100;
+  }
+
+  dynamic _percentOf(dynamic base, dynamic percentVal) {
+    final Complex b = _toComplex(base);
+    final Complex p = _toComplex(_percentToValue(percentVal));
+    return b * p;
+  }
+
+  dynamic _negate(dynamic val) {
+    if (val is Complex) {
+      return Complex(-val.real, -val.imag);
+    }
+    return -_toDouble(val);
   }
 
   // Complex math operations

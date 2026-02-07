@@ -10,6 +10,7 @@ import 'dart:async';
 import '../walkthrough/walkthrough_service.dart';
 import '../walkthrough/walkthrough_steps.dart';
 import '../math_renderer/math_editor_controller.dart';
+import '../math_renderer/math_text_style.dart';
 
 /// Custom ScrollPhysics that restricts swipe direction
 class DirectionalScrollPhysics extends ScrollPhysics {
@@ -668,10 +669,10 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         crossAxisCount: crossAxisCount,
         childAspectRatio: isLandscape ? 1.5 : 1.0,
       ),
-      itemBuilder: (context, index) {
-        String buttonText = buttons[index];
+        itemBuilder: (context, index) {
+          String buttonText = buttons[index];
 
-        if (buttonText == '+') {
+          if (buttonText == '+') {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('+');
@@ -688,13 +689,13 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u2212',
-            color: Colors.white,
-            textColor: Colors.black,
-          );
-        } else if (buttonText == 'x') {
-          return MyButton(
-            buttontapped: () {
-              _activeController?.insertCharacter(
+              color: Colors.white,
+              textColor: Colors.black,
+            );
+          } else if (buttonText == 'x') {
+            return MyButton(
+              buttontapped: () {
+                _activeController?.insertCharacter(
                 widget.settingsProvider.multiplicationSign,
               );
               widget.onUpdateMathEditor();
@@ -1368,12 +1369,24 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         } else if (index == 17) {
+          final useScientific =
+              widget.settingsProvider.useScientificNotationButton;
+          final buttonLabel =
+              _buttons[index] == MathTextStyle.scientificE
+                  ? (useScientific ? MathTextStyle.scientificE : '%')
+                  : _buttons[index];
           return MyButton(
             buttontapped: () {
-              _activeController?.insertCharacter(_buttons[index]);
+              if (_buttons[index] == MathTextStyle.scientificE) {
+                _activeController?.insertCharacter(
+                  useScientific ? MathTextStyle.scientificE : '%',
+                );
+              } else {
+                _activeController?.insertCharacter(_buttons[index]);
+              }
               widget.onUpdateMathEditor();
             },
-            buttonText: _buttons[index],
+            buttonText: buttonLabel,
             color: Colors.white,
             textColor: Colors.black,
           );

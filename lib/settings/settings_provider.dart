@@ -29,6 +29,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _soundEffects = false;
   String _multiplicationSign = '\u00D7'; // Default: ×
   NumberFormat _numberFormat = NumberFormat.automatic; // NEW
+  bool _useScientificNotationButton = false;
   double _borderRadius = 0.0; // NEW: Global button styling
 
   // Getters
@@ -44,6 +45,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get soundEffects => _soundEffects;
   String get multiplicationSign => _multiplicationSign;
   NumberFormat get numberFormat => _numberFormat; // NEW
+  bool get useScientificNotationButton => _useScientificNotationButton;
   double get borderRadius => _borderRadius; // NEW
 
   // Static method to create provider with preloaded settings
@@ -60,20 +62,24 @@ class SettingsProvider extends ChangeNotifier {
     ThemeType themeType = ThemeType.classic,
     String multiplicationSign = '×',
     NumberFormat numberFormat = NumberFormat.automatic,
+    bool useScientificNotationButton = false,
   }) : _themeType = themeType,
-       _multiplicationSign = multiplicationSign,
-       _numberFormat = numberFormat;
+        _multiplicationSign = multiplicationSign,
+        _numberFormat = numberFormat,
+        _useScientificNotationButton = useScientificNotationButton;
 
   // Factory constructor for tests
   static SettingsProvider forTesting({
     ThemeType themeType = ThemeType.classic,
     String multiplicationSign = '×',
     NumberFormat numberFormat = NumberFormat.automatic,
+    bool useScientificNotationButton = false,
   }) {
     return SettingsProvider._forTesting(
       themeType: themeType,
       multiplicationSign: multiplicationSign,
       numberFormat: numberFormat,
+      useScientificNotationButton: useScientificNotationButton,
     );
   }
 
@@ -99,6 +105,8 @@ class SettingsProvider extends ChangeNotifier {
     _hapticFeedback = prefs.getBool('hapticFeedback') ?? true;
     _soundEffects = prefs.getBool('soundEffects') ?? false;
     _multiplicationSign = prefs.getString('multiplicationSign') ?? '\u00D7';
+    _useScientificNotationButton =
+        prefs.getBool('useScientificNotationButton') ?? false;
     _borderRadius =
         prefs.getDouble('borderRadius') ?? 0.0; // Match user preference
 
@@ -183,6 +191,13 @@ class SettingsProvider extends ChangeNotifier {
 
     // Update MathSolverNew
     MathSolverNew.setNumberFormat(value);
+    notifyListeners();
+  }
+
+  Future<void> setUseScientificNotationButton(bool value) async {
+    _useScientificNotationButton = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('useScientificNotationButton', value);
     notifyListeners();
   }
 
