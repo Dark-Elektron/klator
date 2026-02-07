@@ -7,6 +7,7 @@ import 'utils/app_colors.dart';
 import 'math_renderer/cell_persistence_service.dart';
 import 'math_engine/math_expression_serializer.dart';
 import 'dart:async';
+import 'dart:math' as math;
 import 'keypad/keypad.dart';
 import 'walkthrough/walkthrough_service.dart';
 import 'walkthrough/walkthrough_overlay.dart';
@@ -16,6 +17,8 @@ import 'math_renderer/math_editor_controller.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'math_engine/math_engine_exact.dart';
 import 'math_renderer/math_result_display.dart';
+import 'plotting/parsers/vector_field_parser.dart';
+import 'plotting/widgets/inline_plot_panel.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -134,11 +137,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool isVisible = true;
   bool isTypingExponent = false;
   double plotMaxHeight = 300;
-  double plotMinHeight = 21;
+  double plotMinHeight = 28;
+  bool _plotsEnabled = false;
   bool _isUpdating = false;
   String _globalClearId = DateTime.now().toIso8601String();
   bool _isLoading = true;
   List<String> answers = [];
+  bool _isPlotInteracting = false;
+  bool _isKeypadVisible = true;
+  final Map<int, bool> _plotExpanded = {};
 
   SettingsProvider? _settingsProvider;
   bool _listenerAdded = false;
@@ -313,85 +320,264 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  Container _buildExpressionDisplay(int index, AppColors colors) {
+  String _getPlotExpression(int index) {
+    final controller = mathEditorControllers[index];
+    if (controller == null) return '';
+    return MathExpressionSerializer.serialize(controller.expression);
+  }
+
+  bool _canShowPlotButton(String expr) {
+    if (!_plotsEnabled) return false;
+    final trimmed = expr.trim();
+    if (trimmed.isEmpty) return false;
+
+    if (VectorFieldParser.isVectorField(trimmed)) {
+      return true;
+    }
+
+    final normalized = trimmed.toLowerCase();
+    final hasX = RegExp(r'(?<![a-zA-Z])x(?![a-zA-Z])').hasMatch(normalized);
+    final hasY = RegExp(r'(?<![a-zA-Z])y(?![a-zA-Z])').hasMatch(normalized);
+    final hasZ = RegExp(r'(?<![a-zA-Z])z(?![a-zA-Z])').hasMatch(normalized);
+    return hasX || hasY || hasZ;
+  }
+
+  void _togglePlotExpanded(int index) {
+    setState(() {
+      _plotExpanded[index] = !(_plotExpanded[index] ?? false);
+      if (!(_plotExpanded[index] ?? false) && !_isKeypadVisible) {
+        _isKeypadVisible = true;
+      }
+    });
+  }
+
+  void _toggleKeypadVisible() {
+    setState(() {
+      _isKeypadVisible = !_isKeypadVisible;
+    });
+  }
+
+  Widget _buildPlotArea(
+    int index,
+    AppColors colors, {
+    double? maxHeightOverride,
+    bool forceExpanded = false,
+  }) {
+    final plotExpression = _getPlotExpression(index);
+    final canPlot = _canShowPlotButton(plotExpression);
+    final isExpanded =
+        canPlot && (forceExpanded || (_plotExpanded[index] ?? false));
+    final maxHeight = maxHeightOverride ?? plotMaxHeight;
+    final defaultHeight = MediaQuery.of(context).size.height / 3;
+    final baseHeight = defaultHeight.clamp(0.0, maxHeight);
+    final targetHeight = forceExpanded ? maxHeight : baseHeight;
+
+    if (!canPlot) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          height: isExpanded ? targetHeight : 0,
+          width: double.infinity,
+          clipBehavior: Clip.hardEdge,
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 6,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child:
+              isExpanded
+                  ? Listener(
+                    behavior: HitTestBehavior.opaque,
+                    onPointerDown: (_) {
+                      if (!_isPlotInteracting) {
+                        setState(() => _isPlotInteracting = true);
+                      }
+                    },
+                    onPointerUp: (_) {
+                      if (_isPlotInteracting) {
+                        setState(() => _isPlotInteracting = false);
+                      }
+                    },
+                    onPointerCancel: (_) {
+                      if (_isPlotInteracting) {
+                        setState(() => _isPlotInteracting = false);
+                      }
+                    },
+                    child: InlinePlotPanel(
+                      expression: plotExpression,
+                      onToggleKeypad: _toggleKeypadVisible,
+                      isKeypadVisible: _isKeypadVisible,
+                    ),
+                  )
+                  : const SizedBox.shrink(),
+        ),
+        GestureDetector(
+          onTap: () => _togglePlotExpanded(index),
+          child: Container(
+            height: plotMinHeight,
+            width: double.infinity,
+            decoration: BoxDecoration(color: colors.containerBackground),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.show_chart, size: 16, color: colors.textSecondary),
+                const SizedBox(width: 6),
+                Text(
+                  isExpanded ? 'Hide plot' : 'Plot',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  isExpanded
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  size: 18,
+                  color: colors.textSecondary,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExpressionDisplay(
+    int index,
+    AppColors colors, {
+    double? maxPlotHeight,
+    bool forcePlotExpanded = false,
+  }) {
     final mathEditorController = mathEditorControllers[index];
     final mathEditorKey = mathEditorKeys[index];
     final scrollController = scrollControllers[index];
     final bool isFocused = (activeIndex == index);
     final bool shouldAddKeys = index == activeIndex;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: colors.containerBackground,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            spreadRadius: 2,
-            blurRadius: 7,
-            offset: const Offset(0, 0),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: <Widget>[
-          // Expression input area
-          Container(
-            key: shouldAddKeys ? _expressionKey : null,
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            child: AnimatedOpacity(
-              curve: Curves.easeIn,
-              duration: const Duration(milliseconds: 500),
-              opacity: isVisible ? 1.0 : 0.0,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return Center(
-                    child: SingleChildScrollView(
-                      controller: scrollController,
-                      scrollDirection: Axis.horizontal,
-                      reverse: true,
-                      child: MathEditorInline(
-                        key: mathEditorKey,
-                        controller: mathEditorController!,
-                        showCursor: isFocused,
-                        minWidth: constraints.maxWidth,
-                        onFocus: () {
-                          if (activeIndex != index) {
-                            setState(() {
-                              activeIndex = index;
-                            });
-                          }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        double plotMax = maxPlotHeight ?? plotMaxHeight;
+        if (maxPlotHeight == null) {
+          if (constraints.maxHeight.isFinite) {
+            final resultHeight = math.max(
+              _calculateDecimalResultHeight(index),
+              _calculateExactResultHeight(index),
+            );
+            final expressionHeight = (FONTSIZE * 1.6) + 24;
+            final safeMax = (constraints.maxHeight -
+                    resultHeight -
+                    expressionHeight -
+                    plotMinHeight)
+                .clamp(0.0, plotMax);
+            plotMax = safeMax;
+          } else {
+            final screenHeight = MediaQuery.of(context).size.height;
+            final baseMax =
+                _isKeypadVisible ? screenHeight * 0.45 : screenHeight * 0.75;
+            plotMax = math.max(plotMax, baseMax);
+          }
+        }
+
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: <Widget>[
+            Container(
+              decoration: BoxDecoration(
+                color: colors.containerBackground,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    spreadRadius: 2,
+                    blurRadius: 7,
+                    offset: const Offset(0, 0),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  // _buildPlotArea(
+                  //   index,
+                  //   colors,
+                  //   maxHeightOverride: plotMax,
+                  //   forceExpanded: forcePlotExpanded,
+                  // ),
+                  // Expression input area
+                  Container(
+                    key: shouldAddKeys ? _expressionKey : null,
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    child: AnimatedOpacity(
+                      curve: Curves.easeIn,
+                      duration: const Duration(milliseconds: 500),
+                      opacity: isVisible ? 1.0 : 0.0,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return Center(
+                            child: SingleChildScrollView(
+                              controller: scrollController,
+                              scrollDirection: Axis.horizontal,
+                              reverse: true,
+                              child: MathEditorInline(
+                                key: mathEditorKey,
+                                controller: mathEditorController!,
+                                showCursor: isFocused,
+                                minWidth: constraints.maxWidth,
+                                onFocus: () {
+                                  if (activeIndex != index) {
+                                    setState(() {
+                                      activeIndex = index;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                          );
                         },
                       ),
                     ),
-                  );
-                },
+                  ),
+
+                  // Result area with PageView - use StatefulBuilder to isolate rebuilds
+                  _ResultPageViewWidget(
+                    key: ValueKey('result_pageview_${index}_$_globalClearId'),
+                    index: index,
+                    colors: colors,
+                    shouldAddKeys: shouldAddKeys,
+                    isVisible: isVisible,
+                    exactResultNodes: exactResultNodes,
+                    currentResultPage: currentResultPage,
+                    currentResultPageNotifiers: currentResultPageNotifiers,
+                    resultPageProgressNotifiers: resultPageProgressNotifiers,
+                    exactResultVersionNotifiers: exactResultVersionNotifiers,
+                    resultPageControllers: resultPageControllers,
+                    textDisplayControllers: textDisplayControllers,
+                    ansIndexKey: _ansIndexKey,
+                    resultKey: _resultKey,
+                    calculateDecimalResultHeight: _calculateDecimalResultHeight,
+                    calculateExactResultHeight: _calculateExactResultHeight,
+                  ),
+                ],
               ),
             ),
-          ),
-
-          // Result area with PageView - use StatefulBuilder to isolate rebuilds
-          _ResultPageViewWidget(
-            key: ValueKey('result_pageview_${index}_$_globalClearId'),
-            index: index,
-            colors: colors,
-            shouldAddKeys: shouldAddKeys,
-            isVisible: isVisible,
-            exactResultNodes: exactResultNodes,
-            currentResultPage: currentResultPage,
-            currentResultPageNotifiers: currentResultPageNotifiers,
-            resultPageProgressNotifiers: resultPageProgressNotifiers,
-            exactResultVersionNotifiers: exactResultVersionNotifiers,
-            resultPageControllers: resultPageControllers,
-            textDisplayControllers: textDisplayControllers,
-            ansIndexKey: _ansIndexKey,
-            resultKey: _resultKey,
-            calculateDecimalResultHeight: _calculateDecimalResultHeight,
-            calculateExactResultHeight: _calculateExactResultHeight,
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
@@ -986,67 +1172,85 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               child: Column(
                 children: <Widget>[
                   Expanded(
-                    child: ListView.builder(
-                      reverse: true,
-                      padding: EdgeInsets.zero,
-                      itemCount: count,
-                      itemBuilder: (context, index) {
-                        List<int> keys =
-                            mathEditorControllers.keys.toList()..sort();
-                        int reversedIndex = keys.length - 1 - index;
+                    child:
+                        _isKeypadVisible
+                            ? ListView.builder(
+                              physics:
+                                  _isPlotInteracting
+                                      ? const NeverScrollableScrollPhysics()
+                                      : const ClampingScrollPhysics(),
+                              reverse: true,
+                              padding: EdgeInsets.zero,
+                              itemCount: count,
+                              itemBuilder: (context, index) {
+                                List<int> keys =
+                                    mathEditorControllers.keys.toList()..sort();
+                                int reversedIndex = keys.length - 1 - index;
 
-                        if (reversedIndex >= 0 && reversedIndex < keys.length) {
-                          return Padding(
-                            padding: EdgeInsets.only(top: 5),
-                            child: _buildExpressionDisplay(
-                              keys[reversedIndex],
-                              colors,
-                            ),
-                          );
-                        }
-                        return SizedBox.shrink();
-                      },
-                    ),
+                                if (reversedIndex >= 0 &&
+                                    reversedIndex < keys.length) {
+                                  return Padding(
+                                    padding: EdgeInsets.only(top: 5),
+                                    child: _buildExpressionDisplay(
+                                      keys[reversedIndex],
+                                      colors,
+                                    ),
+                                  );
+                                }
+                                return SizedBox.shrink();
+                              },
+                            )
+                            : _buildActiveCellFullscreen(colors),
                   ),
-                  Builder(
-                    builder: (context) {
-                      final mediaQuery = MediaQuery.of(context);
-                      double screenWidth = mediaQuery.size.width;
-                      bool isLandscape =
-                          mediaQuery.orientation == Orientation.landscape;
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    child:
+                        _isKeypadVisible
+                            ? Builder(
+                              builder: (context) {
+                                final mediaQuery = MediaQuery.of(context);
+                                double screenWidth = mediaQuery.size.width;
+                                bool isLandscape =
+                                    mediaQuery.orientation ==
+                                    Orientation.landscape;
 
-                      return CalculatorKeypad(
-                        screenWidth: screenWidth,
-                        isLandscape: isLandscape,
-                        colors: colors,
-                        activeIndex: activeIndex,
-                        mathEditorControllers: mathEditorControllers,
-                        textDisplayControllers: textDisplayControllers,
-                        settingsProvider: _settingsProvider!,
-                        onUpdateMathEditor: updateMathEditor,
-                        onAddDisplay: _addDisplay,
-                        onRemoveDisplay: _removeDisplay,
-                        onClearAllDisplays: _clearAllDisplays,
-                        countVariablesInExpressions:
-                            countVariablesInExpressions,
-                        onSetState: () => setState(() {}),
-                        onClearSelectionOverlay: _clearAllSelectionOverlays,
-                        canUndoAppState: canUndoAppState,
-                        canRedoAppState: canRedoAppState,
-                        onUndoAppState: _undoAppState,
-                        onRedoAppState: _redoAppState,
-                        // Walkthrough
-                        walkthroughService: _walkthroughService,
-                        basicKeypadKey: _basicKeypadKey,
-                        basicKeypadHandleKey: _basicKeypadHandleKey,
-                        scientificKeypadKey: _scientificKeypadKey,
-                        numberKeypadKey: _numberKeypadKey,
-                        extrasKeypadKey: _extrasKeypadKey,
-                        commandButtonKey: _commandButtonKey,
-                        mainKeypadAreaKey: _mainKeypadAreaKey,
-                        settingsButtonKey: _settingsButtonKey,
-                      );
-                    },
+                                return CalculatorKeypad(
+                                  screenWidth: screenWidth,
+                                  isLandscape: isLandscape,
+                                  colors: colors,
+                                  activeIndex: activeIndex,
+                                  mathEditorControllers: mathEditorControllers,
+                                  textDisplayControllers:
+                                      textDisplayControllers,
+                                  settingsProvider: _settingsProvider!,
+                                  onUpdateMathEditor: updateMathEditor,
+                                  onAddDisplay: _addDisplay,
+                                  onRemoveDisplay: _removeDisplay,
+                                  onClearAllDisplays: _clearAllDisplays,
+                                  countVariablesInExpressions:
+                                      countVariablesInExpressions,
+                                  onSetState: () => setState(() {}),
+                                  onClearSelectionOverlay:
+                                      _clearAllSelectionOverlays,
+                                  canUndoAppState: canUndoAppState,
+                                  canRedoAppState: canRedoAppState,
+                                  onUndoAppState: _undoAppState,
+                                  onRedoAppState: _redoAppState,
+                                  // Walkthrough
+                                  walkthroughService: _walkthroughService,
+                                  basicKeypadKey: _basicKeypadKey,
+                                  basicKeypadHandleKey: _basicKeypadHandleKey,
+                                  scientificKeypadKey: _scientificKeypadKey,
+                                  numberKeypadKey: _numberKeypadKey,
+                                  extrasKeypadKey: _extrasKeypadKey,
+                                  commandButtonKey: _commandButtonKey,
+                                  mainKeypadAreaKey: _mainKeypadAreaKey,
+                                  settingsButtonKey: _settingsButtonKey,
+                                );
+                              },
+                            )
+                            : const SizedBox.shrink(),
                   ),
                 ],
               ),
@@ -1106,6 +1310,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     setState(() {});
     _saveCells();
+  }
+
+  int _getFullscreenIndex() {
+    if (_plotExpanded[activeIndex] ?? false) return activeIndex;
+    for (final entry in _plotExpanded.entries) {
+      if (entry.value) return entry.key;
+    }
+    return activeIndex;
+  }
+
+  Widget _buildActiveCellFullscreen(AppColors colors) {
+    final index = _getFullscreenIndex();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final page = currentResultPage[index] ?? 0;
+        final resultHeight =
+            page == 0
+                ? _calculateDecimalResultHeight(index)
+                : _calculateExactResultHeight(index);
+        final expressionHeight = (FONTSIZE * 1.5) + 20;
+        final available = (constraints.maxHeight -
+                expressionHeight -
+                resultHeight -
+                plotMinHeight)
+            .clamp(120.0, constraints.maxHeight);
+
+        return _buildExpressionDisplay(
+          index,
+          colors,
+          maxPlotHeight: available,
+          forcePlotExpanded: true,
+        );
+      },
+    );
   }
 
   bool isOperator(String x) {

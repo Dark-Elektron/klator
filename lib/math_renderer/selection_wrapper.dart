@@ -64,6 +64,8 @@ class SelectionWrapper {
       return NewlineNode();
     } else if (node is ConstantNode) {
       return ConstantNode(node.constant);
+    } else if (node is UnitVectorNode) {
+      return UnitVectorNode(node.axis);
     }
     return LiteralNode(text: '');
   }
@@ -199,7 +201,9 @@ class SelectionWrapper {
       return RegExp(r'^[a-zA-Z0-9.]+$').hasMatch(text);
     }
 
-    if (content.nodes.length == 1 && content.nodes.first is ConstantNode) {
+    if (content.nodes.length == 1 &&
+        (content.nodes.first is ConstantNode ||
+            content.nodes.first is UnitVectorNode)) {
       return true;
     }
 

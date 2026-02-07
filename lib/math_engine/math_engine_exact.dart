@@ -3111,10 +3111,13 @@ class VarExpr extends Expr {
   @override
   Expr negate() => ProdExpr([IntExpr.negOne, this]);
 
-  @override
-  List<MathNode> toMathNode() {
-    return [LiteralNode(text: name)];
-  }
+    @override
+    List<MathNode> toMathNode() {
+      if (name == 'e_x') return [UnitVectorNode('x')];
+      if (name == 'e_y') return [UnitVectorNode('y')];
+      if (name == 'e_z') return [UnitVectorNode('z')];
+      return [LiteralNode(text: name)];
+    }
 
   @override
   Expr copy() => VarExpr(name);
@@ -3346,6 +3349,9 @@ class MathNodeToExpr {
       return [_Token.fromExpr(CombExpr(n, r))];
     }
 
+    if (node is UnitVectorNode) {
+      return [_Token.fromExpr(VarExpr('e_${node.axis}'))];
+    }
     if (node is ConstantNode) {
       ConstType type;
       switch (node.constant) {
@@ -4734,6 +4740,8 @@ class ExactMathEngine {
     for (MathNode node in nodes) {
       if (node is LiteralNode) {
         buffer.write(node.text);
+      } else if (node is UnitVectorNode) {
+        buffer.write('e_${node.axis}');
       } else if (node is ConstantNode) {
         buffer.write(node.constant);
       } else if (node is FractionNode) {

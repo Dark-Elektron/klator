@@ -178,6 +178,13 @@ class MathResultDisplay extends StatelessWidget {
         textScaler: textScaler,
       );
     }
+    if (node is UnitVectorNode) {
+      return _UnitVectorWidget(
+        axis: node.axis,
+        fontSize: fontSize,
+        color: textColor,
+      );
+    }
 
     if (node is FractionNode) {
       return IntrinsicWidth(
@@ -550,6 +557,12 @@ class MathResultDisplay extends StatelessWidget {
     if (node is ConstantNode) {
       return (fontSize * 1.2, fontSize * 0.6);
     }
+    if (node is UnitVectorNode) {
+      return (fontSize, fontSize / 2);
+    }
+    if (node is UnitVectorNode) {
+      return (fontSize, fontSize / 2);
+    }
 
     if (node is ExponentNode) {
       final double powerSize =
@@ -849,6 +862,39 @@ class MathResultDisplay extends StatelessWidget {
     }
 
     return (maxAbove + maxBelow, maxBelow);
+  }
+}
+
+class _UnitVectorWidget extends StatelessWidget {
+  final String axis;
+  final double fontSize;
+  final Color color;
+
+  const _UnitVectorWidget({
+    required this.axis,
+    required this.fontSize,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final baseStyle = MathTextStyle.getStyle(fontSize).copyWith(color: color);
+    final hatStyle = baseStyle;
+
+    return SizedBox(
+      height: fontSize,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.centerLeft,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [Text('$axis\u0302', style: hatStyle)],
+          ),
+        ],
+      ),
+    );
   }
 }
 

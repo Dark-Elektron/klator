@@ -113,3 +113,9 @@ class ConstantNode extends MathNode {
   final String constant;
   ConstantNode(this.constant);
 }
+
+/// A unit vector node (e_x, e_y, e_z) treated as an atomic unit.
+class UnitVectorNode extends MathNode {
+  final String axis; // x, y, z
+  UnitVectorNode(this.axis);
+}

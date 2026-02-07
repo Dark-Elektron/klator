@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'math_parser.dart';
+import '../models/enums.dart';
 
 class VectorFieldParser {
   final String? xComponent;
@@ -18,7 +19,7 @@ class VectorFieldParser {
 
   static bool isVectorField(String expr) {
     String normalized = expr.replaceAll(' ', '').toLowerCase();
-    return RegExp(r'[ijk](?=[+\-]|$)').hasMatch(normalized);
+    return RegExp(r'(?:e_[xyz])(?=[+\-]|$)').hasMatch(normalized);
   }
 
   static VectorFieldParser? parse(String expr) {
@@ -52,14 +53,14 @@ class VectorFieldParser {
 
       String termLower = term.toLowerCase();
 
-      if (termLower.endsWith('i') && !_endsWithFunction(termLower)) {
-        coefficient = term.substring(0, term.length - 1);
+      if (_endsWithUnit(termLower, 'e_x')) {
+        coefficient = term.substring(0, term.length - 3);
         component = 'i';
-      } else if (termLower.endsWith('j')) {
-        coefficient = term.substring(0, term.length - 1);
+      } else if (_endsWithUnit(termLower, 'e_y')) {
+        coefficient = term.substring(0, term.length - 3);
         component = 'j';
-      } else if (termLower.endsWith('k')) {
-        coefficient = term.substring(0, term.length - 1);
+      } else if (_endsWithUnit(termLower, 'e_z')) {
+        coefficient = term.substring(0, term.length - 3);
         component = 'k';
       } else {
         continue;
@@ -92,12 +93,9 @@ class VectorFieldParser {
     );
   }
 
-  static bool _endsWithFunction(String term) {
-    const functions = ['sin', 'asin', 'sinh', 'min', 'ceil'];
-    for (final func in functions) {
-      if (term.endsWith(func)) return true;
-    }
-    return false;
+  static bool _endsWithUnit(String term, String unit) {
+    if (!term.endsWith(unit)) return false;
+    return true;
   }
 
   bool get is3D => zComponent != null;
@@ -114,6 +112,17 @@ class VectorFieldParser {
     return sqrt(fx * fx + fy * fy + fz * fz);
   }
 
+  double componentValue(SurfaceMode mode, double x, double y, [double z = 0]) {
+    final (fx, fy, fz) = evaluate(x, y, z);
+    switch (mode) {
+      case SurfaceMode.x: return fx;
+      case SurfaceMode.y: return fy;
+      case SurfaceMode.z: return fz;
+      case SurfaceMode.magnitude: return sqrt(fx * fx + fy * fy + fz * fz);
+      case SurfaceMode.none: return 0;
+    }
+  }
+
   (double, double, double) normalized(double x, double y, [double z = 0]) {
     final (fx, fy, fz) = evaluate(x, y, z);
     final mag = sqrt(fx * fx + fy * fy + fz * fz);
@@ -122,5 +131,6 @@ class VectorFieldParser {
   }
 
   @override
-  String toString() => 'Vector(i: $xComponent, j: $yComponent, k: $zComponent)';
+  String toString() =>
+      'Vector(e_x: $xComponent, e_y: $yComponent, e_z: $zComponent)';
 }

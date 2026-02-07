@@ -1,9 +1,11 @@
 import 'dart:math';
+import '../../utils/app_colors.dart';
 import 'package:flutter/material.dart';
 import '../models/enums.dart';
 import '../parsers/math_parser.dart';
 import '../parsers/vector_field_parser.dart';
 import '../utils/colormap.dart';
+import '../utils/plot_theme.dart';
 
 class Plot2DPainter extends CustomPainter {
   final String function;
@@ -12,7 +14,8 @@ class Plot2DPainter extends CustomPainter {
   final FieldType fieldType;
   final VectorFieldParser? vectorParser;
   final bool showContour;
-  final bool showSurface;
+  final SurfaceMode surfaceMode;
+  final AppColors colors;
 
   Plot2DPainter({
     required this.function,
@@ -24,7 +27,8 @@ class Plot2DPainter extends CustomPainter {
     required this.fieldType,
     this.vectorParser,
     required this.showContour,
-    required this.showSurface,
+    required this.surfaceMode,
+    required this.colors,
   });
 
   @override
@@ -32,6 +36,7 @@ class Plot2DPainter extends CustomPainter {
     double toScreenX(double x) => (x - xMin) / (xMax - xMin) * size.width;
     double toScreenY(double y) =>
         size.height - (y - yMin) / (yMax - yMin) * size.height;
+    final bool showSurface = surfaceMode != SurfaceMode.none;
 
     _drawGrid(canvas, size, toScreenX, toScreenY);
     _drawAxes(canvas, size, toScreenX, toScreenY);
@@ -39,7 +44,17 @@ class Plot2DPainter extends CustomPainter {
     // Draw surface (heatmap) if enabled
     if (showSurface) {
       if (fieldType == FieldType.vector && vectorParser != null) {
-        _drawVectorMagnitudeSurface(canvas, size, toScreenX, toScreenY);
+        if (surfaceMode == SurfaceMode.magnitude) {
+          _drawVectorMagnitudeSurface(canvas, size, toScreenX, toScreenY);
+        } else {
+          _drawVectorComponentSurface(
+            canvas,
+            size,
+            toScreenX,
+            toScreenY,
+            surfaceMode,
+          );
+        }
       } else if (fieldType == FieldType.scalar) {
         _drawScalarSurface(canvas, size, toScreenX, toScreenY);
       }
@@ -66,7 +81,17 @@ class Plot2DPainter extends CustomPainter {
       } else if (fieldType == FieldType.vector &&
           showSurface &&
           vectorParser != null) {
-        _drawVectorMagnitudeContours(canvas, size, toScreenX, toScreenY);
+        if (surfaceMode == SurfaceMode.magnitude) {
+          _drawVectorMagnitudeContours(canvas, size, toScreenX, toScreenY);
+        } else {
+          _drawVectorComponentContours(
+            canvas,
+            size,
+            toScreenX,
+            toScreenY,
+            surfaceMode,
+          );
+        }
       }
     }
 
@@ -84,7 +109,7 @@ class Plot2DPainter extends CustomPainter {
     // Check if function uses y (is 2D)
     if (!parser.usesY) return;
 
-    const gridCount = 100;
+    const gridCount = 40;
     final cellWidth = size.width / gridCount;
     final cellHeight = size.height / gridCount;
 
@@ -147,20 +172,27 @@ class Plot2DPainter extends CustomPainter {
   ) {
     if (vectorParser == null) return;
 
-    const gridCount = 100;
+    const gridCount = 40;
     final cellWidth = size.width / gridCount;
     final cellHeight = size.height / gridCount;
 
     // First pass: find max magnitude
-    double maxMag = 0;
-    for (int i = 0; i <= gridCount; i++) {
-      for (int j = 0; j <= gridCount; j++) {
-        final x = xMin + (xMax - xMin) * i / gridCount;
-        final y = yMin + (yMax - yMin) * j / gridCount;
-        final mag = vectorParser!.magnitude(x, y);
-        if (mag.isFinite) maxMag = max(maxMag, mag);
+      double maxMag = 0;
+      for (int i = 0; i <= gridCount; i++) {
+        for (int j = 0; j <= gridCount; j++) {
+          final x = xMin + (xMax - xMin) * i / gridCount;
+          final y = yMin + (yMax - yMin) * j / gridCount;
+          double mag = vectorParser!.magnitude(x, y);
+          if (surfaceMode == SurfaceMode.x) {
+            mag = vectorParser!.componentValue(SurfaceMode.x, x, y).abs();
+          } else if (surfaceMode == SurfaceMode.y) {
+            mag = vectorParser!.componentValue(SurfaceMode.y, x, y).abs();
+          } else if (surfaceMode == SurfaceMode.z) {
+            mag = vectorParser!.componentValue(SurfaceMode.z, x, y).abs();
+          }
+          if (mag.isFinite) maxMag = max(maxMag, mag);
+        }
       }
-    }
 
     if (maxMag == 0) maxMag = 1;
 
@@ -190,6 +222,61 @@ class Plot2DPainter extends CustomPainter {
     _drawColorbar(canvas, size, 0, maxMag);
   }
 
+  void _drawVectorComponentSurface(
+    Canvas canvas,
+    Size size,
+    double Function(double) toScreenX,
+    double Function(double) toScreenY,
+    SurfaceMode mode,
+  ) {
+    if (vectorParser == null) return;
+
+    const gridCount = 40;
+    final cellWidth = size.width / gridCount;
+    final cellHeight = size.height / gridCount;
+
+    double minVal = double.infinity;
+    double maxVal = double.negativeInfinity;
+
+    for (int i = 0; i <= gridCount; i++) {
+      for (int j = 0; j <= gridCount; j++) {
+        final x = xMin + (xMax - xMin) * i / gridCount;
+        final y = yMin + (yMax - yMin) * j / gridCount;
+        final val = vectorParser!.componentValue(mode, x, y);
+        if (!val.isFinite) continue;
+        minVal = min(minVal, val);
+        maxVal = max(maxVal, val);
+      }
+    }
+
+    if (minVal == maxVal) maxVal = minVal + 1;
+    if (!minVal.isFinite || !maxVal.isFinite) return;
+
+    for (int i = 0; i < gridCount; i++) {
+      for (int j = 0; j < gridCount; j++) {
+        final x = xMin + (xMax - xMin) * (i + 0.5) / gridCount;
+        final y = yMin + (yMax - yMin) * (j + 0.5) / gridCount;
+
+        final val = vectorParser!.componentValue(mode, x, y);
+        if (!val.isFinite) continue;
+
+        final normalized = (val - minVal) / (maxVal - minVal);
+        final color = jetColormap(normalized.clamp(0.0, 1.0));
+
+        final rect = Rect.fromLTWH(
+          i * cellWidth,
+          size.height - (j + 1) * cellHeight,
+          cellWidth + 1,
+          cellHeight + 1,
+        );
+
+        canvas.drawRect(rect, Paint()..color = color.withValues(alpha: 0.6));
+      }
+    }
+
+    _drawColorbar(canvas, size, minVal, maxVal);
+  }
+
   void _drawVectorMagnitudeContours(
     Canvas canvas,
     Size size,
@@ -198,7 +285,7 @@ class Plot2DPainter extends CustomPainter {
   ) {
     if (vectorParser == null) return;
 
-    const gridSize = 100;
+    const gridSize = 60;
     const numContours = 15;
 
     // Build grid of magnitude values
@@ -245,6 +332,67 @@ class Plot2DPainter extends CustomPainter {
         toScreenY,
         0,
         maxMag,
+      );
+    }
+  }
+
+  void _drawVectorComponentContours(
+    Canvas canvas,
+    Size size,
+    double Function(double) toScreenX,
+    double Function(double) toScreenY,
+    SurfaceMode mode,
+  ) {
+    if (vectorParser == null) return;
+
+    const gridSize = 60;
+    const numContours = 15;
+
+    List<List<double>> grid = [];
+    double minVal = double.infinity;
+    double maxVal = double.negativeInfinity;
+
+    for (int i = 0; i <= gridSize; i++) {
+      List<double> row = [];
+      for (int j = 0; j <= gridSize; j++) {
+        final x = xMin + (xMax - xMin) * i / gridSize;
+        final y = yMin + (yMax - yMin) * j / gridSize;
+        final val = vectorParser!.componentValue(mode, x, y);
+        if (val.isFinite) {
+          row.add(val);
+          minVal = min(minVal, val);
+          maxVal = max(maxVal, val);
+        } else {
+          row.add(0);
+        }
+      }
+      grid.add(row);
+    }
+
+    if (minVal == maxVal) return;
+
+    for (int level = 0; level < numContours; level++) {
+      final threshold =
+          minVal + (maxVal - minVal) * (level + 1) / (numContours + 1);
+      final normalizedLevel = (threshold - minVal) / (maxVal - minVal);
+      final color = jetColormap(normalizedLevel);
+
+      final paint =
+          Paint()
+            ..color = color
+            ..strokeWidth = 1.5
+            ..style = PaintingStyle.stroke;
+
+      _drawContourLevelGeneric(
+        canvas,
+        size,
+        grid,
+        threshold,
+        paint,
+        toScreenX,
+        toScreenY,
+        minVal,
+        maxVal,
       );
     }
   }
@@ -324,42 +472,54 @@ class Plot2DPainter extends CustomPainter {
     double Function(double) toScreenX,
     double Function(double) toScreenY,
   ) {
+    final theme = PlotThemeData.fromColors(colors);
     final gridPaint =
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.2)
+          ..color = theme.grid
           ..strokeWidth = 1.2;
     final subGridPaint =
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.1)
+          ..color = theme.subGrid
           ..strokeWidth = 0.8;
-    double gridSpacing = _calculateGridSpacing(xMax - xMin);
+    final rangeX = (xMax - xMin).abs();
+    final rangeY = (yMax - yMin).abs();
+    final spacingX = _calculateGridSpacing(rangeX, 8);
+    final spacingY = _calculateGridSpacing(rangeY, 8);
+    final subSpacingX = spacingX / 5;
+    final subSpacingY = spacingY / 5;
+    final subXPixel = subSpacingX * size.width / rangeX;
+    final subYPixel = subSpacingY * size.height / rangeY;
 
     for (
-      double x = (xMin / gridSpacing).floor() * gridSpacing;
+      double x = (xMin / spacingX).floor() * spacingX;
       x <= xMax;
-      x += gridSpacing / 5
+      x += subSpacingX
     ) {
-      canvas.drawLine(
-        Offset(toScreenX(x), 0),
-        Offset(toScreenX(x), size.height),
-        subGridPaint,
-      );
+      if (subXPixel >= 12) {
+        canvas.drawLine(
+          Offset(toScreenX(x), 0),
+          Offset(toScreenX(x), size.height),
+          subGridPaint,
+        );
+      }
     }
     for (
-      double y = (yMin / gridSpacing).floor() * gridSpacing;
+      double y = (yMin / spacingY).floor() * spacingY;
       y <= yMax;
-      y += gridSpacing / 5
+      y += subSpacingY
     ) {
-      canvas.drawLine(
-        Offset(0, toScreenY(y)),
-        Offset(size.width, toScreenY(y)),
-        subGridPaint,
-      );
+      if (subYPixel >= 12) {
+        canvas.drawLine(
+          Offset(0, toScreenY(y)),
+          Offset(size.width, toScreenY(y)),
+          subGridPaint,
+        );
+      }
     }
     for (
-      double x = (xMin / gridSpacing).floor() * gridSpacing;
+      double x = (xMin / spacingX).floor() * spacingX;
       x <= xMax;
-      x += gridSpacing
+      x += spacingX
     ) {
       canvas.drawLine(
         Offset(toScreenX(x), 0),
@@ -368,9 +528,9 @@ class Plot2DPainter extends CustomPainter {
       );
     }
     for (
-      double y = (yMin / gridSpacing).floor() * gridSpacing;
+      double y = (yMin / spacingY).floor() * spacingY;
       y <= yMax;
-      y += gridSpacing
+      y += spacingY
     ) {
       canvas.drawLine(
         Offset(0, toScreenY(y)),
@@ -386,29 +546,40 @@ class Plot2DPainter extends CustomPainter {
     double Function(double) toScreenX,
     double Function(double) toScreenY,
   ) {
+    final theme = PlotThemeData.fromColors(colors);
     final axisPaint =
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.6)
+          ..color = theme.axis
           ..strokeWidth = 2;
+    final axisGlowPaint =
+        Paint()
+          ..color = theme.axis.withValues(alpha: 0.35)
+          ..strokeWidth = 6
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
     final tickPaint =
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.4)
+          ..color = theme.tick
           ..strokeWidth = 1;
 
     if (yMin <= 0 && yMax >= 0) {
       final y0 = toScreenY(0);
+      canvas.drawLine(Offset(0, y0), Offset(size.width, y0), axisGlowPaint);
       canvas.drawLine(Offset(0, y0), Offset(size.width, y0), axisPaint);
     }
     if (xMin <= 0 && xMax >= 0) {
       final x0 = toScreenX(0);
+      canvas.drawLine(Offset(x0, 0), Offset(x0, size.height), axisGlowPaint);
       canvas.drawLine(Offset(x0, 0), Offset(x0, size.height), axisPaint);
     }
 
-    double gridSpacing = _calculateGridSpacing(xMax - xMin);
+    final rangeX = (xMax - xMin).abs();
+    final rangeY = (yMax - yMin).abs();
+    final spacingX = _calculateGridSpacing(rangeX, 8);
+    final spacingY = _calculateGridSpacing(rangeY, 8);
     for (
-      double x = (xMin / gridSpacing).ceil() * gridSpacing;
+      double x = (xMin / spacingX).ceil() * spacingX;
       x <= xMax;
-      x += gridSpacing
+      x += spacingX
     ) {
       if (x.abs() > 0.001 && yMin <= 0 && yMax >= 0) {
         final y0 = toScreenY(0).clamp(10.0, size.height - 10);
@@ -420,9 +591,9 @@ class Plot2DPainter extends CustomPainter {
       }
     }
     for (
-      double y = (yMin / gridSpacing).ceil() * gridSpacing;
+      double y = (yMin / spacingY).ceil() * spacingY;
       y <= yMax;
-      y += gridSpacing
+      y += spacingY
     ) {
       if (y.abs() > 0.001 && xMin <= 0 && xMax >= 0) {
         final x0 = toScreenX(0).clamp(10.0, size.width - 10);
@@ -443,7 +614,7 @@ class Plot2DPainter extends CustomPainter {
   ) {
     final paint =
         Paint()
-          ..color = const Color(0xFF58C4DD)
+          ..color = colors.accent
           ..strokeWidth = 3
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round;
@@ -536,7 +707,7 @@ class Plot2DPainter extends CustomPainter {
       }
     }
 
-    if (!showSurface) {
+    if (surfaceMode == SurfaceMode.none) {
       _drawColorbar(canvas, size, minVal, maxVal);
     }
   }
@@ -680,7 +851,7 @@ class Plot2DPainter extends CustomPainter {
     if (vectorParser == null) return;
 
     const gridCount = 20;
-    final arrowLength = min(size.width, size.height) / gridCount / 2.5;
+    final arrowLength = min(size.width, size.height) / gridCount / 1.0;
 
     double maxMag = 0;
     for (int i = 0; i <= gridCount; i++) {
@@ -699,18 +870,38 @@ class Plot2DPainter extends CustomPainter {
         final x = xMin + (xMax - xMin) * i / gridCount;
         final y = yMin + (yMax - yMin) * j / gridCount;
 
-        final (nx, ny, _) = vectorParser!.normalized(x, y);
-        final mag = vectorParser!.magnitude(x, y);
+          final (fx, fy, fz) = vectorParser!.evaluate(x, y);
+          double vx = fx;
+          double vy = fy;
+          double mag = vectorParser!.magnitude(x, y);
 
-        if (!mag.isFinite || mag < 1e-10) continue;
+          if (surfaceMode == SurfaceMode.x) {
+            vx = fx;
+            vy = 0;
+            mag = fx.abs();
+          } else if (surfaceMode == SurfaceMode.y) {
+            vx = 0;
+            vy = fy;
+            mag = fy.abs();
+          } else if (surfaceMode == SurfaceMode.z) {
+            vx = 0;
+            vy = 0;
+            mag = fz.abs();
+          }
 
-        final normalized = mag / maxMag;
-        final color = jetColormap(normalized);
+          if (!mag.isFinite || mag < 1e-10) continue;
 
-        final startX = toScreenX(x);
-        final startY = toScreenY(y);
-        final endX = startX + nx * arrowLength;
-        final endY = startY - ny * arrowLength;
+          final normalized = mag / maxMag;
+          final color = jetColormap(normalized);
+
+          final scale = mag == 0 ? 0 : 1 / mag;
+          final nx = vx * scale;
+          final ny = vy * scale;
+
+          final startX = toScreenX(x);
+          final startY = toScreenY(y);
+          final endX = startX + nx * arrowLength;
+          final endY = startY - ny * arrowLength;
 
         final paint =
             Paint()
@@ -744,7 +935,7 @@ class Plot2DPainter extends CustomPainter {
       }
     }
 
-    if (!showSurface) {
+    if (surfaceMode == SurfaceMode.none) {
       _drawColorbar(canvas, size, 0, maxMag);
     }
   }
@@ -791,12 +982,13 @@ class Plot2DPainter extends CustomPainter {
       }
     }
 
-    if (!showSurface) {
+    if (surfaceMode == SurfaceMode.none) {
       _drawColorbar(canvas, size, 0, maxMag);
     }
   }
 
   void _drawColorbar(Canvas canvas, Size size, double minVal, double maxVal) {
+    final theme = PlotThemeData.fromColors(colors);
     const barWidth = 15.0;
     const barHeight = 100.0;
     const margin = 10.0;
@@ -821,12 +1013,12 @@ class Plot2DPainter extends CustomPainter {
     canvas.drawRect(
       barRect,
       Paint()
-        ..color = Colors.white54
+        ..color = theme.colorbarBorder
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1,
     );
 
-    final textStyle = TextStyle(color: Colors.white70, fontSize: 10);
+    final textStyle = TextStyle(color: theme.colorbarText, fontSize: 10);
     final maxTp = TextPainter(
       text: TextSpan(text: _formatNumber(maxVal), style: textStyle),
       textDirection: TextDirection.ltr,
@@ -846,16 +1038,17 @@ class Plot2DPainter extends CustomPainter {
     double Function(double) toScreenX,
     double Function(double) toScreenY,
   ) {
-    final textStyle = TextStyle(
-      color: Colors.white.withValues(alpha: 0.6),
-      fontSize: 12,
-    );
-    double gridSpacing = _calculateGridSpacing(xMax - xMin);
+    final theme = PlotThemeData.fromColors(colors);
+    final textStyle = TextStyle(color: theme.label, fontSize: 12);
+    final rangeX = (xMax - xMin).abs();
+    final rangeY = (yMax - yMin).abs();
+    final spacingX = _calculateGridSpacing(rangeX, 8);
+    final spacingY = _calculateGridSpacing(rangeY, 8);
 
     for (
-      double x = (xMin / gridSpacing).ceil() * gridSpacing;
+      double x = (xMin / spacingX).ceil() * spacingX;
       x <= xMax;
-      x += gridSpacing
+      x += spacingX
     ) {
       if (x.abs() > 0.001 && yMin <= 0 && yMax >= 0) {
         final y0 = toScreenY(0).clamp(20.0, size.height - 20);
@@ -867,9 +1060,9 @@ class Plot2DPainter extends CustomPainter {
       }
     }
     for (
-      double y = (yMin / gridSpacing).ceil() * gridSpacing;
+      double y = (yMin / spacingY).ceil() * spacingY;
       y <= yMax;
-      y += gridSpacing
+      y += spacingY
     ) {
       if (y.abs() > 0.001 && xMin <= 0 && xMax >= 0) {
         final x0 = toScreenX(0).clamp(30.0, size.width - 30);
@@ -893,12 +1086,22 @@ class Plot2DPainter extends CustomPainter {
     return n.toStringAsFixed(2);
   }
 
-  double _calculateGridSpacing(double range) {
-    final magnitude = pow(10, (log(range) / ln10).floor() - 1).toDouble();
-    final normalized = range / magnitude;
-    if (normalized < 20) return magnitude;
-    if (normalized < 50) return magnitude * 2;
-    return magnitude * 5;
+  double _calculateGridSpacing(double range, int maxLines) {
+    if (range <= 0) return 1;
+    final roughStep = range / maxLines;
+    final magnitude = pow(10, (log(roughStep) / ln10).floor()).toDouble();
+    final normalized = roughStep / magnitude;
+    double nice;
+    if (normalized <= 1) {
+      nice = 1;
+    } else if (normalized <= 2) {
+      nice = 2;
+    } else if (normalized <= 5) {
+      nice = 5;
+    } else {
+      nice = 10;
+    }
+    return nice * magnitude;
   }
 
   @override
@@ -911,5 +1114,6 @@ class Plot2DPainter extends CustomPainter {
       old.plotMode != plotMode ||
       old.fieldType != fieldType ||
       old.showContour != showContour ||
-      old.showSurface != showSurface;
+      old.surfaceMode != surfaceMode ||
+      old.colors != colors;
 }

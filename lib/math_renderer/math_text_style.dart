@@ -41,6 +41,12 @@ class MathTextStyle {
       return false;
     }
 
+    // Unary +/− should stick to the following value (e.g., -23, (+3), (-x))
+    if ((char == plusSign || char == '-' || char == minusSign) &&
+        _isUnarySignAt(text, index)) {
+      return false;
+    }
+
     // Special case: minus sign after scientific E should NOT be padded
     if ((char == '-' || char == minusSign) && index > 0) {
       final prevChar = text[index - 1];
@@ -50,6 +56,29 @@ class MathTextStyle {
     }
 
     return true;
+  }
+
+  static bool _isUnarySignAt(String text, int index) {
+    if (index <= 0) return true;
+    final prevChar = text[index - 1];
+    // If sign follows an operator or opening bracket, treat as unary.
+    const unaryPreceders = {
+      '(',
+      '[',
+      '{',
+      ',',
+      plusSign,
+      minusSign,
+      '-',
+      multiplyDot,
+      multiplyTimes,
+      '*',
+      '/',
+      '÷',
+      '^',
+      '=',
+    };
+    return unaryPreceders.contains(prevChar);
   }
 
   static bool _isMultiplySign(String char) {

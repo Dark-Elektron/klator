@@ -220,7 +220,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     '',
     '',
     '',
-    '',
+    'e_x',
     '',
     '',
     '\u24D8',
@@ -1484,6 +1484,27 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             color: Colors.white,
             textColor: Colors.black,
           );
+        }
+          if (index == 15) {
+            return PopupMenuCalcButton(
+              buttonText: 'x\u0302',
+              color: Colors.white,
+              textColor: Colors.black,
+              menuBackgroundColor: Colors.white,
+              separatorColor: Colors.black12,
+              onTap: () {},
+              menuItems: [
+                CalcMenuItem(
+                  label: 'y\u0302',
+                  onTap: () {},
+                ),
+                CalcMenuItem(
+                  label: 'z\u0302',
+                  onTap: () {},
+                ),
+              ],
+              indicatorColor: widget.colors.textSecondary,
+            );
         }
         if (index == 6) {
           return MyButton(

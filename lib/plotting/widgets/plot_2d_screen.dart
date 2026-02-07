@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../models/enums.dart';
+import '../../utils/app_colors.dart';
 import '../parsers/vector_field_parser.dart';
+import '../parsers/math_parser.dart';
 import '../painters/plot_2d_painter.dart';
+import '../utils/plot_theme.dart';
 
 class Plot2DScreen extends StatefulWidget {
   final String function;
@@ -10,8 +13,9 @@ class Plot2DScreen extends StatefulWidget {
   final FieldType fieldType;
   final VectorFieldParser? vectorParser;
   final bool showContour;
-  final bool showSurface;
+  final SurfaceMode surfaceMode;
   final ZoomAxis zoomAxis; // New
+  final AppColors colors;
 
   const Plot2DScreen({
     super.key,
@@ -21,8 +25,9 @@ class Plot2DScreen extends StatefulWidget {
     required this.fieldType,
     this.vectorParser,
     required this.showContour,
-    required this.showSurface,
+    required this.surfaceMode,
     required this.zoomAxis, // New
+    required this.colors,
   });
 
   @override
@@ -37,6 +42,22 @@ class Plot2DScreenState extends State<Plot2DScreen> {
   // For detecting axis-specific zoom based on gesture location
   static const double _axisZoneSize = 60.0; // pixels from edge to detect axis zone
 
+  @override
+  void initState() {
+    super.initState();
+    _autoScaleIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant Plot2DScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.function != widget.function ||
+        oldWidget.fieldType != widget.fieldType ||
+        oldWidget.is3DFunction != widget.is3DFunction) {
+      _autoScaleIfNeeded();
+    }
+  }
+
   void resetView() {
     setState(() {
       xMin = -5;
@@ -44,6 +65,39 @@ class Plot2DScreenState extends State<Plot2DScreen> {
       yMin = -5;
       yMax = 5;
     });
+    _autoScaleIfNeeded();
+  }
+
+  void _autoScaleIfNeeded() {
+    if (widget.fieldType != FieldType.scalar || widget.is3DFunction) {
+      return;
+    }
+    try {
+      final parser = MathParser(widget.function);
+      double? minY;
+      double? maxY;
+      const int samples = 80;
+      for (int i = 0; i <= samples; i++) {
+        final t = i / samples;
+        final x = xMin + (xMax - xMin) * t;
+        final y = parser.evaluate(x, 0, 0);
+        if (y.isNaN || y.isInfinite) continue;
+        minY = minY == null ? y : (y < minY ? y : minY);
+        maxY = maxY == null ? y : (y > maxY ? y : maxY);
+      }
+      if (minY == null || maxY == null) return;
+      if ((maxY - minY).abs() < 1e-6) {
+        maxY = maxY + 1;
+        minY = minY - 1;
+      }
+      final padding = (maxY - minY) * 0.1;
+      setState(() {
+        yMin = minY! - padding;
+        yMax = maxY! + padding;
+      });
+    } catch (_) {
+      // Keep defaults on parse/eval failure
+    }
   }
 
   ZoomAxis _detectZoomAxis(Offset focalPoint, Size size) {
@@ -69,6 +123,9 @@ class Plot2DScreenState extends State<Plot2DScreen> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        if (constraints.maxHeight <= 0 || constraints.maxWidth <= 0) {
+          return const SizedBox.shrink();
+        }
         final size = Size(constraints.maxWidth, constraints.maxHeight);
 
         return GestureDetector(
@@ -131,7 +188,9 @@ class Plot2DScreenState extends State<Plot2DScreen> {
             });
           },
           child: Container(
-            color: Colors.black,
+            decoration: BoxDecoration(
+              gradient: PlotThemeData.fromColors(widget.colors).background2D,
+            ),
             child: CustomPaint(
               size: Size(constraints.maxWidth, constraints.maxHeight),
               painter: Plot2DPainter(
@@ -144,7 +203,8 @@ class Plot2DScreenState extends State<Plot2DScreen> {
                 fieldType: widget.fieldType,
                 vectorParser: widget.vectorParser,
                 showContour: widget.showContour,
-                showSurface: widget.showSurface,
+                surfaceMode: widget.surfaceMode,
+                colors: widget.colors,
               ),
             ),
           ),

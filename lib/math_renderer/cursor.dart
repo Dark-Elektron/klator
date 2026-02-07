@@ -111,6 +111,9 @@ class EditorState {
     if (node is ConstantNode) {
       return ConstantNode(node.constant);
     }
+    if (node is UnitVectorNode) {
+      return UnitVectorNode(node.axis);
+    }
     if (node is ComplexNode) {
       return ComplexNode(content: _deepCopyNodes(node.content));
     }

@@ -64,12 +64,20 @@ class MathParser {
 
   double _parseTerm(double x, double y, double z) {
     var result = _parsePower(x, y, z);
-    while (_currentToken == '*' || _currentToken == '/') {
-      final op = _currentToken;
-      _nextToken();
-      result = op == '*'
-          ? result * _parsePower(x, y, z)
-          : result / _parsePower(x, y, z);
+    while (true) {
+      if (_currentToken == '*' || _currentToken == '/') {
+        final op = _currentToken;
+        _nextToken();
+        result = op == '*'
+            ? result * _parsePower(x, y, z)
+            : result / _parsePower(x, y, z);
+        continue;
+      }
+      if (_currentToken != null && _isImplicitMulToken(_currentToken!)) {
+        result *= _parsePower(x, y, z);
+        continue;
+      }
+      break;
     }
     return result;
   }
@@ -123,9 +131,30 @@ class MathParser {
         if (_currentToken == ')') _nextToken();
         return _evaluateFunction(token, arg1, arg2);
       }
+      if (_isAllXYZ(token)) {
+        double result = 1;
+        for (final ch in token.split('')) {
+          if (ch == 'x') result *= x;
+          if (ch == 'y') result *= y;
+          if (ch == 'z') result *= z;
+        }
+        return result;
+      }
     }
     return 0;
   }
+
+  bool _isImplicitMulToken(String token) {
+    if (token.isEmpty) return false;
+    if ('+-*/^),'.contains(token)) return false;
+    if (token == '(') return true;
+    if (token.contains(RegExp(r'^[0-9.]'))) return true;
+    if (token.contains(RegExp(r'^[a-zA-Z]'))) return true;
+    return false;
+  }
+
+  bool _isAllXYZ(String token) =>
+      token.contains(RegExp(r'^[xyz]+$'));
 
   double _evaluateFunction(String name, double arg1, [double? arg2]) {
     switch (name) {

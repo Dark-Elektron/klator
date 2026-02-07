@@ -818,7 +818,7 @@ class MathEditorController extends ChangeNotifier {
           } else {
             // Both before and after are empty. Replace current Literal with Constant.
             final prevNode = actualIndex > 0 ? siblings[actualIndex - 1] : null;
-            if (prevNode is ConstantNode) {
+            if (prevNode is ConstantNode || prevNode is UnitVectorNode) {
               // Keep the empty literal as a spacer so the cursor can sit between constants.
               siblings.insert(actualIndex + 1, node);
               // Still need an empty literal after it to allow further typing
@@ -845,6 +845,77 @@ class MathEditorController extends ChangeNotifier {
           }
         }
       }
+    _notifyStructureChanged();
+    onCalculate();
+  }
+
+  void insertUnitVector(String axis) {
+    saveStateForUndo();
+
+    final siblings = _resolveSiblingList();
+    final current = _resolveCursorNode();
+    if (current is! LiteralNode) return;
+
+    final String currentId = current.id;
+    String text = current.text;
+    int cursorPos = cursor.subIndex;
+    int actualIndex = siblings.indexWhere((n) => n.id == currentId);
+
+    String before = text.substring(0, cursorPos);
+    String after = text.substring(cursorPos);
+
+    final node = UnitVectorNode(axis);
+
+    if (actualIndex >= 0) {
+      if (after.isNotEmpty) {
+        current.text = before;
+        final tail = LiteralNode(text: after);
+        siblings.insert(actualIndex + 1, node);
+        siblings.insert(actualIndex + 2, tail);
+        cursor = EditorCursor(
+          parentId: cursor.parentId,
+          path: cursor.path,
+          index: actualIndex + 2,
+          subIndex: 0,
+        );
+      } else {
+        if (before.isNotEmpty) {
+          current.text = before;
+          siblings.insert(actualIndex + 1, node);
+          final tail = LiteralNode(text: "");
+          siblings.insert(actualIndex + 2, tail);
+          cursor = EditorCursor(
+            parentId: cursor.parentId,
+            path: cursor.path,
+            index: actualIndex + 2,
+            subIndex: 0,
+          );
+        } else {
+          final prevNode = actualIndex > 0 ? siblings[actualIndex - 1] : null;
+          if (prevNode is ConstantNode || prevNode is UnitVectorNode) {
+            siblings.insert(actualIndex + 1, node);
+            final tail = LiteralNode(text: "");
+            siblings.insert(actualIndex + 2, tail);
+            cursor = EditorCursor(
+              parentId: cursor.parentId,
+              path: cursor.path,
+              index: actualIndex + 2,
+              subIndex: 0,
+            );
+          } else {
+            siblings[actualIndex] = node;
+            final tail = LiteralNode(text: "");
+            siblings.insert(actualIndex + 1, tail);
+            cursor = EditorCursor(
+              parentId: cursor.parentId,
+              path: cursor.path,
+              index: actualIndex + 1,
+              subIndex: 0,
+            );
+          }
+        }
+      }
+    }
     _notifyStructureChanged();
     onCalculate();
   }
@@ -2939,6 +3010,7 @@ class MathEditorController extends ChangeNotifier {
           node is AnsNode ||
           node is LogNode ||
           node is ConstantNode || // <-- ADD THIS
+          node is UnitVectorNode || // <-- ADD THIS
           node is PermutationNode || // <-- ADD THIS
           node is CombinationNode) {
         // <-- ADD THIS
@@ -2973,9 +3045,10 @@ class MathEditorController extends ChangeNotifier {
               prevNode is RootNode ||
               prevNode is AnsNode ||
               prevNode is LogNode ||
-              prevNode is ConstantNode || // <-- ADD THIS
-              prevNode is PermutationNode || // <-- ADD THIS
-              prevNode is CombinationNode) {
+                prevNode is ConstantNode || // <-- ADD THIS
+                prevNode is UnitVectorNode || // <-- ADD THIS
+                prevNode is PermutationNode || // <-- ADD THIS
+                prevNode is CombinationNode) {
             // <-- ADD THIS
             if (i > 1) {
               final prevPrevNode = siblings[i - 2];
@@ -3323,10 +3396,10 @@ class MathEditorController extends ChangeNotifier {
         recalculateCursorRect(); // ← ADD THIS
         notifyListeners();
       }
-    } else if (prevNode is ConstantNode) {
-      siblings.removeAt(cursor.index - 1);
-      cursor = cursor.copyWith(index: cursor.index - 1);
-      _notifyStructureChanged();
+      } else if (prevNode is ConstantNode || prevNode is UnitVectorNode) {
+        siblings.removeAt(cursor.index - 1);
+        cursor = cursor.copyWith(index: cursor.index - 1);
+        _notifyStructureChanged();
     } else if (prevNode is NewlineNode) {
       _removeNewline(prevNode);
     } else if (prevNode is FractionNode) {
@@ -3433,7 +3506,7 @@ class MathEditorController extends ChangeNotifier {
         _moveCursorToEndOfList(lastNode.r, lastNode.id, 'r');
       } else if (lastNode is AnsNode) {
         _moveCursorToEndOfList(lastNode.index, lastNode.id, 'index');
-      } else if (lastNode is ConstantNode) {
+      } else if (lastNode is ConstantNode || lastNode is UnitVectorNode) {
         final insertIndex = lastIndex + 1;
         nodes.insert(insertIndex, LiteralNode(text: ""));
         cursor = EditorCursor(
@@ -3486,7 +3559,7 @@ class MathEditorController extends ChangeNotifier {
         _moveCursorToStartOfList(firstNode.n, firstNode.id, 'n');
       } else if (firstNode is AnsNode) {
         _moveCursorToStartOfList(firstNode.index, firstNode.id, 'index');
-      } else if (firstNode is ConstantNode) {
+      } else if (firstNode is ConstantNode || firstNode is UnitVectorNode) {
         nodes.insert(0, LiteralNode(text: ""));
         cursor = EditorCursor(
           parentId: parentId,
@@ -3806,9 +3879,9 @@ class MathEditorController extends ChangeNotifier {
           } else if (node is CombinationNode) {
             // <-- ADD THIS
             _moveCursorToEndOfList(node.r, node.id, 'r');
-          } else if (node is ConstantNode) {
-            if (foundIndex + 1 < parentList.length &&
-                parentList[foundIndex + 1] is LiteralNode) {
+            } else if (node is ConstantNode || node is UnitVectorNode) {
+              if (foundIndex + 1 < parentList.length &&
+                  parentList[foundIndex + 1] is LiteralNode) {
               cursor = EditorCursor(
                 parentId: parentInfo.parentId,
                 path: parentInfo.path,
@@ -3985,9 +4058,9 @@ class MathEditorController extends ChangeNotifier {
           } else if (node is CombinationNode) {
             // <-- ADD THIS
             _moveCursorToEndOfList(node.r, node.id, 'r');
-          } else if (node is ConstantNode) {
-            if (foundIndex + 1 < parentList.length &&
-                parentList[foundIndex + 1] is LiteralNode) {
+            } else if (node is ConstantNode || node is UnitVectorNode) {
+              if (foundIndex + 1 < parentList.length &&
+                  parentList[foundIndex + 1] is LiteralNode) {
               cursor = EditorCursor(
                 parentId: parentInfo.parentId,
                 path: parentInfo.path,

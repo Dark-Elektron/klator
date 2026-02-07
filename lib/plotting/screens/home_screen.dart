@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/app_colors.dart';
 import '../models/enums.dart';
 import '../parsers/math_parser.dart';
 import '../parsers/vector_field_parser.dart';
@@ -23,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   FieldType _fieldType = FieldType.scalar;
   VectorFieldParser? _vectorParser;
   bool _showContour = false;
-  bool _showSurface = false;
+  SurfaceMode _surfaceMode = SurfaceMode.none;
   ZoomAxis _zoomAxis = ZoomAxis.free;
 
   final GlobalKey<Plot2DScreenState> _plot2DKey = GlobalKey();
@@ -52,13 +53,18 @@ class _HomeScreenState extends State<HomeScreen> {
     if (VectorFieldParser.isVectorField(expr)) {
       final parser = VectorFieldParser.parse(expr);
       if (parser != null) {
-        setState(() {
-          _currentFunction = expr;
-          _vectorParser = parser;
-          _fieldType = FieldType.vector;
-          _is3DFunction = parser.is3D;
-          _errorMessage = null;
-        });
+          setState(() {
+            _currentFunction = expr;
+            _vectorParser = parser;
+            _fieldType = FieldType.vector;
+            _is3DFunction = parser.is3D;
+            _errorMessage = null;
+            if (_is3DFunction) {
+              _surfaceMode = SurfaceMode.none;
+            } else if (_surfaceMode == SurfaceMode.none) {
+              _surfaceMode = SurfaceMode.magnitude;
+            }
+          });
         return;
       }
     }
@@ -66,13 +72,20 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final parser = MathParser(expr);
       parser.evaluate(1, 1, 1);
-      setState(() {
-        _currentFunction = expr;
-        _vectorParser = null;
-        _fieldType = FieldType.scalar;
-        _is3DFunction = parser.usesY;
-        _errorMessage = null;
-      });
+        setState(() {
+          _currentFunction = expr;
+          _vectorParser = null;
+          _fieldType = FieldType.scalar;
+          _is3DFunction = parser.usesY;
+          _errorMessage = null;
+          if (!_is3DFunction) {
+            _surfaceMode = SurfaceMode.none;
+          } else if (_surfaceMode == SurfaceMode.x ||
+              _surfaceMode == SurfaceMode.y ||
+              _surfaceMode == SurfaceMode.z) {
+            _surfaceMode = SurfaceMode.magnitude;
+          }
+        });
     } catch (e) {
       setState(() => _errorMessage = 'Invalid function syntax');
     }
@@ -109,8 +122,8 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _showContour = !_showContour);
   }
 
-  void _toggleSurface() {
-    setState(() => _showSurface = !_showSurface);
+  void _setSurfaceMode(SurfaceMode mode) {
+    setState(() => _surfaceMode = mode);
   }
 
   String _getInputLabel() {
@@ -123,8 +136,8 @@ class _HomeScreenState extends State<HomeScreen> {
     List<String> modes = [];
 
     if (_fieldType == FieldType.vector) {
-      if (_showSurface) {
-        modes.add('|F| Surface');
+      if (_surfaceMode != SurfaceMode.none) {
+        modes.add(_surfaceModeLabel());
       }
       if (_plotMode == PlotMode.field) {
         modes.add('Magnitude dots');
@@ -135,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
         modes.add('Contour');
       }
     } else {
-      if (_showSurface && _is3DFunction) {
+      if (_surfaceMode != SurfaceMode.none && _is3DFunction) {
         modes.add('Surface');
       }
       if (_plotMode == PlotMode.field) {
@@ -156,6 +169,21 @@ class _HomeScreenState extends State<HomeScreen> {
       return _vectorParser != null && !_vectorParser!.is3D;
     }
     return _is3DFunction;
+  }
+
+  String _surfaceModeLabel() {
+    switch (_surfaceMode) {
+      case SurfaceMode.magnitude:
+        return '|F|';
+      case SurfaceMode.x:
+        return 'Fx';
+      case SurfaceMode.y:
+        return 'Fy';
+      case SurfaceMode.z:
+        return 'Fz';
+      case SurfaceMode.none:
+        return 'Surface';
+    }
   }
 
   String _getZoomAxisLabel() {
@@ -184,6 +212,80 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Widget _buildSurfaceMenuButton() {
+    final bool isSelected = _surfaceMode != SurfaceMode.none;
+    final menuItems = <PopupMenuEntry<SurfaceMode>>[];
+
+    menuItems.add(
+      const PopupMenuItem(
+        value: SurfaceMode.none,
+        child: Text('Surface Off'),
+      ),
+    );
+
+    if (_fieldType == FieldType.vector) {
+      menuItems.add(
+        const PopupMenuItem(
+          value: SurfaceMode.magnitude,
+          child: Text('|F| Surface'),
+        ),
+      );
+      menuItems.add(
+        const PopupMenuItem(
+          value: SurfaceMode.x,
+          child: Text('Fx Surface'),
+        ),
+      );
+      menuItems.add(
+        const PopupMenuItem(
+          value: SurfaceMode.y,
+          child: Text('Fy Surface'),
+        ),
+      );
+      if (_vectorParser?.zComponent != null) {
+        menuItems.add(
+          const PopupMenuItem(
+            value: SurfaceMode.z,
+            child: Text('Fz Surface'),
+          ),
+        );
+      }
+    } else {
+      menuItems.add(
+        const PopupMenuItem(
+          value: SurfaceMode.magnitude,
+          child: Text('Surface'),
+        ),
+      );
+    }
+
+    return PopupMenuButton<SurfaceMode>(
+      onSelected: _setSurfaceMode,
+      itemBuilder: (context) => menuItems,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color:
+              isSelected
+                  ? Colors.greenAccent.withValues(alpha: 0.3)
+                  : Colors.black.withValues(alpha: 0.5),
+          border: Border.all(
+            color: isSelected ? Colors.greenAccent : Colors.white24,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Center(
+          child: Icon(
+            Icons.landscape,
+            color: isSelected ? Colors.greenAccent : Colors.white54,
+            size: 20,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -203,8 +305,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       fieldType: _fieldType,
                       vectorParser: _vectorParser,
                       showContour: _showContour,
-                      showSurface: _showSurface,
+                      surfaceMode: _surfaceMode,
                       zoomAxis: _zoomAxis,
+                      colors: AppColors.of(context),
                     )
                   else
                     Plot2DScreen(
@@ -215,8 +318,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       fieldType: _fieldType,
                       vectorParser: _vectorParser,
                       showContour: _showContour,
-                      showSurface: _showSurface,
+                        surfaceMode: _surfaceMode,
                       zoomAxis: _zoomAxis,
+                      colors: AppColors.of(context),
                     ),
 
                   // Zoom axis indicator (when not free, in 3D mode)
@@ -252,21 +356,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Surface toggle
+                        // Surface selector
                         if (_canShowSurface())
-                          _buildModeButton(
-                            icon: Icons.landscape,
-                            isSelected: _showSurface,
-                            selectedColor: Colors.greenAccent,
-                            onTap: _toggleSurface,
-                            tooltip:
-                                _fieldType == FieldType.vector
-                                    ? 'Surface (|F|)'
-                                    : 'Surface',
-                          ),
+                          _buildSurfaceMenuButton(),
                         // Contour toggle
                         if (_fieldType == FieldType.scalar ||
-                            (_fieldType == FieldType.vector && _showSurface))
+                            (_fieldType == FieldType.vector &&
+                                _surfaceMode != SurfaceMode.none))
                           _buildModeButton(
                             icon: Icons.show_chart,
                             isSelected: _showContour,
@@ -473,12 +569,12 @@ class _HomeScreenState extends State<HomeScreen> {
             (BuildContext context) => <PopupMenuEntry<ZoomAxis>>[
               _buildZoomMenuItem(
                 ZoomAxis.free,
-                'Free Zoom',
+                'Free',
                 Icons.zoom_out_map,
               ),
-              _buildZoomMenuItem(ZoomAxis.x, 'X Axis Only', Icons.swap_horiz),
-              _buildZoomMenuItem(ZoomAxis.y, 'Y Axis Only', Icons.swap_vert),
-              _buildZoomMenuItem(ZoomAxis.z, 'Z Axis Only', Icons.height),
+              _buildZoomMenuItem(ZoomAxis.x, 'X', Icons.swap_horiz),
+              _buildZoomMenuItem(ZoomAxis.y, 'Y', Icons.swap_vert),
+              _buildZoomMenuItem(ZoomAxis.z, 'Z', Icons.height),
             ],
         child: Container(
           height: 44,
@@ -631,7 +727,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 fontSize: 14,
               ),
               decoration: InputDecoration(
-                hintText: 'sin(x), x^2+y^2, xi+yj, xi+yj+zk',
+                hintText: 'sin(x), x^2+y^2, e_x+e_y, e_x+e_y+e_z',
                 hintStyle: TextStyle(
                   color: Colors.white.withValues(alpha: 0.3),
                   fontFamily: 'monospace',
