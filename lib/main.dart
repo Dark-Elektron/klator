@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:klator/utils/constants.dart';
+import 'package:klator/utils/texture_generator.dart';
 import 'package:provider/provider.dart';
 import 'settings/settings_provider.dart';
 import 'math_renderer/renderer.dart';
@@ -7,7 +8,6 @@ import 'utils/app_colors.dart';
 import 'math_renderer/cell_persistence_service.dart';
 import 'math_engine/math_expression_serializer.dart';
 import 'dart:async';
-import 'dart:math' as math;
 import 'keypad/keypad.dart';
 import 'walkthrough/walkthrough_service.dart';
 import 'walkthrough/walkthrough_overlay.dart';
@@ -17,8 +17,8 @@ import 'math_renderer/math_editor_controller.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'math_engine/math_engine_exact.dart';
 import 'math_renderer/math_result_display.dart';
-import 'plotting/parsers/vector_field_parser.dart';
-import 'plotting/widgets/inline_plot_panel.dart';
+import 'math_renderer/decimal_result_nodes.dart';
+import 'widgets/textured_container.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -136,15 +136,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   );
   bool isVisible = true;
   bool isTypingExponent = false;
-  double plotMaxHeight = 300;
-  double plotMinHeight = 28;
-  bool _plotsEnabled = false;
   bool _isUpdating = false;
   String _globalClearId = DateTime.now().toIso8601String();
   bool _isLoading = true;
   List<String> answers = [];
-  bool _isPlotInteracting = false;
-  bool _isKeypadVisible = true;
+  final bool _isKeypadVisible = true;
   final Map<int, bool> _plotExpanded = {};
 
   SettingsProvider? _settingsProvider;
@@ -320,207 +316,45 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  String _getPlotExpression(int index) {
-    final controller = mathEditorControllers[index];
-    if (controller == null) return '';
-    return MathExpressionSerializer.serialize(controller.expression);
-  }
 
-  bool _canShowPlotButton(String expr) {
-    if (!_plotsEnabled) return false;
-    final trimmed = expr.trim();
-    if (trimmed.isEmpty) return false;
+Widget _buildExpressionDisplay(
+  int index,
+  AppColors colors, {
+  double? maxPlotHeight,
+  bool forcePlotExpanded = false,
+}) {
+  final mathEditorController = mathEditorControllers[index];
+  final mathEditorKey = mathEditorKeys[index];
+  final scrollController = scrollControllers[index];
+  final bool isFocused = (activeIndex == index);
+  final bool shouldAddKeys = index == activeIndex;
 
-    if (VectorFieldParser.isVectorField(trimmed)) {
-      return true;
-    }
-
-    final normalized = trimmed.toLowerCase();
-    final hasX = RegExp(r'(?<![a-zA-Z])x(?![a-zA-Z])').hasMatch(normalized);
-    final hasY = RegExp(r'(?<![a-zA-Z])y(?![a-zA-Z])').hasMatch(normalized);
-    final hasZ = RegExp(r'(?<![a-zA-Z])z(?![a-zA-Z])').hasMatch(normalized);
-    return hasX || hasY || hasZ;
-  }
-
-  void _togglePlotExpanded(int index) {
-    setState(() {
-      _plotExpanded[index] = !(_plotExpanded[index] ?? false);
-      if (!(_plotExpanded[index] ?? false) && !_isKeypadVisible) {
-        _isKeypadVisible = true;
-      }
-    });
-  }
-
-  void _toggleKeypadVisible() {
-    setState(() {
-      _isKeypadVisible = !_isKeypadVisible;
-    });
-  }
-
-  Widget _buildPlotArea(
-    int index,
-    AppColors colors, {
-    double? maxHeightOverride,
-    bool forceExpanded = false,
-  }) {
-    final plotExpression = _getPlotExpression(index);
-    final canPlot = _canShowPlotButton(plotExpression);
-    final isExpanded =
-        canPlot && (forceExpanded || (_plotExpanded[index] ?? false));
-    final maxHeight = maxHeightOverride ?? plotMaxHeight;
-    final defaultHeight = MediaQuery.of(context).size.height / 3;
-    final baseHeight = defaultHeight.clamp(0.0, maxHeight);
-    final targetHeight = forceExpanded ? maxHeight : baseHeight;
-
-    if (!canPlot) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          height: isExpanded ? targetHeight : 0,
-          width: double.infinity,
-          clipBehavior: Clip.hardEdge,
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 6,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          child:
-              isExpanded
-                  ? Listener(
-                    behavior: HitTestBehavior.opaque,
-                    onPointerDown: (_) {
-                      if (!_isPlotInteracting) {
-                        setState(() => _isPlotInteracting = true);
-                      }
-                    },
-                    onPointerUp: (_) {
-                      if (_isPlotInteracting) {
-                        setState(() => _isPlotInteracting = false);
-                      }
-                    },
-                    onPointerCancel: (_) {
-                      if (_isPlotInteracting) {
-                        setState(() => _isPlotInteracting = false);
-                      }
-                    },
-                    child: InlinePlotPanel(
-                      expression: plotExpression,
-                      onToggleKeypad: _toggleKeypadVisible,
-                      isKeypadVisible: _isKeypadVisible,
-                    ),
-                  )
-                  : const SizedBox.shrink(),
-        ),
-        GestureDetector(
-          onTap: () => _togglePlotExpanded(index),
-          child: Container(
-            height: plotMinHeight,
-            width: double.infinity,
-            decoration: BoxDecoration(color: colors.containerBackground),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.show_chart, size: 16, color: colors.textSecondary),
-                const SizedBox(width: 6),
-                Text(
-                  isExpanded ? 'Hide plot' : 'Plot',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colors.textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  isExpanded
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  size: 18,
-                  color: colors.textSecondary,
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: <Widget>[
+          TexturedContainer(
+            baseColor: colors.containerBackground,
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  spreadRadius: 2,
+                  blurRadius: 7,
+                  offset: const Offset(0, 0),
                 ),
               ],
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildExpressionDisplay(
-    int index,
-    AppColors colors, {
-    double? maxPlotHeight,
-    bool forcePlotExpanded = false,
-  }) {
-    final mathEditorController = mathEditorControllers[index];
-    final mathEditorKey = mathEditorKeys[index];
-    final scrollController = scrollControllers[index];
-    final bool isFocused = (activeIndex == index);
-    final bool shouldAddKeys = index == activeIndex;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        double plotMax = maxPlotHeight ?? plotMaxHeight;
-        if (maxPlotHeight == null) {
-          if (constraints.maxHeight.isFinite) {
-            final resultHeight = math.max(
-              _calculateDecimalResultHeight(index),
-              _calculateExactResultHeight(index),
-            );
-            final expressionHeight = (FONTSIZE * 1.6) + 24;
-            final safeMax = (constraints.maxHeight -
-                    resultHeight -
-                    expressionHeight -
-                    plotMinHeight)
-                .clamp(0.0, plotMax);
-            plotMax = safeMax;
-          } else {
-            final screenHeight = MediaQuery.of(context).size.height;
-            final baseMax =
-                _isKeypadVisible ? screenHeight * 0.45 : screenHeight * 0.75;
-            plotMax = math.max(plotMax, baseMax);
-          }
-        }
-
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: <Widget>[
-            Container(
-              decoration: BoxDecoration(
-                color: colors.containerBackground,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    spreadRadius: 2,
-                    blurRadius: 7,
-                    offset: const Offset(0, 0),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: <Widget>[
-                  // _buildPlotArea(
-                  //   index,
-                  //   colors,
-                  //   maxHeightOverride: plotMax,
-                  //   forceExpanded: forcePlotExpanded,
-                  // ),
-                  // Expression input area
-                  Container(
-                    key: shouldAddKeys ? _expressionKey : null,
-                    width: double.infinity,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: <Widget>[
+                // Expression input area - transparent background
+                SizedBox(
+                  key: shouldAddKeys ? _expressionKey : null,
+                  width: double.infinity,
+                  // No color - let texture show through
+                  child: Padding(
                     padding: const EdgeInsets.all(10),
                     child: AnimatedOpacity(
                       curve: Curves.easeIn,
@@ -552,40 +386,57 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
+                ),
 
-                  // Result area with PageView - use StatefulBuilder to isolate rebuilds
-                  _ResultPageViewWidget(
-                    key: ValueKey('result_pageview_${index}_$_globalClearId'),
-                    index: index,
-                    colors: colors,
-                    shouldAddKeys: shouldAddKeys,
-                    isVisible: isVisible,
-                    exactResultNodes: exactResultNodes,
-                    currentResultPage: currentResultPage,
-                    currentResultPageNotifiers: currentResultPageNotifiers,
-                    resultPageProgressNotifiers: resultPageProgressNotifiers,
-                    exactResultVersionNotifiers: exactResultVersionNotifiers,
-                    resultPageControllers: resultPageControllers,
-                    textDisplayControllers: textDisplayControllers,
-                    ansIndexKey: _ansIndexKey,
-                    resultKey: _resultKey,
-                    calculateDecimalResultHeight: _calculateDecimalResultHeight,
-                    calculateExactResultHeight: _calculateExactResultHeight,
-                  ),
-                ],
-              ),
+                // Result area - transparent background
+                _ResultPageViewWidget(
+                  key: ValueKey('result_pageview_${index}_$_globalClearId'),
+                  index: index,
+                  colors: colors,
+                  shouldAddKeys: shouldAddKeys,
+                  isVisible: isVisible,
+                  exactResultNodes: exactResultNodes,
+                  currentResultPage: currentResultPage,
+                  currentResultPageNotifiers: currentResultPageNotifiers,
+                  resultPageProgressNotifiers: resultPageProgressNotifiers,
+                  exactResultVersionNotifiers: exactResultVersionNotifiers,
+                  resultPageControllers: resultPageControllers,
+                  textDisplayControllers: textDisplayControllers,
+                  ansIndexKey: _ansIndexKey,
+                  resultKey: _resultKey,
+                  calculateDecimalResultHeight: _calculateDecimalResultHeight,
+                  calculateExactResultHeight: _calculateExactResultHeight,
+                  useTransparentBackground: true, // ADD THIS
+                ),
+              ],
             ),
-          ],
-        );
-      },
-    );
-  }
+          ),
+        ],
+      );
+    },
+  );
+}
 
   double _calculateDecimalResultHeight(int index) {
     final resController = textDisplayControllers[index];
     String text = resController?.text ?? '';
+    final bool isDecimalEmpty = text.trim().isEmpty;
 
-    if (text.isEmpty) return 80.0;
+    if (isDecimalEmpty) {
+      final exactNodes = exactResultNodes[index];
+      if (!_nodesEffectivelyEmpty(exactNodes)) {
+        final decimalNodes = decimalizeExactNodes(exactNodes!);
+        if (decimalNodes.isNotEmpty) {
+          double measuredHeight = MathResultDisplay.calculateTotalHeight(
+            decimalNodes,
+            FONTSIZE,
+          );
+          double totalHeight = measuredHeight + 16 + 10;
+          return totalHeight.clamp(80.0, 300.0);
+        }
+      }
+      return 80.0;
+    }
 
     // Use the same measurement logic as Exact, but handle newlines properly.
     double measuredHeight = MathResultDisplay.calculateTextHeight(
@@ -769,13 +620,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await CellPersistence.saveActiveIndex(activeIndex);
   }
 
-  void _onSettingsChanged() {
-    updateMathEditor();
+// In _HomePageState
+void _onSettingsChanged() {
+  
+  // Clear texture cache when theme changes
+  TextureGenerator.clearCache();
+  
+  updateMathEditor();
 
-    for (final controller in mathEditorControllers.values) {
-      controller.refreshDisplay();
-    }
+  for (final controller in mathEditorControllers.values) {
+    controller.refreshDisplay();
   }
+  
+  // Force rebuild to reload textures
+  setState(() {});
+}
 
   void _cascadeUpdates(int changedIndex) {
     if (_isUpdating) return;
@@ -860,15 +719,77 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _addDisplay() {
-    int newIndex = count;
-    _createControllers(newIndex);
-    setState(() {
-      count += 1;
-      activeIndex = newIndex;
-    });
+void _addDisplay({int? insertAt}) {
+  // Default: insert after the active cell
+  int insertIndex = insertAt ?? (activeIndex + 1);
+  
+  // Clamp to valid range
+  insertIndex = insertIndex.clamp(0, count);
+  
+  if (insertIndex < count) {
+    // Need to shift existing controllers to make room
+    _shiftControllersUp(insertIndex);
   }
+  
+  _createControllers(insertIndex);
+  
+  setState(() {
+    count += 1;
+    activeIndex = insertIndex;
+  });
+  
+  // Recalculate results for cells after the inserted one (ans references may have shifted)
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    for (int i = insertIndex + 1; i < count; i++) {
+      _updateExactResult(i);
+    }
+  });
+}
 
+void _shiftControllersUp(int fromIndex) {
+  // Work backwards from the end to avoid overwriting
+  for (int i = count - 1; i >= fromIndex; i--) {
+    int newIndex = i + 1;
+    
+    // Move all controller references
+    mathEditorControllers[newIndex] = mathEditorControllers[i]!;
+    textDisplayControllers[newIndex] = textDisplayControllers[i]!;
+    focusNodes[newIndex] = focusNodes[i]!;
+    scrollControllers[newIndex] = scrollControllers[i]!;
+    mathEditorKeys[newIndex] = mathEditorKeys[i]!;
+    exactResultNodes[newIndex] = exactResultNodes[i];
+    exactResultExprs[newIndex] = exactResultExprs[i];
+    currentResultPage[newIndex] = currentResultPage[i] ?? 0;
+    currentResultPageNotifiers[newIndex] = currentResultPageNotifiers[i]!;
+    resultPageProgressNotifiers[newIndex] = resultPageProgressNotifiers[i]!;
+    exactResultVersionNotifiers[newIndex] = exactResultVersionNotifiers[i]!;
+    
+    // Move resultPageControllers if it exists
+    if (resultPageControllers.containsKey(i)) {
+      resultPageControllers[newIndex] = resultPageControllers[i]!;
+    }
+    
+    // Move plot expanded state
+    if (_plotExpanded.containsKey(i)) {
+      _plotExpanded[newIndex] = _plotExpanded[i]!;
+    }
+  }
+  
+  // Clear the old references at fromIndex (will be replaced by _createControllers)
+  mathEditorControllers.remove(fromIndex);
+  textDisplayControllers.remove(fromIndex);
+  focusNodes.remove(fromIndex);
+  scrollControllers.remove(fromIndex);
+  mathEditorKeys.remove(fromIndex);
+  resultPageControllers.remove(fromIndex);
+  exactResultNodes.remove(fromIndex);
+  exactResultExprs.remove(fromIndex);
+  currentResultPage.remove(fromIndex);
+  currentResultPageNotifiers.remove(fromIndex);
+  resultPageProgressNotifiers.remove(fromIndex);
+  exactResultVersionNotifiers.remove(fromIndex);
+  _plotExpanded.remove(fromIndex);
+}
   void _removeDisplay(int indexToRemove) {
     if (count <= 1) return;
 
@@ -1175,10 +1096,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     child:
                         _isKeypadVisible
                             ? ListView.builder(
-                              physics:
-                                  _isPlotInteracting
-                                      ? const NeverScrollableScrollPhysics()
-                                      : const ClampingScrollPhysics(),
+                              physics: const ClampingScrollPhysics(),
                               reverse: true,
                               padding: EdgeInsets.zero,
                               itemCount: count,
@@ -1332,8 +1250,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final expressionHeight = (FONTSIZE * 1.5) + 20;
         final available = (constraints.maxHeight -
                 expressionHeight -
-                resultHeight -
-                plotMinHeight)
+                resultHeight)
             .clamp(120.0, constraints.maxHeight);
 
         return _buildExpressionDisplay(
@@ -1358,22 +1275,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     String cleaned = expressions;
 
     // List of function names and keywords to remove (order matters - longer first)
-    const functionsToRemove = [
-      'sqrt',
-      'sin',
-      'cos',
-      'tan',
-      'asin',
-      'acos',
-      'atan',
-      'log',
-      'ln',
-      'abs',
-      'perm',
-      'comb',
-      'ans',
-      'exp',
-    ];
+      const functionsToRemove = [
+        'sqrt',
+        'sin',
+        'cos',
+        'tan',
+        'asin',
+        'acos',
+        'atan',
+        'log',
+        'ln',
+        'abs',
+        'perm',
+        'comb',
+        'sum',
+        'prod',
+        'diff',
+        'int',
+        'ans',
+        'exp',
+      ];
 
     for (String func in functionsToRemove) {
       cleaned = cleaned.replaceAll(func, ' ');
@@ -1404,6 +1325,77 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 }
 
+bool _nodesEffectivelyEmpty(List<MathNode>? nodes) {
+  if (nodes == null || nodes.isEmpty) return true;
+  if (nodes.length == 1 && nodes.first is LiteralNode) {
+    return (nodes.first as LiteralNode).text.trim().isEmpty;
+  }
+  return false;
+}
+
+const bool _debugDecimalNodes = false;
+
+void _debugLogDecimalNodes(int index, List<MathNode> nodes) {
+  assert(() {
+    if (!_debugDecimalNodes) return true;
+
+    final summary = _describeMathNodes(nodes);
+    debugPrint('DECIMAL[$index] nodes: $summary');
+    return true;
+  }());
+}
+
+String _describeMathNodes(List<MathNode> nodes) {
+  if (nodes.isEmpty) return '[]';
+  final parts = nodes.map(_describeMathNode).toList();
+  return '[${parts.join(', ')}]';
+}
+
+String _describeMathNode(MathNode node) {
+  if (node is LiteralNode) return 'Literal("${node.text}")';
+  if (node is FractionNode) {
+    return 'Fraction(num:${_describeMathNodes(node.numerator)}, den:${_describeMathNodes(node.denominator)})';
+  }
+  if (node is ExponentNode) {
+    return 'Exponent(base:${_describeMathNodes(node.base)}, pow:${_describeMathNodes(node.power)})';
+  }
+  if (node is ParenthesisNode) {
+    return 'Paren(${_describeMathNodes(node.content)})';
+  }
+  if (node is RootNode) {
+    return 'Root(idx:${_describeMathNodes(node.index)}, rad:${_describeMathNodes(node.radicand)})';
+  }
+  if (node is LogNode) {
+    return 'Log(base:${_describeMathNodes(node.base)}, arg:${_describeMathNodes(node.argument)})';
+  }
+  if (node is TrigNode) {
+    return 'Trig(${node.function}, arg:${_describeMathNodes(node.argument)})';
+  }
+  if (node is SummationNode) {
+    return 'Sum(var:${_describeMathNodes(node.variable)}, low:${_describeMathNodes(node.lower)}, up:${_describeMathNodes(node.upper)}, body:${_describeMathNodes(node.body)})';
+  }
+  if (node is ProductNode) {
+    return 'Prod(var:${_describeMathNodes(node.variable)}, low:${_describeMathNodes(node.lower)}, up:${_describeMathNodes(node.upper)}, body:${_describeMathNodes(node.body)})';
+  }
+  if (node is DerivativeNode) {
+    return 'Diff(var:${_describeMathNodes(node.variable)}, at:${_describeMathNodes(node.at)}, body:${_describeMathNodes(node.body)})';
+  }
+  if (node is IntegralNode) {
+    return 'Int(var:${_describeMathNodes(node.variable)}, low:${_describeMathNodes(node.lower)}, up:${_describeMathNodes(node.upper)}, body:${_describeMathNodes(node.body)})';
+  }
+  if (node is AnsNode) {
+    return 'Ans(${_describeMathNodes(node.index)})';
+  }
+  if (node is ConstantNode) return 'Const(${node.constant})';
+  if (node is UnitVectorNode) return 'Unit(${node.axis})';
+  if (node is NewlineNode) return 'Newline';
+  if (node is ComplexNode) {
+    return 'Complex(${_describeMathNodes(node.content)})';
+  }
+  return node.runtimeType.toString();
+}
+
+/// Isolated widget for the result PageView to prevent unnecessary rebuilds
 /// Isolated widget for the result PageView to prevent unnecessary rebuilds
 class _ResultPageViewWidget extends StatefulWidget {
   final int index;
@@ -1421,6 +1413,7 @@ class _ResultPageViewWidget extends StatefulWidget {
   final GlobalKey? resultKey;
   final double Function(int) calculateDecimalResultHeight;
   final double Function(int) calculateExactResultHeight;
+  final bool useTransparentBackground; // ADD THIS
 
   const _ResultPageViewWidget({
     super.key,
@@ -1439,6 +1432,7 @@ class _ResultPageViewWidget extends StatefulWidget {
     required this.resultKey,
     required this.calculateDecimalResultHeight,
     required this.calculateExactResultHeight,
+    this.useTransparentBackground = false, // ADD THIS
   });
 
   @override
@@ -1457,13 +1451,9 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
     _currentPage = widget.currentResultPage[widget.index] ?? 0;
     _pageController = PageController(initialPage: _currentPage);
 
-    // Store the controller in the parent's map
     widget.resultPageControllers[widget.index] = _pageController;
-
-    // Add scroll listener
     _pageController.addListener(_onPageScroll);
 
-    // Initialize heights
     _lastDecimalHeight = widget.calculateDecimalResultHeight(widget.index);
     _lastExactHeight = widget.calculateExactResultHeight(widget.index);
   }
@@ -1480,10 +1470,7 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
 
     double? page = _pageController.page;
     if (page != null) {
-      widget.resultPageProgressNotifiers[widget.index]?.value = page.clamp(
-        0.0,
-        1.0,
-      );
+      widget.resultPageProgressNotifiers[widget.index]?.value = page.clamp(0.0, 1.0);
     }
   }
 
@@ -1494,19 +1481,18 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
     setState(() {});
   }
 
+  // Helper to get background color
+  Color get _backgroundColor => 
+      widget.useTransparentBackground ? Colors.transparent : widget.colors.containerBackground;
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable:
           widget.exactResultVersionNotifiers[widget.index] ?? ValueNotifier(0),
       builder: (context, version, _) {
-        // Calculate target heights
-        double targetDecimalHeight = widget.calculateDecimalResultHeight(
-          widget.index,
-        );
-        double targetExactHeight = widget.calculateExactResultHeight(
-          widget.index,
-        );
+        double targetDecimalHeight = widget.calculateDecimalResultHeight(widget.index);
+        double targetExactHeight = widget.calculateExactResultHeight(widget.index);
 
         return _AnimatedHeightContainer(
           targetDecimalHeight: targetDecimalHeight,
@@ -1514,8 +1500,7 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
           lastDecimalHeight: _lastDecimalHeight,
           lastExactHeight: _lastExactHeight,
           progressNotifier:
-              widget.resultPageProgressNotifiers[widget.index] ??
-              ValueNotifier(0.0),
+              widget.resultPageProgressNotifiers[widget.index] ?? ValueNotifier(0.0),
           onHeightsAnimated: (decimal, exact) {
             _lastDecimalHeight = decimal;
             _lastExactHeight = exact;
@@ -1533,6 +1518,19 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
 
   Widget _buildDecimalResultPage() {
     final resController = widget.textDisplayControllers[widget.index];
+    final String decimalText = resController?.text ?? '';
+    final bool isDecimalEmpty = decimalText.trim().isEmpty;
+    final exactNodes = widget.exactResultNodes[widget.index];
+    final bool hasExactFallback = !_nodesEffectivelyEmpty(exactNodes);
+    final List<MathNode> decimalNodes =
+        (!isDecimalEmpty)
+            ? _textToResultNodes(decimalText)
+            : (hasExactFallback
+                ? decimalizeExactNodes(exactNodes!)
+                : const <MathNode>[]);
+    final bool hasResult = decimalNodes.isNotEmpty;
+
+    _debugLogDecimalNodes(widget.index, decimalNodes);
 
     return Column(
       mainAxisSize: MainAxisSize.max,
@@ -1541,31 +1539,40 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
         Expanded(
           child: Container(
             key: widget.shouldAddKeys ? widget.resultKey : null,
-            color: widget.colors.containerBackground,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            alignment: Alignment.center,
-            child: AnimatedOpacity(
-              curve: Curves.easeIn,
-              duration: const Duration(milliseconds: 500),
-              opacity: widget.isVisible ? 1.0 : 0.0,
-              child: SingleChildScrollView(
-                child: TextField(
-                  controller: resController,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  textAlign: TextAlign.center,
-                  autofocus: false,
-                  readOnly: true,
-                  showCursor: false,
-                  style: TextStyle(
-                    fontSize: FONTSIZE,
-                    color: widget.colors.textPrimary,
-                  ),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
+            color: _backgroundColor, // CHANGED
+            child: Align(
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: AnimatedOpacity(
+                  curve: Curves.easeIn,
+                  duration: const Duration(milliseconds: 500),
+                  opacity: widget.isVisible ? 1.0 : 0.0,
+                  child:
+                      hasResult
+                          ? Builder(
+                            builder: (context) {
+                              final scope = _AnimatedContentScope.of(context);
+                              final animValue = scope?.animationValue ?? 1.0;
+                              final isAnimating = scope?.isAnimating ?? false;
+
+                              return AnimatedResultContent(
+                                animationValue: animValue,
+                                isAnimating: isAnimating,
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: SingleChildScrollView(
+                                    child: MathResultDisplay(
+                                      nodes: decimalNodes,
+                                      fontSize: FONTSIZE,
+                                      textColor: widget.colors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          )
+                          : const SizedBox.shrink(),
                 ),
               ),
             ),
@@ -1575,9 +1582,21 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
     );
   }
 
-  // ============================================
-  // In _ResultPageViewWidgetState, REPLACE _buildExactResultPage():
-  // ============================================
+  List<MathNode> _textToResultNodes(String text) {
+    if (text.isEmpty) return const <MathNode>[];
+
+    final lines = text.split('\n');
+    final nodes = <MathNode>[];
+
+    for (int i = 0; i < lines.length; i++) {
+      nodes.add(LiteralNode(text: lines[i]));
+      if (i < lines.length - 1) {
+        nodes.add(NewlineNode());
+      }
+    }
+
+    return nodes;
+  }
 
   Widget _buildExactResultPage() {
     final exactNodes = widget.exactResultNodes[widget.index];
@@ -1589,38 +1608,42 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
         _buildResultDivider(1, "EXACT"),
         Expanded(
           child: Container(
-            color: widget.colors.containerBackground,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            alignment: Alignment.center,
-            child: AnimatedOpacity(
-              curve: Curves.easeIn,
-              duration: const Duration(milliseconds: 500),
-              opacity: widget.isVisible ? 1.0 : 0.0,
-              child:
-                  hasResult
-                      ? Builder(
-                        builder: (context) {
-                          final scope = _AnimatedContentScope.of(context);
-                          final animValue = scope?.animationValue ?? 1.0;
-                          final isAnimating = scope?.isAnimating ?? false;
+            color: _backgroundColor, // CHANGED
+            child: Align(
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: AnimatedOpacity(
+                  curve: Curves.easeIn,
+                  duration: const Duration(milliseconds: 500),
+                  opacity: widget.isVisible ? 1.0 : 0.0,
+                  child:
+                      hasResult
+                          ? Builder(
+                            builder: (context) {
+                              final scope = _AnimatedContentScope.of(context);
+                              final animValue = scope?.animationValue ?? 1.0;
+                              final isAnimating = scope?.isAnimating ?? false;
 
-                          return AnimatedResultContent(
-                            animationValue: animValue,
-                            isAnimating: isAnimating,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: SingleChildScrollView(
-                                child: MathResultDisplay(
-                                  nodes: exactNodes,
-                                  fontSize: FONTSIZE,
-                                  textColor: widget.colors.textPrimary,
+                              return AnimatedResultContent(
+                                animationValue: animValue,
+                                isAnimating: isAnimating,
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: SingleChildScrollView(
+                                    child: MathResultDisplay(
+                                      nodes: exactNodes,
+                                      fontSize: FONTSIZE,
+                                      textColor: widget.colors.textPrimary,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          );
-                        },
-                      )
-                      : const SizedBox.shrink(),
+                              );
+                            },
+                          )
+                          : const SizedBox.shrink(),
+                ),
+              ),
             ),
           ),
         ),
@@ -1632,10 +1655,7 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
     return Row(
       children: <Widget>[
         Container(
-          key:
-              (widget.shouldAddKeys && pageIndex == 0)
-                  ? widget.ansIndexKey
-                  : null,
+          key: (widget.shouldAddKeys && pageIndex == 0) ? widget.ansIndexKey : null,
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Text(
             "${widget.index}",
@@ -1657,10 +1677,9 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
               margin: const EdgeInsets.symmetric(horizontal: 2),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color:
-                    _currentPage == 0
-                        ? widget.colors.textSecondary
-                        : widget.colors.textSecondary.withValues(alpha: 0.3),
+                color: _currentPage == 0
+                    ? widget.colors.textSecondary
+                    : widget.colors.textSecondary.withValues(alpha: 0.3),
               ),
             ),
             Container(
@@ -1669,10 +1688,9 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
               margin: const EdgeInsets.symmetric(horizontal: 2),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color:
-                    _currentPage == 1
-                        ? widget.colors.textSecondary
-                        : widget.colors.textSecondary.withValues(alpha: 0.3),
+                color: _currentPage == 1
+                    ? widget.colors.textSecondary
+                    : widget.colors.textSecondary.withValues(alpha: 0.3),
               ),
             ),
             const SizedBox(width: 6),
@@ -1680,14 +1698,10 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
               label,
               style: TextStyle(
                 fontSize: 8,
-                color:
-                    _currentPage == pageIndex
-                        ? widget.colors.textSecondary
-                        : widget.colors.textSecondary.withValues(alpha: 0.5),
-                fontWeight:
-                    _currentPage == pageIndex
-                        ? FontWeight.bold
-                        : FontWeight.normal,
+                color: _currentPage == pageIndex
+                    ? widget.colors.textSecondary
+                    : widget.colors.textSecondary.withValues(alpha: 0.5),
+                fontWeight: _currentPage == pageIndex ? FontWeight.bold : FontWeight.normal,
               ),
             ),
           ],

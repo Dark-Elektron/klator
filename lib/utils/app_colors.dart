@@ -182,6 +182,22 @@ class AppColors {
     backgroundImage: 'assets/imgs/background_honey_mustard.svg',
   );
 
+  static const forestMoss = AppColors(
+    displayBackground: Color(0xFFE8F0E5), // Pale sage/mist
+    containerBackground: Color(0xFF4A6741), // Deep Forest Green (Main display area)
+    textPrimary: Color(0xFF1B2E1D), // Deep Evergreen
+    textSecondary: Color(0xFF6B8E23), // Olive Drab
+    textTertiary: Color(0xFFD4A373), // Raw Sienna (Woody accent)
+    divider: Color(0xFFBDC7BC), // Muted leaf grey
+    accent: Color(0xFF2D5A27), // Strong Jungle Green
+    keypadBackground: Color(0xFFF1F4F0), // Soft off-white green
+    keypadButton: Color(0xFFBDCBB7), // Muted eucalyptus
+    keypadButtonText: Color(0xFF2A3B24), // Dark moss text
+    keyboardPrimary: Color(0xFFF1F4F0),
+    keyboardSecondary: Color(0xFFBDCBB7),
+    backgroundImage: 'assets/imgs/background_forest_moss.svg',
+  );
+
   // Helper to get colors based on context
   static AppColors of(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
@@ -208,6 +224,8 @@ class AppColors {
         return roseChic;
       case ThemeType.honeyMustard:
         return honeyMustard;
+      case ThemeType.forestMoss:
+        return forestMoss;
     }
   }
 }

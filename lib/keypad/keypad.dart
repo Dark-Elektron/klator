@@ -206,25 +206,25 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
   ];
 
   final List<String> _buttonsR = [
-    '',
-    '',
+    'x^2',
+    'i',
     '\u238C',
     '\u238C',
     '\u2327',
-    'i',
+    'SQR',
+    'PI',
+    '',
     'x!',
-    'nPr',
-    'nCr',
     'ans',
+    'sin',
     '',
     '',
-    '',
-    '',
-    '',
-    'e_x',
-    '',
-    '',
+    'nPr',
     '\u24D8',
+    'asin',
+    'x',
+    '',
+    'nCr',
     '',
   ];
 
@@ -533,28 +533,30 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       _lastPagesPerView = pagesPerView;
     }
 
+    const double landscapeChildAspectRatio = 1.5;
     int crossAxisCount = 5;
     int rowCount = 4;
-    double buttonSize = widget.screenWidth / crossAxisCount;
-
-    double gridHeight;
-    if (widget.isLandscape) {
-      double buttonHeightRatio = 0.65;
-      gridHeight = (buttonSize * buttonHeightRatio * rowCount) / pagesPerView;
-    } else {
-      gridHeight = buttonSize * rowCount / pagesPerView;
-    }
+    final double mainChildAspectRatio =
+        widget.isLandscape ? landscapeChildAspectRatio : 1.0;
+    final double mainCellWidth =
+        widget.screenWidth / (crossAxisCount * pagesPerView);
+    final double mainCellHeight = mainCellWidth / mainChildAspectRatio;
+    final double gridHeight = mainCellHeight * rowCount;
 
     int crossAxisCountBasic = widget.isLandscape ? 20 : 10;
-    double buttonSizeBasic = widget.screenWidth / crossAxisCountBasic;
-
-    double basicKeypadExpandedHeight;
-    if (widget.isLandscape) {
-      double buttonHeightRatio = 0.65;
-      basicKeypadExpandedHeight = buttonSizeBasic * buttonHeightRatio * 1;
-    } else {
-      basicKeypadExpandedHeight = buttonSizeBasic * 2;
-    }
+    final int basicButtonsCount =
+        widget.isLandscape
+            ? _buttonsBasicLandscape.length
+            : _buttonsBasic.length;
+    final int basicRowCount =
+        (basicButtonsCount / crossAxisCountBasic).ceil();
+    final double basicChildAspectRatio =
+        widget.isLandscape ? landscapeChildAspectRatio : 1.0;
+    final double basicCellWidth =
+        widget.screenWidth / crossAxisCountBasic;
+    final double basicCellHeight = basicCellWidth / basicChildAspectRatio;
+    final double basicKeypadExpandedHeight =
+        basicCellHeight * basicRowCount;
 
     double basicKeypadHeight =
         _isBasicKeypadExpanded
@@ -1436,6 +1438,36 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         childAspectRatio: isLandscape ? 1.5 : 1.0,
       ),
       itemBuilder: (context, index) {
+        if (index == 16) {
+          return PopupMenuCalcButton(
+            buttonText: _buttonsR[index],
+            onTap: () {
+              _activeController?.insertCharacter('x');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'y',
+                onTap: () {
+                  _activeController?.insertCharacter('y');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'z',
+                onTap: () {
+                  _activeController?.insertCharacter('z');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
+        }
         if (index == 3) {
           // Undo button
           bool canUndo =
@@ -1483,11 +1515,11 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           return MyButton(
             buttontapped: widget.onClearAllDisplays,
             buttonText: _buttonsR[index],
-            color: const Color.fromARGB(255, 226, 104, 104),
+            color: Colors.white,
             textColor: Colors.black,
           );
         }
-        if (index == 5) {
+        if (index == 1) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('i');
@@ -1498,28 +1530,127 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         }
-          if (index == 15) {
-            return PopupMenuCalcButton(
-              buttonText: 'x\u0302',
-              color: Colors.white,
-              textColor: Colors.black,
-              menuBackgroundColor: Colors.white,
-              separatorColor: Colors.black12,
-              onTap: () {},
-              menuItems: [
-                CalcMenuItem(
-                  label: 'y\u0302',
-                  onTap: () {},
-                ),
-                CalcMenuItem(
-                  label: 'z\u0302',
-                  onTap: () {},
-                ),
-              ],
-              indicatorColor: widget.colors.textSecondary,
-            );
+        if (index == 0) {
+          // x^2 with popup for x^n
+          return PopupMenuCalcButton(
+            buttonText: 'x\u00B2',
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInSquare(),
+                normalAction: () => _activeController?.insertSquare(),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'x\u207F',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () =>
+                            _activeController!
+                                .selectionWrapper
+                                .wrapInExponent(),
+                    normalAction: () => _activeController?.insertCharacter('^'),
+                  );
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
         }
-        if (index == 6) {
+        if (index == 5) {
+          // square root with popup for nth root
+          return PopupMenuCalcButton(
+            buttonText: '\u221A',
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInSquareRoot(),
+                normalAction: () => _activeController?.insertSquareRoot(),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: '\u207F\u221A',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () =>
+                            _activeController!.selectionWrapper.wrapInNthRoot(),
+                    normalAction: () => _activeController?.insertNthRoot(),
+                  );
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
+        }
+        if (index == 7) {
+          return PopupMenuCalcButton(
+            buttonText: '\u2211',
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction: () => _activeController!.selectionWrapper.wrapInSummation(),
+                normalAction: () => _activeController?.insertSummation(),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: '\u220F',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction: () => _activeController!.selectionWrapper.wrapInProduct(),
+                    normalAction: () => _activeController?.insertProduct(),
+                  );
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
+          );
+        }
+        if (index == 12) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction: () => _activeController!.selectionWrapper.wrapInDerivative(),
+                normalAction: () => _activeController?.insertDerivative(),
+              );
+            },
+            buttonText: 'd/dx',
+            fontSize: 18,
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        if (index == 17) {
+          return MyButton(
+            buttontapped: () {
+              _handleButtonWithSelection(
+                wrapAction: () => _activeController!.selectionWrapper.wrapInIntegral(),
+                normalAction: () => _activeController?.insertIntegral(),
+              );
+            },
+            buttonText: '\u222B',
+            fontSize: 28,
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        }
+        if (index == 8) {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('!');
@@ -1530,7 +1661,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             textColor: Colors.black,
           );
         } // nPr button
-        else if (index == 7) {
+        else if (index == 13) {
           return MyButton(
             buttontapped: () {
               _handleButtonWithSelection(
@@ -1546,7 +1677,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           );
         }
         // nCr button
-        else if (index == 8) {
+        else if (index == 18) {
           return MyButton(
             buttontapped: () {
               _handleButtonWithSelection(
@@ -1568,9 +1699,9 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             },
             buttonText: _buttonsR[index],
             color: Colors.white,
-            textColor: Colors.black,
+            textColor: Colors.orangeAccent,
           );
-        } else if (index == 18) {
+        } else if (index == 14) {
           return MyButton(
             buttontapped: () {
               Navigator.push(context, SlidePageRoute(page: HelpPage()));
@@ -1579,6 +1710,159 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             fontSize: 28,
             color: Colors.white,
             textColor: Colors.black,
+          );
+        } else if (index == 10) {
+          // sin with popup for cos/tan/sinh/cosh/tanh
+          return PopupMenuCalcButton(
+            buttonText: 'sin',
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInTrig('sin'),
+                normalAction: () => _activeController?.insertTrig('sin'),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'cos',
+                onTap: () {
+                  _activeController?.insertTrig('cos');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'tan',
+                onTap: () {
+                  _activeController?.insertTrig('tan');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'sinh',
+                onTap: () {
+                  _activeController?.insertTrig('sinh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'cosh',
+                onTap: () {
+                  _activeController?.insertTrig('cosh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'tanh',
+                onTap: () {
+                  _activeController?.insertTrig('tanh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
+        } else if (index == 15) {
+          // asin with popup for acos/atan/asinh/acosh/atanh
+          return PopupMenuCalcButton(
+            buttonText: 'asin',
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInTrig('asin'),
+                normalAction: () => _activeController?.insertTrig('asin'),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'acos',
+                onTap: () {
+                  _activeController?.insertTrig('acos');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'atan',
+                onTap: () {
+                  _activeController?.insertTrig('atan');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'asinh',
+                onTap: () {
+                  _activeController?.insertTrig('asinh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'acosh',
+                onTap: () {
+                  _activeController?.insertTrig('acosh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'atanh',
+                onTap: () {
+                  _activeController?.insertTrig('atanh');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
+        } else if (index == 6) {
+          // π button with popup for constants
+          return PopupMenuCalcButton(
+            buttonText: '\u03C0',
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            onTap: () {
+              _activeController?.insertCharacter('\u03C0');
+              widget.onUpdateMathEditor();
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'e',
+                onTap: () {
+                  _activeController?.insertConstant('e');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: '\u03BC\u2080',
+                onTap: () {
+                  _activeController?.insertConstant('\u03BC\u2080');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: '\u03B5\u2080',
+                onTap: () {
+                  _activeController?.insertConstant('\u03B5\u2080');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+              CalcMenuItem(
+                label: 'c\u2080',
+                onTap: () {
+                  _activeController?.insertConstant('c\u2080');
+                  widget.onUpdateMathEditor();
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         } else if (index == 19) {
           return Container(
@@ -1597,7 +1881,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                   ),
                 );
               },
-              buttonText: '\u2699',
+              buttonText: '\u2630',
               color: Colors.white,
               textColor: Colors.black,
             ),

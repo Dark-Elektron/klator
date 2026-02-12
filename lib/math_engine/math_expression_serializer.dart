@@ -68,6 +68,29 @@ class MathExpressionSerializer {
       String n = _serializeList(node.n);
       String r = _serializeList(node.r);
       return 'comb($n,$r)'; // Changed from '${n}C${r}'
+    } else if (node is SummationNode) {
+      String v = _serializeList(node.variable);
+      String lower = _serializeList(node.lower);
+      String upper = _serializeList(node.upper);
+      String body = _serializeList(node.body);
+      return 'sum($v,$lower,$upper,$body)';
+    } else if (node is DerivativeNode) {
+      String v = _serializeList(node.variable);
+      String at = _serializeList(node.at);
+      String body = _serializeList(node.body);
+      return 'diff($v,$at,$body)';
+    } else if (node is IntegralNode) {
+      String v = _serializeList(node.variable);
+      String lower = _serializeList(node.lower);
+      String upper = _serializeList(node.upper);
+      String body = _serializeList(node.body);
+      return 'int($v,$lower,$upper,$body)';
+    } else if (node is ProductNode) {
+      String v = _serializeList(node.variable);
+      String lower = _serializeList(node.lower);
+      String upper = _serializeList(node.upper);
+      String body = _serializeList(node.body);
+      return 'prod($v,$lower,$upper,$body)';
     } else if (node is AnsNode) {
       String idx = _serializeList(node.index);
       return 'ans$idx';
@@ -206,8 +229,12 @@ class MathExpressionSerializer {
       'ln',
       'sqrt',
       'abs',
+      'diff',
+      'int',
       'perm',
       'comb',
+      'sum',
+      'prod',
     ];
 
     for (String func in functions) {
@@ -261,6 +288,8 @@ class MathExpressionSerializer {
           'ln',
           'sqrt',
           'abs',
+          'sum',
+          'prod',
           'P',
           'C',
           'i', // imaginary unit
@@ -287,6 +316,38 @@ class MathExpressionSerializer {
       // Constants are not variables to be solved for
     } else if (node is UnitVectorNode) {
       // Unit vectors are not variables to be solved for
+    } else if (node is SummationNode) {
+      // Variables in the body are bound by the summation variable
+      _extractVariablesFromList(node.lower, variables);
+      _extractVariablesFromList(node.upper, variables);
+      _extractVariablesFromList(node.body, variables);
+      final bound = _serializeList(node.variable).trim();
+      if (bound.isNotEmpty) {
+        variables.remove(bound);
+      }
+    } else if (node is DerivativeNode) {
+      _extractVariablesFromList(node.at, variables);
+      _extractVariablesFromList(node.body, variables);
+      final bound = _serializeList(node.variable).trim();
+      if (bound.isNotEmpty) {
+        variables.remove(bound);
+      }
+    } else if (node is IntegralNode) {
+      _extractVariablesFromList(node.lower, variables);
+      _extractVariablesFromList(node.upper, variables);
+      _extractVariablesFromList(node.body, variables);
+      final bound = _serializeList(node.variable).trim();
+      if (bound.isNotEmpty) {
+        variables.remove(bound);
+      }
+    } else if (node is ProductNode) {
+      _extractVariablesFromList(node.lower, variables);
+      _extractVariablesFromList(node.upper, variables);
+      _extractVariablesFromList(node.body, variables);
+      final bound = _serializeList(node.variable).trim();
+      if (bound.isNotEmpty) {
+        variables.remove(bound);
+      }
     }
   }
 
@@ -401,6 +462,41 @@ class MathExpressionSerializer {
         'r': node.r.map((n) => _nodeToJson(n)).toList(),
       };
     }
+    if (node is SummationNode) {
+      return {
+        'type': 'summation',
+        'variable': node.variable.map((n) => _nodeToJson(n)).toList(),
+        'lower': node.lower.map((n) => _nodeToJson(n)).toList(),
+        'upper': node.upper.map((n) => _nodeToJson(n)).toList(),
+        'body': node.body.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+    if (node is DerivativeNode) {
+      return {
+        'type': 'derivative',
+        'variable': node.variable.map((n) => _nodeToJson(n)).toList(),
+        'at': node.at.map((n) => _nodeToJson(n)).toList(),
+        'body': node.body.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+    if (node is IntegralNode) {
+      return {
+        'type': 'integral',
+        'variable': node.variable.map((n) => _nodeToJson(n)).toList(),
+        'lower': node.lower.map((n) => _nodeToJson(n)).toList(),
+        'upper': node.upper.map((n) => _nodeToJson(n)).toList(),
+        'body': node.body.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
+    if (node is ProductNode) {
+      return {
+        'type': 'product',
+        'variable': node.variable.map((n) => _nodeToJson(n)).toList(),
+        'lower': node.lower.map((n) => _nodeToJson(n)).toList(),
+        'upper': node.upper.map((n) => _nodeToJson(n)).toList(),
+        'body': node.body.map((n) => _nodeToJson(n)).toList(),
+      };
+    }
 
     if (node is AnsNode) {
       return {
@@ -478,6 +574,33 @@ class MathExpressionSerializer {
         return CombinationNode(
           n: _jsonToNodeList(json['n']),
           r: _jsonToNodeList(json['r']),
+        );
+      case 'summation':
+        return SummationNode(
+          variable: _jsonToNodeList(json['variable']),
+          lower: _jsonToNodeList(json['lower']),
+          upper: _jsonToNodeList(json['upper']),
+          body: _jsonToNodeList(json['body']),
+        );
+      case 'derivative':
+        return DerivativeNode(
+          variable: _jsonToNodeList(json['variable']),
+          at: _jsonToNodeList(json['at']),
+          body: _jsonToNodeList(json['body']),
+        );
+      case 'integral':
+        return IntegralNode(
+          variable: _jsonToNodeList(json['variable']),
+          lower: _jsonToNodeList(json['lower']),
+          upper: _jsonToNodeList(json['upper']),
+          body: _jsonToNodeList(json['body']),
+        );
+      case 'product':
+        return ProductNode(
+          variable: _jsonToNodeList(json['variable']),
+          lower: _jsonToNodeList(json['lower']),
+          upper: _jsonToNodeList(json['upper']),
+          body: _jsonToNodeList(json['body']),
         );
 
       case 'ans':

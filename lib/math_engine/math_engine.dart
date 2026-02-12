@@ -18,6 +18,11 @@ class MathSolverNew {
     numberFormat = value;
   }
 
+  /// Formats a number using current precision and number format settings.
+  static String formatResult(double num) {
+    return _formatResult(num);
+  }
+
   /// Main entry point - determines what type of expression and solves accordingly
   static String? solve(String expression, {Map<int, String>? ansValues}) {
     expression = expression.trim();
@@ -204,9 +209,11 @@ class MathSolverNew {
       return '(1.602176634e-19)';
     });
 
-    // Process special functions
-    expr = _preprocessPermuCombination(expr);
-    expr = _processFactorials(expr);
+      // Process special functions
+      expr = _preprocessPermuCombination(expr);
+      expr = _processFactorials(expr);
+      expr = _preprocessSummationProduct(expr);
+      expr = _preprocessDerivativeIntegral(expr);
 
     // --- Implicit Multiplication ---
     // 1. Number followed by '('
@@ -335,29 +342,31 @@ class MathSolverNew {
     Set<String> variables = {};
 
     // Reserved function names and constants to exclude
-    const reserved = {
-      'sin',
-      'cos',
-      'tan',
-      'asin',
-      'acos',
-      'atan',
-      'sinh',
-      'cosh',
-      'tanh',
-      'asinh',
-      'acosh',
-      'atanh',
-      'log',
-      'ln',
-      'sqrt',
-      'abs',
-      'exp',
-      'perm',
-      'comb',
-      'ans',
-      'e',
-      'pi',
+      const reserved = {
+        'sin',
+        'cos',
+        'tan',
+        'asin',
+        'acos',
+        'atan',
+        'sinh',
+        'cosh',
+        'tanh',
+        'asinh',
+        'acosh',
+        'atanh',
+        'log',
+        'ln',
+        'sqrt',
+        'abs',
+        'exp',
+        'diff',
+        'int',
+        'perm',
+        'comb',
+        'ans',
+        'e',
+        'pi',
       'i',
     };
 
@@ -441,20 +450,20 @@ class MathSolverNew {
       else if (term.contains(variable) && !term.contains('^')) {
         int varIndex = term.indexOf(variable);
         String coeffPart = term.substring(0, varIndex);
+        String remainder = term.substring(varIndex + variable.length);
         if (coeffPart.endsWith('*')) {
           coeffPart = coeffPart.substring(0, coeffPart.length - 1);
+        }
+        if ((coeffPart.isEmpty || coeffPart == '+' || coeffPart == '-') &&
+            remainder.startsWith('/')) {
+          coeffPart = '${coeffPart}1$remainder';
         }
         double coeff = _parseCoefficient(coeffPart);
         b += coeff;
       }
       // Constant term: no variable
       else if (!term.contains(variable)) {
-        try {
-          double val = double.parse(term);
-          c += val;
-        } catch (e) {
-          // Could not parse constant
-        }
+        c += _parseCoefficient(term);
       }
     }
 
@@ -466,9 +475,24 @@ class MathSolverNew {
     coeff = coeff.trim();
     if (coeff.isEmpty || coeff == '+') return 1.0;
     if (coeff == '-') return -1.0;
+    String normalized = coeff;
+    if (normalized.startsWith('+')) {
+      normalized = normalized.substring(1);
+    }
     try {
-      return double.parse(coeff);
-    } catch (e) {
+      return double.parse(normalized);
+    } catch (_) {}
+
+    try {
+      normalized = _preprocess(normalized);
+      _ExpressionParser parser = _ExpressionParser(normalized);
+      dynamic result = parser.parse();
+      if (result is Complex) {
+        if (result.imag.abs() < 1e-10) return result.real;
+        return 0.0;
+      }
+      return (result as num).toDouble();
+    } catch (_) {
       return 0.0;
     }
   }
@@ -500,6 +524,66 @@ class MathSolverNew {
       'i',
     };
 
+    ({Map<String, double> coeffs, double constant})? parseSide(String side) {
+      final coeffs = <String, double>{};
+      double constant = 0.0;
+
+      side = side.replaceAll(' ', '');
+      if (side.isEmpty) {
+        return (coeffs: coeffs, constant: constant);
+      }
+
+      if (!side.startsWith('+') && !side.startsWith('-')) {
+        side = '+$side';
+      }
+
+      List<String> terms = [];
+      String currentTerm = '';
+      for (int i = 0; i < side.length; i++) {
+        String char = side[i];
+        if ((char == '+' || char == '-') && i > 0) {
+          if (currentTerm.isNotEmpty) {
+            terms.add(currentTerm);
+          }
+          currentTerm = char;
+        } else {
+          currentTerm += char;
+        }
+      }
+      if (currentTerm.isNotEmpty) {
+        terms.add(currentTerm);
+      }
+
+      for (String term in terms) {
+        term = term.trim();
+        if (term.isEmpty || term == '+' || term == '-') continue;
+        if (term.contains('^')) return null;
+
+        final matches = RegExp(r'[a-zA-Z]').allMatches(term).toList();
+        if (matches.isEmpty) {
+          constant += _parseCoefficient(term);
+          continue;
+        }
+
+        final variables = matches.map((m) => m.group(0)!).toSet();
+        if (variables.length != 1) return null;
+        if (matches.length != 1) return null;
+
+        final varName = variables.first;
+        if (reserved.contains(varName)) return null;
+
+        String coeffPart = term.replaceAll(varName, '');
+        coeffPart = coeffPart.replaceAll('*', '');
+        if (RegExp(r'^[+-]?/').hasMatch(coeffPart)) {
+          coeffPart = coeffPart.replaceFirst('/', '1/');
+        }
+        double coeff = _parseCoefficient(coeffPart);
+        coeffs[varName] = (coeffs[varName] ?? 0) + coeff;
+      }
+
+      return (coeffs: coeffs, constant: constant);
+    }
+
     RegExp equationRegex = RegExp(r'(.+)=([^=]+)');
 
     for (String eq in equations) {
@@ -509,45 +593,23 @@ class MathSolverNew {
       String leftSide = match.group(1)!;
       String rightSide = match.group(2)!;
 
+      final leftParsed = parseSide(leftSide);
+      final rightParsed = parseSide(rightSide);
+      if (leftParsed == null || rightParsed == null) return null;
+
       Map<String, double> equationMap = {};
-      double constant = 0.0;
-
-      void processSide(String side, int sign) {
-        RegExp termRegex = RegExp(r'([+-]?)(\d*\.?\d*)\*?([a-zA-Z]?)');
-
-        for (Match m in termRegex.allMatches(side)) {
-          String signStr = m.group(1) ?? '';
-          String coeffStr = m.group(2) ?? '';
-          String varName = m.group(3) ?? '';
-
-          if (varName.isEmpty && coeffStr.isEmpty) continue;
-          if (reserved.contains(varName)) continue;
-
-          int termSign = (signStr == '-') ? -1 : 1;
-
-          if (varName.isNotEmpty) {
-            double coeff;
-            if (coeffStr.isEmpty) {
-              coeff = 1.0;
-            } else {
-              coeff = double.tryParse(coeffStr) ?? 1.0;
-            }
-            coeff *= termSign * sign;
-
-            equationMap[varName] = (equationMap[varName] ?? 0) + coeff;
-            variableSet.add(varName);
-          } else if (coeffStr.isNotEmpty) {
-            double val = double.tryParse(coeffStr) ?? 0;
-            constant += termSign * sign * val;
-          }
-        }
+      for (final entry in leftParsed.coeffs.entries) {
+        equationMap[entry.key] = (equationMap[entry.key] ?? 0) + entry.value;
+      }
+      for (final entry in rightParsed.coeffs.entries) {
+        equationMap[entry.key] = (equationMap[entry.key] ?? 0) - entry.value;
       }
 
-      processSide(leftSide, 1);
-      processSide(rightSide, -1);
+      double combinedConstant = leftParsed.constant - rightParsed.constant;
 
-      constants.add(-constant);
+      constants.add(-combinedConstant);
       equationCoefficients.add(equationMap);
+      variableSet.addAll(equationMap.keys);
     }
 
     List<String> variables = variableSet.toList()..sort();
@@ -644,11 +706,143 @@ class MathSolverNew {
 
   // ============== PERMUTATION & COMBINATION ==============
 
-  static String _preprocessPermuCombination(String expr) {
-    expr = _processPermComb(expr, 'perm', true);
-    expr = _processPermComb(expr, 'comb', false);
-    return expr;
-  }
+    static String _preprocessPermuCombination(String expr) {
+      expr = _processPermComb(expr, 'perm', true);
+      expr = _processPermComb(expr, 'comb', false);
+      return expr;
+    }
+
+    static String _preprocessSummationProduct(String expr) {
+      expr = _processSumProd(expr, 'sum', false);
+      expr = _processSumProd(expr, 'prod', true);
+      return expr;
+    }
+
+    static String _preprocessDerivativeIntegral(String expr) {
+      expr = _processDerivative(expr);
+      expr = _processIntegral(expr);
+      return expr;
+    }
+
+    static String _processDerivative(String expr) {
+      while (expr.contains('diff(')) {
+        int startIndex = expr.indexOf('diff(');
+        if (startIndex == -1) break;
+
+        int openParen = startIndex + 'diff'.length;
+        int closeParen = _findMatchingParen(expr, openParen);
+        if (closeParen == -1) break;
+
+        String content = expr.substring(openParen + 1, closeParen);
+        List<String>? parts = _splitTopLevelArgs(content, 3);
+        if (parts == null) break;
+
+        String varStr = parts[0].trim();
+        String atStr = parts[1].trim();
+        String bodyStr = parts[2].trim();
+
+        if (varStr.isEmpty || atStr.isEmpty || bodyStr.isEmpty) break;
+
+        double? atVal = _evaluateSimpleExpression(atStr);
+        if (atVal == null) break;
+
+        double h = 1e-6 * max(1.0, atVal.abs());
+        String plusExpr =
+            _replaceVariable(bodyStr, varStr, (atVal + h).toString());
+        String minusExpr =
+            _replaceVariable(bodyStr, varStr, (atVal - h).toString());
+
+        double fPlus = _evaluateExpression(_preprocess(plusExpr));
+        double fMinus = _evaluateExpression(_preprocess(minusExpr));
+        double result = (fPlus - fMinus) / (2 * h);
+
+        String resultStr;
+        if ((result - result.roundToDouble()).abs() < 1e-10) {
+          resultStr = result.round().toString();
+        } else {
+          resultStr = result.toString();
+        }
+
+        expr =
+            expr.substring(0, startIndex) +
+            resultStr +
+            expr.substring(closeParen + 1);
+      }
+
+      return expr;
+    }
+
+    static String _processIntegral(String expr) {
+      while (expr.contains('int(')) {
+        int startIndex = expr.indexOf('int(');
+        if (startIndex == -1) break;
+
+        int openParen = startIndex + 'int'.length;
+        int closeParen = _findMatchingParen(expr, openParen);
+        if (closeParen == -1) break;
+
+        String content = expr.substring(openParen + 1, closeParen);
+        List<String>? parts = _splitTopLevelArgs(content, 4);
+        if (parts == null) break;
+
+        String varStr = parts[0].trim();
+        String lowerStr = parts[1].trim();
+        String upperStr = parts[2].trim();
+        String bodyStr = parts[3].trim();
+
+        if (varStr.isEmpty || lowerStr.isEmpty || upperStr.isEmpty || bodyStr.isEmpty) {
+          break;
+        }
+
+        double? lowerVal = _evaluateSimpleExpression(lowerStr);
+        double? upperVal = _evaluateSimpleExpression(upperStr);
+        if (lowerVal == null || upperVal == null) break;
+
+        double a = lowerVal;
+        double b = upperVal;
+        double sign = 1.0;
+        if (a > b) {
+          final temp = a;
+          a = b;
+          b = temp;
+          sign = -1.0;
+        }
+
+        const int n = 200; // Simpson's rule requires even n
+        double h = (b - a) / n;
+
+        double sum = 0.0;
+        for (int i = 0; i <= n; i++) {
+          double x = a + h * i;
+          String replaced = _replaceVariable(bodyStr, varStr, x.toString());
+          double fx = _evaluateExpression(_preprocess(replaced));
+
+          if (i == 0 || i == n) {
+            sum += fx;
+          } else if (i % 2 == 0) {
+            sum += 2 * fx;
+          } else {
+            sum += 4 * fx;
+          }
+        }
+
+        double result = sign * (sum * h / 3.0);
+
+        String resultStr;
+        if ((result - result.roundToDouble()).abs() < 1e-10) {
+          resultStr = result.round().toString();
+        } else {
+          resultStr = result.toString();
+        }
+
+        expr =
+            expr.substring(0, startIndex) +
+            resultStr +
+            expr.substring(closeParen + 1);
+      }
+
+      return expr;
+    }
 
   static String _processPermComb(
     String expr,
@@ -728,10 +922,10 @@ class MathSolverNew {
     return -1;
   }
 
-  static double? _evaluateSimpleExpression(String expr) {
-    try {
-      expr = expr.trim();
-      while (expr.startsWith('(') && expr.endsWith(')')) {
+    static double? _evaluateSimpleExpression(String expr) {
+      try {
+        expr = expr.trim();
+        while (expr.startsWith('(') && expr.endsWith(')')) {
         if (_findMatchingParen(expr, 0) == expr.length - 1) {
           expr = expr.substring(1, expr.length - 1).trim();
         } else {
@@ -744,16 +938,109 @@ class MathSolverNew {
 
       String preprocessed = _preprocessSimple(expr);
       return _evaluateExpression(preprocessed);
-    } catch (e) {
-      return null;
+      } catch (e) {
+        return null;
+      }
     }
-  }
 
-  static String _preprocessSimple(String expr) {
-    expr = expr.replaceAll(' ', '');
-    expr = expr.replaceAll('\u00B7', '*');
-    expr = expr.replaceAll('\u00D7', '*');
-    expr = expr.replaceAll('\u1D07', 'E');
+    static String _processSumProd(String expr, String funcName, bool isProduct) {
+      while (expr.contains('$funcName(')) {
+        int startIndex = expr.indexOf('$funcName(');
+        if (startIndex == -1) break;
+
+        int openParen = startIndex + funcName.length;
+        int closeParen = _findMatchingParen(expr, openParen);
+        if (closeParen == -1) break;
+
+        String content = expr.substring(openParen + 1, closeParen);
+        List<String>? parts = _splitTopLevelArgs(content, 4);
+        if (parts == null) break;
+
+        String varStr = parts[0].trim();
+        String lowerStr = parts[1].trim();
+        String upperStr = parts[2].trim();
+        String bodyStr = parts[3].trim();
+
+        if (varStr.isEmpty) break;
+
+        double? lowerVal = _evaluateSimpleExpression(lowerStr);
+        double? upperVal = _evaluateSimpleExpression(upperStr);
+        if (lowerVal == null || upperVal == null) break;
+
+        int lower = lowerVal.round();
+        int upper = upperVal.round();
+
+        if (lower > upper) {
+          String emptyResult = isProduct ? '1' : '0';
+          expr =
+              expr.substring(0, startIndex) +
+              emptyResult +
+              expr.substring(closeParen + 1);
+          continue;
+        }
+
+        double result = isProduct ? 1.0 : 0.0;
+        for (int i = lower; i <= upper; i++) {
+          String replaced = _replaceVariable(bodyStr, varStr, i.toString());
+          String preprocessed = _preprocess(replaced);
+          double val = _evaluateExpression(preprocessed);
+          if (isProduct) {
+            result *= val;
+          } else {
+            result += val;
+          }
+        }
+
+        String resultStr;
+        if ((result - result.roundToDouble()).abs() < 1e-10) {
+          resultStr = result.round().toString();
+        } else {
+          resultStr = result.toString();
+        }
+
+        expr =
+            expr.substring(0, startIndex) +
+            resultStr +
+            expr.substring(closeParen + 1);
+      }
+
+      return expr;
+    }
+
+    static List<String>? _splitTopLevelArgs(String content, int expected) {
+      List<String> parts = [];
+      int depth = 0;
+      int lastIndex = 0;
+      for (int i = 0; i < content.length; i++) {
+        final ch = content[i];
+        if (ch == '(') {
+          depth++;
+        } else if (ch == ')') {
+          depth--;
+        } else if (ch == ',' && depth == 0) {
+          parts.add(content.substring(lastIndex, i));
+          lastIndex = i + 1;
+        }
+      }
+      parts.add(content.substring(lastIndex));
+      if (parts.length != expected) return null;
+      return parts;
+    }
+
+    static String _replaceVariable(String body, String variable, String value) {
+      final pattern = RegExp(
+        r'(?<![a-zA-Z0-9_])' +
+            RegExp.escape(variable) +
+            r'(?![a-zA-Z0-9_])',
+      );
+      return body.replaceAll(pattern, value);
+    }
+
+    static String _preprocessSimple(String expr) {
+      expr = expr.replaceAll(' ', '');
+      expr = expr.replaceAll('\u00B7', '*');
+      expr = expr.replaceAll('\u00D7', '*');
+      expr = expr.replaceAll('\u1D07', 'E');
     expr = expr.replaceAll('\u00B0', '*($pi/180)');
     expr = expr.replaceAll('rad', '*((1/$pi)*180)');
 
@@ -776,10 +1063,12 @@ class MathSolverNew {
       },
     );
 
-    expr = _processFactorials(expr);
+      expr = _processFactorials(expr);
+      expr = _preprocessSummationProduct(expr);
+      expr = _preprocessDerivativeIntegral(expr);
 
-    return expr;
-  }
+      return expr;
+    }
 
   // Keep old int versions for backward compatibility
   static int factorial(int n) {

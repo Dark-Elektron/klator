@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'sumprod_symbol.dart';
 import 'dart:math' as math;
 import 'math_nodes.dart';
 import 'math_text_style.dart';
@@ -82,6 +83,14 @@ class MathResultDisplay extends StatelessWidget {
       }
     }
     return nodes;
+  }
+
+  static bool _isListEffectivelyEmpty(List<MathNode> nodes) {
+    if (nodes.isEmpty) return true;
+    if (nodes.length == 1 && nodes.first is LiteralNode) {
+      return (nodes.first as LiteralNode).text.trim().isEmpty;
+    }
+    return false;
   }
 
   @override
@@ -522,6 +531,352 @@ class MathResultDisplay extends StatelessWidget {
       );
     }
 
+    if (node is SummationNode || node is ProductNode) {
+      final bool isSum = node is SummationNode;
+      final double smallSize = fontSize * 0.7;
+      final variable =
+          isSum
+              ? (node).variable
+              : (node as ProductNode).variable;
+      final lower =
+          isSum
+              ? (node).lower
+              : (node as ProductNode).lower;
+      final upper =
+          isSum
+              ? (node).upper
+              : (node as ProductNode).upper;
+      final body =
+          isSum ? (node).body : (node as ProductNode).body;
+
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: _renderNodeList(upper, smallSize),
+              ),
+              SizedBox(height: fontSize * 0.05),
+              SumProdSymbol(
+                type: isSum ? SumProdType.sum : SumProdType.product,
+                fontSize: fontSize,
+                color: textColor,
+              ),
+              SizedBox(height: fontSize * 0.05),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: _renderNodeList(variable, smallSize),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Text(
+                      '=',
+                      style: MathTextStyle.getStyle(
+                        smallSize,
+                      ).copyWith(color: textColor),
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: _renderNodeList(lower, smallSize),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          SizedBox(width: fontSize * 0.2),
+          IntrinsicHeight(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ScalableParenthesis(
+                  isOpening: true,
+                  fontSize: fontSize,
+                  color: textColor,
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: fontSize * 0.15),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: _renderNodeList(body, fontSize),
+                  ),
+                ),
+                _ScalableParenthesis(
+                  isOpening: false,
+                  fontSize: fontSize,
+                  color: textColor,
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (node is DerivativeNode) {
+      final double symbolSize = fontSize;
+      final double evalSize = fontSize * 0.7;
+      final double barHeight = math.max(2.0, symbolSize * 0.08);
+      final double barMargin = symbolSize * 0.06;
+      final variable = node.variable;
+      final at = node.at;
+      final body = node.body;
+      final bool atEmpty = _isListEffectivelyEmpty(at);
+
+      final Widget fraction = IntrinsicWidth(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'd',
+                  style: MathTextStyle.getStyle(
+                    symbolSize,
+                  ).copyWith(color: textColor),
+                  textScaler: textScaler,
+                ),
+              ],
+            ),
+            Container(
+              height: barHeight,
+              width: double.infinity,
+              color: textColor,
+              margin: EdgeInsets.symmetric(vertical: barMargin),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'd',
+                  style: MathTextStyle.getStyle(
+                    symbolSize,
+                  ).copyWith(color: textColor),
+                  textScaler: textScaler,
+                ),
+                const SizedBox(width: 1),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: _renderNodeList(variable, symbolSize),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final Widget evalWidget = Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _renderNodeList(variable, evalSize),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 1),
+            child: Text(
+              '=',
+              style: MathTextStyle.getStyle(evalSize).copyWith(color: textColor),
+              textScaler: textScaler,
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _renderNodeList(at, evalSize),
+          ),
+        ],
+      );
+
+      final bodyMetrics = _getListMetrics(body, fontSize);
+      final double bodyHeight = bodyMetrics.$1;
+
+      final numMetrics = _getListMetrics([LiteralNode(text: 'd')], symbolSize);
+      final varMetrics = _getListMetrics(variable, symbolSize);
+      final double denHeight = math.max(numMetrics.$1, varMetrics.$1);
+      final double fracHeight =
+          numMetrics.$1 + barMargin + barHeight + barMargin + denHeight;
+      final double operatorHeight = math.max(fracHeight, bodyHeight);
+
+      final double barWidth = math.max(1.2, evalSize * 0.08);
+
+      final Widget evalHolder = SizedBox(
+        height: operatorHeight,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: barWidth,
+              color: textColor,
+            ),
+            SizedBox(width: evalSize * 0.15),
+            Column(
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [evalWidget],
+            ),
+          ],
+        ),
+      );
+
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          fraction,
+          SizedBox(width: fontSize * 0.2),
+          IntrinsicHeight(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ScalableParenthesis(
+                  isOpening: true,
+                  fontSize: fontSize,
+                  color: textColor,
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: fontSize * 0.15),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: _renderNodeList(body, fontSize),
+                  ),
+                ),
+                _ScalableParenthesis(
+                  isOpening: false,
+                  fontSize: fontSize,
+                  color: textColor,
+                ),
+              ],
+            ),
+          ),
+          if (!atEmpty) ...[
+            SizedBox(width: fontSize * 0.1),
+            evalHolder,
+          ],
+        ],
+      );
+    }
+
+    if (node is IntegralNode) {
+      final double boundSize = fontSize * 0.7;
+      final double dxSize = fontSize;
+      final double lowerGap = fontSize * 0.18;
+      final variable = node.variable;
+      final lower = node.lower;
+      final upper = node.upper;
+      final body = node.body;
+
+      final bodyMetrics = _getListMetrics(body, fontSize);
+      final double bodyHeight = bodyMetrics.$1;
+
+      final Widget dxWidget = Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            'd',
+            style:
+                MathTextStyle.getStyle(dxSize).copyWith(color: textColor),
+            textScaler: textScaler,
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _renderNodeList(variable, dxSize),
+          ),
+        ],
+      );
+
+      final Widget alignedDxWidget = SizedBox(
+        height: bodyHeight,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: dxWidget,
+        ),
+      );
+
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: _renderNodeList(upper, boundSize),
+              ),
+              Text(
+                '\u222B',
+                style:
+                    MathTextStyle.getStyle(fontSize * 1.4).copyWith(color: textColor),
+                textScaler: textScaler,
+              ),
+              SizedBox(height: lowerGap),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: _renderNodeList(lower, boundSize),
+              ),
+            ],
+          ),
+          SizedBox(width: fontSize * 0.2),
+          IntrinsicHeight(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ScalableParenthesis(
+                  isOpening: true,
+                  fontSize: fontSize,
+                  color: textColor,
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: fontSize * 0.15),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: _renderNodeList(body, fontSize),
+                  ),
+                ),
+                _ScalableParenthesis(
+                  isOpening: false,
+                  fontSize: fontSize,
+                  color: textColor,
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: fontSize * 0.1),
+          alignedDxWidget,
+        ],
+      );
+    }
+
     if (node is AnsNode) {
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -666,6 +1021,73 @@ class MathResultDisplay extends StatelessWidget {
       final double height = math.max(
         fontSize,
         math.max(nColumnHeight, rColumnHeight),
+      );
+      return (height, height / 2);
+    }
+
+    if (node is SummationNode || node is ProductNode) {
+      final double smallSize = fontSize * 0.7;
+      final variable =
+          node is SummationNode ? node.variable : (node as ProductNode).variable;
+      final lower =
+          node is SummationNode ? node.lower : (node as ProductNode).lower;
+      final upper =
+          node is SummationNode ? node.upper : (node as ProductNode).upper;
+      final body =
+          node is SummationNode ? node.body : (node as ProductNode).body;
+
+      final varMetrics = _staticGetListMetrics(variable, smallSize);
+      final lowerMetrics = _staticGetListMetrics(lower, smallSize);
+      final upperMetrics = _staticGetListMetrics(upper, smallSize);
+      final bodyMetrics = _staticGetListMetrics(body, fontSize);
+
+      final double symbolHeight = fontSize * 1.4;
+      final double upperHeight = math.max(upperMetrics.$1, smallSize * 0.7);
+      final double lowerHeight = math.max(
+        math.max(varMetrics.$1, lowerMetrics.$1),
+        smallSize * 0.7,
+      );
+      final double symbolColumnHeight =
+          upperHeight + symbolHeight + lowerHeight;
+      final double height = math.max(symbolColumnHeight, bodyMetrics.$1);
+      return (height, height / 2);
+    }
+
+    if (node is DerivativeNode) {
+      final double symbolSize = fontSize;
+      final double barHeight = math.max(2.0, symbolSize * 0.08);
+      final double barMargin = symbolSize * 0.06;
+      final bodyMetrics = _staticGetListMetrics(node.body, fontSize);
+
+      final numMetrics = _staticGetListMetrics(
+        [LiteralNode(text: 'd')],
+        symbolSize,
+      );
+      final varMetrics = _staticGetListMetrics(node.variable, symbolSize);
+      final double denHeight = math.max(numMetrics.$1, varMetrics.$1);
+      final double fracHeight =
+          numMetrics.$1 + barMargin + barHeight + barMargin + denHeight;
+
+      final double height = math.max(fracHeight, bodyMetrics.$1);
+      return (height, height / 2);
+    }
+
+    if (node is IntegralNode) {
+      final double boundSize = fontSize * 0.7;
+      final double dxSize = fontSize;
+      final double lowerGap = fontSize * 0.18;
+      final lowerMetrics = _staticGetListMetrics(node.lower, boundSize);
+      final upperMetrics = _staticGetListMetrics(node.upper, boundSize);
+      final bodyMetrics = _staticGetListMetrics(node.body, fontSize);
+
+      final double symbolHeight = fontSize * 1.4;
+      final double upperHeight = math.max(upperMetrics.$1, boundSize * 0.7);
+      final double lowerHeight = math.max(lowerMetrics.$1, boundSize * 0.7);
+      final double symbolColumnHeight =
+          upperHeight + symbolHeight + lowerGap + lowerHeight;
+      final double height = math.max(
+        symbolColumnHeight,
+        math.max(bodyMetrics.$1, dxSize),
       );
       return (height, height / 2);
     }
@@ -822,6 +1244,73 @@ class MathResultDisplay extends StatelessWidget {
       final double height = math.max(
         fontSize,
         math.max(nColumnHeight, rColumnHeight),
+      );
+      return (height, height / 2);
+    }
+
+    if (node is SummationNode || node is ProductNode) {
+      final double smallSize = fontSize * 0.7;
+      final variable =
+          node is SummationNode ? node.variable : (node as ProductNode).variable;
+      final lower =
+          node is SummationNode ? node.lower : (node as ProductNode).lower;
+      final upper =
+          node is SummationNode ? node.upper : (node as ProductNode).upper;
+      final body =
+          node is SummationNode ? node.body : (node as ProductNode).body;
+
+      final varMetrics = _getListMetrics(variable, smallSize);
+      final lowerMetrics = _getListMetrics(lower, smallSize);
+      final upperMetrics = _getListMetrics(upper, smallSize);
+      final bodyMetrics = _getListMetrics(body, fontSize);
+
+      final double symbolHeight = fontSize * 1.4;
+      final double upperHeight = math.max(upperMetrics.$1, smallSize * 0.7);
+      final double lowerHeight = math.max(
+        math.max(varMetrics.$1, lowerMetrics.$1),
+        smallSize * 0.7,
+      );
+      final double symbolColumnHeight =
+          upperHeight + symbolHeight + lowerHeight;
+      final double height = math.max(symbolColumnHeight, bodyMetrics.$1);
+      return (height, height / 2);
+    }
+
+    if (node is DerivativeNode) {
+      final double symbolSize = fontSize;
+      final double barHeight = math.max(2.0, symbolSize * 0.08);
+      final double barMargin = symbolSize * 0.06;
+      final bodyMetrics = _getListMetrics(node.body, fontSize);
+
+      final numMetrics = _getListMetrics(
+        [LiteralNode(text: 'd')],
+        symbolSize,
+      );
+      final varMetrics = _getListMetrics(node.variable, symbolSize);
+      final double denHeight = math.max(numMetrics.$1, varMetrics.$1);
+      final double fracHeight =
+          numMetrics.$1 + barMargin + barHeight + barMargin + denHeight;
+
+      final double height = math.max(fracHeight, bodyMetrics.$1);
+      return (height, height / 2);
+    }
+
+    if (node is IntegralNode) {
+      final double boundSize = fontSize * 0.7;
+      final double dxSize = fontSize;
+      final double lowerGap = fontSize * 0.18;
+      final lowerMetrics = _getListMetrics(node.lower, boundSize);
+      final upperMetrics = _getListMetrics(node.upper, boundSize);
+      final bodyMetrics = _getListMetrics(node.body, fontSize);
+
+      final double symbolHeight = fontSize * 1.4;
+      final double upperHeight = math.max(upperMetrics.$1, boundSize * 0.7);
+      final double lowerHeight = math.max(lowerMetrics.$1, boundSize * 0.7);
+      final double symbolColumnHeight =
+          upperHeight + symbolHeight + lowerGap + lowerHeight;
+      final double height = math.max(
+        symbolColumnHeight,
+        math.max(bodyMetrics.$1, dxSize),
       );
       return (height, height / 2);
     }

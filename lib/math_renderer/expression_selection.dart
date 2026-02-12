@@ -137,6 +137,33 @@ class MathClipboard {
         n: deepCopyNodes(node.n),
         r: deepCopyNodes(node.r),
       );
+    } else if (node is SummationNode) {
+      return SummationNode(
+        variable: deepCopyNodes(node.variable),
+        lower: deepCopyNodes(node.lower),
+        upper: deepCopyNodes(node.upper),
+        body: deepCopyNodes(node.body),
+      );
+    } else if (node is ProductNode) {
+      return ProductNode(
+        variable: deepCopyNodes(node.variable),
+        lower: deepCopyNodes(node.lower),
+        upper: deepCopyNodes(node.upper),
+        body: deepCopyNodes(node.body),
+      );
+    } else if (node is DerivativeNode) {
+      return DerivativeNode(
+        variable: deepCopyNodes(node.variable),
+        at: deepCopyNodes(node.at),
+        body: deepCopyNodes(node.body),
+      );
+    } else if (node is IntegralNode) {
+      return IntegralNode(
+        variable: deepCopyNodes(node.variable),
+        lower: deepCopyNodes(node.lower),
+        upper: deepCopyNodes(node.upper),
+        body: deepCopyNodes(node.body),
+      );
     } else if (node is NewlineNode) {
       return NewlineNode();
     } else if (node is ParenthesisNode) {

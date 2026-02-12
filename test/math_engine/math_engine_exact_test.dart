@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:klator/math_engine/math_engine_exact.dart';
+import 'package:klator/math_engine/math_expression_serializer.dart';
 import 'package:klator/math_renderer/math_nodes.dart';
 
 void main() {
@@ -542,6 +543,65 @@ void main() {
             ProdExpr([IntExpr.from(3), RootExpr.sqrt(IntExpr.from(2))]),
           ]).simplify();
       expect(sum.toDouble(), closeTo(7.071, 0.001));
+    });
+
+    test('factor common variable', () {
+      final sum =
+          SumExpr([
+            ProdExpr([VarExpr('x'), VarExpr('y')]),
+            ProdExpr([VarExpr('x'), VarExpr('z')]),
+          ]).simplify();
+      expect(sum, isA<ProdExpr>());
+      final prod = sum as ProdExpr;
+      expect(
+        prod.factors.any(
+          (factor) => factor is VarExpr && factor.name == 'x',
+        ),
+        isTrue,
+      );
+      final sumFactor =
+          prod.factors.firstWhere((f) => f is SumExpr) as SumExpr;
+      expect(sumFactor.terms.length, equals(2));
+      expect(
+        sumFactor.terms.any(
+          (term) => term is VarExpr && term.name == 'y',
+        ),
+        isTrue,
+      );
+      expect(
+        sumFactor.terms.any(
+          (term) => term is VarExpr && term.name == 'z',
+        ),
+        isTrue,
+      );
+    });
+
+    test('factor common variable powers', () {
+      final sum =
+          SumExpr([
+            ProdExpr([
+              PowExpr(VarExpr('x'), IntExpr.from(2)),
+              VarExpr('y'),
+            ]),
+            ProdExpr([VarExpr('x'), VarExpr('y')]),
+          ]).simplify();
+      expect(sum, isA<ProdExpr>());
+      final prod = sum as ProdExpr;
+      expect(
+        prod.factors.any(
+          (factor) => factor is VarExpr && factor.name == 'x',
+        ),
+        isTrue,
+      );
+      expect(
+        prod.factors.any(
+          (factor) => factor is VarExpr && factor.name == 'y',
+        ),
+        isTrue,
+      );
+      final sumFactor =
+          prod.factors.firstWhere((f) => f is SumExpr) as SumExpr;
+      expect(sumFactor.terms.length, equals(2));
     });
 
     test('preserve order of unlike terms', () {
@@ -2474,6 +2534,53 @@ void main() {
       final nodes = [LiteralNode(text: '42')];
       final result = ExactMathEngine.evaluate(nodes);
       expect(result.isExact, false);
+    });
+
+    test('solves quadratic equation exactly', () {
+      final nodes = [LiteralNode(text: 'x^2+2x=1')];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.mathNodes, isNotNull);
+      final serialized = MathExpressionSerializer.serialize(result.mathNodes!);
+      final normalized = serialized.replaceAll(' ', '');
+      expect(normalized.split('\n').length, 2);
+      expect(normalized, contains('x='));
+      expect(normalized, contains('sqrt(2)'));
+      expect(normalized, contains('-1+'));
+      expect(normalized, contains('-1-'));
+      expect(normalized.contains('x^2'), isFalse);
+    });
+
+    test('quadratic simplifies discriminant and uses coefficient before root', () {
+      final nodes = [LiteralNode(text: 'x^2+2/3x=1')];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.expr, isNotNull);
+      expect(result.expr, isA<SumExpr>());
+      final sum = result.expr as SumExpr;
+      final prodTerms = sum.terms.whereType<ProdExpr>().toList();
+      expect(prodTerms, isNotEmpty);
+      final rootProd = prodTerms.firstWhere(
+        (prod) => prod.factors.any((f) => f is RootExpr),
+      );
+      final root =
+          rootProd.factors.firstWhere((f) => f is RootExpr) as RootExpr;
+      expect(root.radicand, isA<IntExpr>());
+      expect((root.radicand as IntExpr).value, BigInt.from(10));
+      expect(rootProd.factors.any((f) => f is FracExpr), isTrue);
+    });
+
+    test('solves linear system with fractional coefficients', () {
+      final nodes = [
+        LiteralNode(text: 'x+1/2y=5'),
+        NewlineNode(),
+        LiteralNode(text: 'x-1/2y=1'),
+      ];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.mathNodes, isNotNull);
+      final serialized = MathExpressionSerializer.serialize(result.mathNodes!);
+      final normalized = serialized.replaceAll(' ', '');
+      expect(normalized, contains('x=3'));
+      expect(normalized, contains('y=4'));
+      expect(normalized.contains('='), isTrue);
     });
   });
 

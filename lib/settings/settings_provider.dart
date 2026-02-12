@@ -19,6 +19,7 @@ enum ThemeType {
   digitalAmber,
   roseChic,
   honeyMustard,
+  forestMoss,
 }
 
 class SettingsProvider extends ChangeNotifier {

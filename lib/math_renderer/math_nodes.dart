@@ -79,8 +79,73 @@ class CombinationNode extends MathNode {
   List<MathNode> n; // Top number
   List<MathNode> r; // Bottom number
   CombinationNode({List<MathNode>? n, List<MathNode>? r})
-    : n = n ?? [LiteralNode()],
-      r = r ?? [LiteralNode()];
+      : n = n ?? [LiteralNode()],
+        r = r ?? [LiteralNode()];
+}
+
+/// A summation node (sigma) with variable, bounds, and body.
+class SummationNode extends MathNode {
+  List<MathNode> variable; // The index variable (e.g., x)
+  List<MathNode> lower; // Lower bound
+  List<MathNode> upper; // Upper bound
+  List<MathNode> body; // Expression to sum
+  SummationNode({
+    List<MathNode>? variable,
+    List<MathNode>? lower,
+    List<MathNode>? upper,
+    List<MathNode>? body,
+  }) : variable = variable ?? [LiteralNode(text: 'x')],
+       lower = lower ?? [LiteralNode()],
+       upper = upper ?? [LiteralNode()],
+       body = body ?? [LiteralNode()];
+}
+
+/// A product node (pi) with variable, bounds, and body.
+class ProductNode extends MathNode {
+  List<MathNode> variable; // The index variable (e.g., x)
+  List<MathNode> lower; // Lower bound
+  List<MathNode> upper; // Upper bound
+  List<MathNode> body; // Expression to multiply
+  ProductNode({
+    List<MathNode>? variable,
+    List<MathNode>? lower,
+    List<MathNode>? upper,
+    List<MathNode>? body,
+  }) : variable = variable ?? [LiteralNode(text: 'x')],
+       lower = lower ?? [LiteralNode()],
+       upper = upper ?? [LiteralNode()],
+       body = body ?? [LiteralNode()];
+}
+
+/// A derivative node (d/dx) with variable, evaluation point, and body.
+class DerivativeNode extends MathNode {
+  List<MathNode> variable; // Variable of differentiation (e.g., x)
+  List<MathNode> at; // Evaluation point (x = a)
+  List<MathNode> body; // Expression to differentiate
+  DerivativeNode({
+    List<MathNode>? variable,
+    List<MathNode>? at,
+    List<MathNode>? body,
+  }) : variable = variable ?? [LiteralNode(text: 'x')],
+       at = at ?? [LiteralNode()],
+       body = body ?? [LiteralNode()];
+}
+
+/// An integral node with bounds, variable, and body.
+class IntegralNode extends MathNode {
+  List<MathNode> variable; // Integration variable (e.g., x)
+  List<MathNode> lower; // Lower bound
+  List<MathNode> upper; // Upper bound
+  List<MathNode> body; // Integrand
+  IntegralNode({
+    List<MathNode>? variable,
+    List<MathNode>? lower,
+    List<MathNode>? upper,
+    List<MathNode>? body,
+  }) : variable = variable ?? [LiteralNode(text: 'x')],
+       lower = lower ?? [LiteralNode()],
+       upper = upper ?? [LiteralNode()],
+       body = body ?? [LiteralNode()];
 }
 
 /// A complex number node (i * content).

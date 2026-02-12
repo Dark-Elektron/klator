@@ -1,0 +1,35 @@
+﻿Analyzing klator...                                             
+
+   info - The private field _plotsEnabled could be 'final' - lib\main.dart:141:8 - prefer_final_fields
+warning - The declaration '_buildPlotArea' isn't referenced - lib\main.dart:360:10 - unused_element
+   info - Statements in a for should be enclosed in a block - lib\math_engine\math_engine_exact.dart:5488:32 - curly_braces_in_flow_control_structures
+warning - Unnecessary cast - lib\math_renderer\math_result_display.dart:539:18 - unnecessary_cast
+warning - Unnecessary cast - lib\math_renderer\math_result_display.dart:543:18 - unnecessary_cast
+warning - Unnecessary cast - lib\math_renderer\math_result_display.dart:547:18 - unnecessary_cast
+warning - Unnecessary cast - lib\math_renderer\math_result_display.dart:550:20 - unnecessary_cast
+   info - Empty catch block - lib\plotting\painters\plot_3d_painter.dart:1646:23 - empty_catches
+   info - Statements in a while should be enclosed in a block - lib\plotting\parsers\math_parser.dart:20:65 - curly_braces_in_flow_control_structures
+warning - The declaration '_getZoomAxisLabel' isn't referenced - lib\plotting\screens\home_screen.dart:189:10 - unused_element
+
+flutter : 10 issues 
+found. (ran in 2.6s)
+At line:1 char:1
++ flutter analyze 
+--no-pub > 
+analysis_output.txt 
+2>&1; cat 
+analysis_out ...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (10 issu   
+ es found. (ran i    
+n 2.6s):String)     
+[], RemoteExcept    
+ion
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 

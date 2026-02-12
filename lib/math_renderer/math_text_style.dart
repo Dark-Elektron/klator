@@ -102,7 +102,7 @@ class MathTextStyle {
 
       String displayChar = char;
       if (_isMultiplySign(char) || char == '*') {
-        displayChar = multiplyDot; // Always use dot for exact results
+        displayChar = _multiplySign;
       }
 
       if (_isPaddedOperatorAt(text, i)) {

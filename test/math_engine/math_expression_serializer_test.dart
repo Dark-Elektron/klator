@@ -232,6 +232,37 @@ void main() {
     });
   });
 
+  group('MathExpressionSerializer - Calculus Serialization', () {
+    test('serializes derivative', () {
+      final expression = [
+        DerivativeNode(
+          variable: [LiteralNode(text: 'x')],
+          at: [LiteralNode(text: '2')],
+          body: [LiteralNode(text: 'x^2')],
+        ),
+      ];
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('diff(x,2,x^2)'),
+      );
+    });
+
+    test('serializes integral', () {
+      final expression = [
+        IntegralNode(
+          variable: [LiteralNode(text: 'x')],
+          lower: [LiteralNode(text: '0')],
+          upper: [LiteralNode(text: '1')],
+          body: [LiteralNode(text: 'x')],
+        ),
+      ];
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('int(x,0,1,x)'),
+      );
+    });
+  });
+
   group('MathExpressionSerializer - ANS Serialization', () {
     test('serializes ans node', () {
       final expression = [
@@ -307,6 +338,28 @@ void main() {
       expect(restored[0], isA<LiteralNode>());
       expect(restored[1], isA<FractionNode>());
       expect(restored[2], isA<LiteralNode>());
+    });
+
+    test('serializes and deserializes calculus nodes', () {
+      final original = [
+        DerivativeNode(
+          variable: [LiteralNode(text: 'x')],
+          at: [LiteralNode(text: '1')],
+          body: [LiteralNode(text: 'x^2')],
+        ),
+        IntegralNode(
+          variable: [LiteralNode(text: 'x')],
+          lower: [LiteralNode(text: '0')],
+          upper: [LiteralNode(text: '2')],
+          body: [LiteralNode(text: 'x')],
+        ),
+      ];
+      final json = MathExpressionSerializer.serializeToJson(original);
+      final restored = MathExpressionSerializer.deserializeFromJson(json);
+
+      expect(restored.length, equals(2));
+      expect(restored[0], isA<DerivativeNode>());
+      expect(restored[1], isA<IntegralNode>());
     });
 
     test('handles empty json', () {
