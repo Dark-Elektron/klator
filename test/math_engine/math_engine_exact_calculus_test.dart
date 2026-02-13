@@ -30,6 +30,7 @@ void main() {
         visit(node.denominator);
       }
     }
+
     visit(expr);
     return found;
   }
@@ -65,6 +66,7 @@ void main() {
         visit(node.denominator);
       }
     }
+
     visit(expr);
     return found;
   }
@@ -103,15 +105,12 @@ void main() {
       final prod = expr as ProdExpr;
       expect(
         prod.factors.any(
-          (factor) =>
-              factor is IntExpr && factor.value == BigInt.from(52),
+          (factor) => factor is IntExpr && factor.value == BigInt.from(52),
         ),
         isTrue,
       );
       expect(
-        prod.factors.any(
-          (factor) => factor is VarExpr && factor.name == 'x',
-        ),
+        prod.factors.any((factor) => factor is VarExpr && factor.name == 'x'),
         isTrue,
       );
       expect(
@@ -146,15 +145,12 @@ void main() {
       final prod = expr as ProdExpr;
       expect(
         prod.factors.any(
-          (factor) =>
-              factor is IntExpr && factor.value == BigInt.from(52),
+          (factor) => factor is IntExpr && factor.value == BigInt.from(52),
         ),
         isTrue,
       );
       expect(
-        prod.factors.any(
-          (factor) => factor is VarExpr && factor.name == 'x',
-        ),
+        prod.factors.any((factor) => factor is VarExpr && factor.name == 'x'),
         isFalse,
       );
       expect(
@@ -198,7 +194,34 @@ void main() {
       expect(_hasPowOfVar(nonConstant, 'y', 2), isTrue);
       expect(_hasHalfFactor(nonConstant), isTrue);
     });
-    
+
+    test('indefinite integral in compound expression (+ 4) includes + c', () {
+      final nodes = [
+        IntegralNode(
+          variable: [LiteralNode(text: 'x')],
+          lower: [LiteralNode(text: '')],
+          upper: [LiteralNode(text: '')],
+          body: [LiteralNode(text: 'x')],
+        ),
+        LiteralNode(text: '+'),
+        LiteralNode(text: '4'),
+      ];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.expr, isNotNull);
+      expect(result.expr, isA<SumExpr>());
+      final sum = result.expr as SumExpr;
+      // Should have x^2/2, 4, and c
+      expect(sum.terms.any((t) => t is VarExpr && t.name == 'c'), isTrue);
+      expect(
+        sum.terms.any((t) => t is IntExpr && t.value == BigInt.from(4)),
+        isTrue,
+      );
+      final xPart = sum.terms.firstWhere(
+        (t) => t is! VarExpr && (t is! IntExpr || t.value != BigInt.from(4)),
+      );
+      expect(_hasPowOfVar(xPart, 'x', 2), isTrue);
+    });
+
     test('evaluates derivative diff(x,2,x^2) = 4', () {
       final nodes = [
         DerivativeNode(
@@ -446,8 +469,7 @@ void main() {
       ];
       final result = ExactMathEngine.evaluate(nodes);
       expect(result.mathNodes, isNotNull);
-      final frac =
-          result.mathNodes!.whereType<FractionNode>().first;
+      final frac = result.mathNodes!.whereType<FractionNode>().first;
       expect((frac.numerator.first as LiteralNode).text, equals('4'));
       expect((frac.denominator.first as LiteralNode).text, equals('3'));
     });
@@ -510,8 +532,9 @@ void main() {
       expect(result.expr, isNotNull);
       expect(result.expr, isA<SumExpr>());
       final sum = result.expr as SumExpr;
-      final nonConstant =
-          sum.terms.where((term) => !(term is VarExpr && term.name == 'c'));
+      final nonConstant = sum.terms.where(
+        (term) => !(term is VarExpr && term.name == 'c'),
+      );
       expect(nonConstant.length, equals(1));
       final term = nonConstant.first;
       expect(_hasPowOfVar(term, 'x', 2), isTrue);
@@ -526,4 +549,3 @@ void main() {
     });
   });
 }
-

@@ -507,6 +507,7 @@ class ConstExpr extends Expr {
   static final ConstExpr epsilon0 = ConstExpr(ConstType.epsilon0);
   static final ConstExpr mu0 = ConstExpr(ConstType.mu0);
   static final ConstExpr c0 = ConstExpr(ConstType.c0);
+  static final ConstExpr eMinus = ConstExpr(ConstType.eMinus);
 
   @override
   Expr simplify() => this;
@@ -800,17 +801,16 @@ class SumExpr extends Expr {
     }
     if (allVars.length < 2) return null;
 
-    final Map<String, BigInt> commonVarPowers =
-        Map<String, BigInt>.from(termData.first.varPowers);
+    final Map<String, BigInt> commonVarPowers = Map<String, BigInt>.from(
+      termData.first.varPowers,
+    );
 
     for (int i = 1; i < termData.length; i++) {
       final Map<String, BigInt> powers = termData[i].varPowers;
       for (final key in commonVarPowers.keys.toList()) {
         final BigInt other = powers[key] ?? BigInt.zero;
         final BigInt minExp =
-            other < commonVarPowers[key]!
-                ? other
-                : commonVarPowers[key]!;
+            other < commonVarPowers[key]! ? other : commonVarPowers[key]!;
         if (minExp == BigInt.zero) {
           commonVarPowers.remove(key);
         } else {
@@ -819,14 +819,18 @@ class SumExpr extends Expr {
       }
     }
 
-    Map<String, int> commonOtherCounts =
-        _countFactorSignatures(termData.first.otherFactors);
+    Map<String, int> commonOtherCounts = _countFactorSignatures(
+      termData.first.otherFactors,
+    );
     for (int i = 1; i < termData.length; i++) {
-      final Map<String, int> counts =
-          _countFactorSignatures(termData[i].otherFactors);
+      final Map<String, int> counts = _countFactorSignatures(
+        termData[i].otherFactors,
+      );
       for (final key in commonOtherCounts.keys.toList()) {
-        final int minCount =
-            math.min(commonOtherCounts[key]!, counts[key] ?? 0);
+        final int minCount = math.min(
+          commonOtherCounts[key]!,
+          counts[key] ?? 0,
+        );
         if (minCount == 0) {
           commonOtherCounts.remove(key);
         } else {
@@ -841,8 +845,9 @@ class SumExpr extends Expr {
 
     final List<Expr> commonFactors = [];
     final Set<String> usedVars = {};
-    final Map<String, int> remainingOthers =
-        Map<String, int>.from(commonOtherCounts);
+    final Map<String, int> remainingOthers = Map<String, int>.from(
+      commonOtherCounts,
+    );
 
     for (final factor in termData.first.factors) {
       final String? varName = _variableName(factor);
@@ -881,8 +886,9 @@ class SumExpr extends Expr {
         }
       });
 
-      final Map<String, int> removeOthers =
-          Map<String, int>.from(commonOtherCounts);
+      final Map<String, int> removeOthers = Map<String, int>.from(
+        commonOtherCounts,
+      );
       final Set<String> usedVarInTerm = {};
       final List<Expr> remainderFactors = [];
 
@@ -1459,9 +1465,9 @@ class ProdExpr extends Expr {
     // Combine roots with same index: √a * √b = √(ab)
     List<Expr> result = List.from(others);
 
-      for (var entry in rootGroups.entries) {
-        int index = entry.key;
-        List<RootExpr> roots = entry.value;
+    for (var entry in rootGroups.entries) {
+      int index = entry.key;
+      List<RootExpr> roots = entry.value;
 
       if (roots.length == 1) {
         result.add(roots[0]);
@@ -1473,41 +1479,41 @@ class ProdExpr extends Expr {
               ProdExpr([combinedRadicand, r.radicand]).simplify();
         }
         // Create new root and simplify
-          result.add(RootExpr(combinedRadicand, IntExpr.from(index)).simplify());
-        }
+        result.add(RootExpr(combinedRadicand, IntExpr.from(index)).simplify());
       }
-
-      // Combine like variable bases (e.g., y*y = y^2, y^2*y = y^3)
-      Map<String, BigInt> varPowers = {};
-      List<Expr> othersCombined = [];
-
-      for (Expr f in result) {
-        if (f is VarExpr) {
-          varPowers[f.name] = (varPowers[f.name] ?? BigInt.zero) + BigInt.one;
-          continue;
-        }
-        if (f is PowExpr && f.base is VarExpr && f.exponent is IntExpr) {
-          final String name = (f.base as VarExpr).name;
-          final BigInt exp = (f.exponent as IntExpr).value;
-          varPowers[name] = (varPowers[name] ?? BigInt.zero) + exp;
-          continue;
-        }
-        othersCombined.add(f);
-      }
-
-      for (var entry in varPowers.entries) {
-        final BigInt exp = entry.value;
-        if (exp == BigInt.zero) continue;
-        final Expr base = VarExpr(entry.key);
-        if (exp == BigInt.one) {
-          othersCombined.add(base);
-        } else {
-          othersCombined.add(PowExpr(base, IntExpr(exp)).simplify());
-        }
-      }
-
-      return othersCombined;
     }
+
+    // Combine like variable bases (e.g., y*y = y^2, y^2*y = y^3)
+    Map<String, BigInt> varPowers = {};
+    List<Expr> othersCombined = [];
+
+    for (Expr f in result) {
+      if (f is VarExpr) {
+        varPowers[f.name] = (varPowers[f.name] ?? BigInt.zero) + BigInt.one;
+        continue;
+      }
+      if (f is PowExpr && f.base is VarExpr && f.exponent is IntExpr) {
+        final String name = (f.base as VarExpr).name;
+        final BigInt exp = (f.exponent as IntExpr).value;
+        varPowers[name] = (varPowers[name] ?? BigInt.zero) + exp;
+        continue;
+      }
+      othersCombined.add(f);
+    }
+
+    for (var entry in varPowers.entries) {
+      final BigInt exp = entry.value;
+      if (exp == BigInt.zero) continue;
+      final Expr base = VarExpr(entry.key);
+      if (exp == BigInt.one) {
+        othersCombined.add(base);
+      } else {
+        othersCombined.add(PowExpr(base, IntExpr(exp)).simplify());
+      }
+    }
+
+    return othersCombined;
+  }
 
   /// Compare factors for canonical ordering
   static int _compareFactors(Expr a, Expr b) {
@@ -3488,6 +3494,186 @@ class CombExpr extends Expr {
 }
 
 // ============================================================
+// SECTION 13.5: CALCULUS EXPRESSIONS (for nested calculus)
+// ============================================================
+
+/// Represents a symbolic derivative: d/d(var) (body)
+class DerivativeExpr extends Expr {
+  final Expr body;
+  final String variable;
+
+  DerivativeExpr(this.body, this.variable);
+
+  @override
+  bool get hasImaginary => body.hasImaginary;
+
+  @override
+  Expr simplify() {
+    final Expr simplifiedBody = body.simplify();
+    final Expr? result = SymbolicCalculus._differentiateSymbolic(
+      simplifiedBody,
+      variable,
+    );
+    if (result != null) return result.simplify();
+    return DerivativeExpr(simplifiedBody, variable);
+  }
+
+  @override
+  double toDouble() {
+    return simplify().toDouble();
+  }
+
+  @override
+  bool structurallyEquals(Expr other) {
+    return other is DerivativeExpr &&
+        other.variable == variable &&
+        other.body.structurallyEquals(body);
+  }
+
+  @override
+  String get termSignature => 'diff($variable,${body.termSignature})';
+
+  @override
+  Expr get coefficient => IntExpr.one;
+
+  @override
+  Expr get baseExpr => this;
+
+  @override
+  bool get isZero => simplify().isZero;
+
+  @override
+  bool get isOne => simplify().isOne;
+
+  @override
+  bool get isRational => false;
+
+  @override
+  bool get isInteger => false;
+
+  @override
+  Expr negate() => ProdExpr([IntExpr.negOne, this]);
+
+  @override
+  List<MathNode> toMathNode() {
+    return [
+      DerivativeNode(
+        variable: [LiteralNode(text: variable)],
+        at: [LiteralNode(text: '')],
+        body: body.toMathNode(),
+      ),
+    ];
+  }
+
+  @override
+  Expr copy() => DerivativeExpr(body.copy(), variable);
+
+  @override
+  String toString() => 'diff($variable, $body)';
+}
+
+/// Represents a symbolic integral: ∫ body d(var)
+class IntegralExpr extends Expr {
+  final Expr body;
+  final String variable;
+  final Expr? lower;
+  final Expr? upper;
+
+  IntegralExpr(this.body, this.variable, {this.lower, this.upper});
+
+  @override
+  bool get hasImaginary => body.hasImaginary;
+
+  @override
+  Expr simplify() {
+    final Expr simplifiedBody = body.simplify();
+    // For now, only handle indefinite integrals symbolically
+    if (lower == null && upper == null) {
+      final Expr? result = SymbolicCalculus._integrateSymbolic(
+        simplifiedBody,
+        variable,
+      );
+      if (result != null) {
+        return SumExpr([result, VarExpr('c')]).simplify();
+      }
+    }
+    return IntegralExpr(
+      simplifiedBody,
+      variable,
+      lower: lower?.simplify(),
+      upper: upper?.simplify(),
+    );
+  }
+
+  @override
+  double toDouble() {
+    return simplify().toDouble();
+  }
+
+  @override
+  bool structurallyEquals(Expr other) {
+    if (other is! IntegralExpr) return false;
+    if (other.variable != variable) return false;
+    if (!other.body.structurallyEquals(body)) return false;
+    if ((other.lower == null) != (lower == null)) return false;
+    if ((other.upper == null) != (upper == null)) return false;
+    if (lower != null && !other.lower!.structurallyEquals(lower!)) return false;
+    if (upper != null && !other.upper!.structurallyEquals(upper!)) return false;
+    return true;
+  }
+
+  @override
+  String get termSignature => 'int($variable,${body.termSignature})';
+
+  @override
+  Expr get coefficient => IntExpr.one;
+
+  @override
+  Expr get baseExpr => this;
+
+  @override
+  bool get isZero => simplify().isZero;
+
+  @override
+  bool get isOne => simplify().isOne;
+
+  @override
+  bool get isRational => false;
+
+  @override
+  bool get isInteger => false;
+
+  @override
+  Expr negate() => ProdExpr([IntExpr.negOne, this]);
+
+  @override
+  List<MathNode> toMathNode() {
+    return [
+      IntegralNode(
+        variable: [LiteralNode(text: variable)],
+        lower: lower?.toMathNode() ?? [LiteralNode(text: '')],
+        upper: upper?.toMathNode() ?? [LiteralNode(text: '')],
+        body: body.toMathNode(),
+      ),
+    ];
+  }
+
+  @override
+  Expr copy() => IntegralExpr(
+    body.copy(),
+    variable,
+    lower: lower?.copy(),
+    upper: upper?.copy(),
+  );
+
+  @override
+  String toString() {
+    if (lower == null && upper == null) return 'int($variable, $body)';
+    return 'int($variable, $body, $lower, $upper)';
+  }
+}
+
+// ============================================================
 // SECTION 14: VARIABLE EXPRESSION (for equation solving)
 // ============================================================
 
@@ -3537,13 +3723,13 @@ class VarExpr extends Expr {
   @override
   Expr negate() => ProdExpr([IntExpr.negOne, this]);
 
-    @override
-    List<MathNode> toMathNode() {
-      if (name == 'e_x') return [UnitVectorNode('x')];
-      if (name == 'e_y') return [UnitVectorNode('y')];
-      if (name == 'e_z') return [UnitVectorNode('z')];
-      return [LiteralNode(text: name)];
-    }
+  @override
+  List<MathNode> toMathNode() {
+    if (name == 'e_x') return [UnitVectorNode('x')];
+    if (name == 'e_y') return [UnitVectorNode('y')];
+    if (name == 'e_z') return [UnitVectorNode('z')];
+    return [LiteralNode(text: name)];
+  }
 
   @override
   Expr copy() => VarExpr(name);
@@ -3559,32 +3745,32 @@ class VarExpr extends Expr {
 /// Converts a MathNode tree to an Expr tree for symbolic computation
 class MathNodeToExpr {
   /// Reserved function names that should not be treated as variables
-    static const Set<String> _reservedNames = {
-      'sin',
-      'cos',
-      'tan',
-      'asin',
-      'acos',
-      'atan',
-      'sinh',
-      'cosh',
-      'tanh',
-      'asinh',
-      'acosh',
-      'atanh',
-      'log',
-      'ln',
-      'sqrt',
-      'abs',
-      'exp',
-      'perm',
-      'comb',
-      'sum',
-      'prod',
-      'diff',
-      'int',
-      'ans',
-    };
+  static const Set<String> _reservedNames = {
+    'sin',
+    'cos',
+    'tan',
+    'asin',
+    'acos',
+    'atan',
+    'sinh',
+    'cosh',
+    'tanh',
+    'asinh',
+    'acosh',
+    'atanh',
+    'log',
+    'ln',
+    'sqrt',
+    'abs',
+    'exp',
+    'perm',
+    'comb',
+    'sum',
+    'prod',
+    'diff',
+    'int',
+    'ans',
+  };
 
   /// Convert a list of MathNodes to an Expr
   static Expr convert(
@@ -3841,13 +4027,12 @@ class MathNodeToExpr {
       return [_Token.fromExpr(CombExpr(n, r))];
     }
 
-      if (node is SummationNode || node is ProductNode) {
-        final bool isSum = node is SummationNode;
-        final variable =
-            isSum ? node.variable : (node as ProductNode).variable;
-        final lower = isSum ? node.lower : (node as ProductNode).lower;
-        final upper = isSum ? node.upper : (node as ProductNode).upper;
-        final body = isSum ? node.body : (node as ProductNode).body;
+    if (node is SummationNode || node is ProductNode) {
+      final bool isSum = node is SummationNode;
+      final variable = isSum ? node.variable : (node as ProductNode).variable;
+      final lower = isSum ? node.lower : (node as ProductNode).lower;
+      final upper = isSum ? node.upper : (node as ProductNode).upper;
+      final body = isSum ? node.body : (node as ProductNode).body;
 
       final String varName =
           _extractLiteralText(variable).trim().isEmpty
@@ -3894,133 +4079,177 @@ class MathNodeToExpr {
         i = i + BigInt.one;
       }
 
-        return [_Token.fromExpr(acc)];
-      }
+      return [_Token.fromExpr(acc)];
+    }
 
-      if (node is DerivativeNode) {
-        final String varName =
-            MathNodeToExpr._extractLiteralText(node.variable).trim().isEmpty
-                ? 'x'
-                : MathNodeToExpr._extractLiteralText(node.variable).trim();
+    if (node is DerivativeNode) {
+      final String varName =
+          MathNodeToExpr._extractLiteralText(node.variable).trim().isEmpty
+              ? 'x'
+              : MathNodeToExpr._extractLiteralText(node.variable).trim();
 
-        Expr atExpr = convert(
-          node.at,
+      // If 'at' is empty, it's a symbolic derivative
+      if (MathNodeToExpr._extractLiteralText(node.at).trim().isEmpty) {
+        Expr body = convert(
+          node.body,
           ansExpressions: ansExpressions,
           varBindings: varBindings,
         );
+        return [_Token.fromExpr(DerivativeExpr(body, varName))];
+      }
 
-        double atVal;
-        try {
-          atVal = atExpr.toDouble();
-        } catch (e) {
-          return [_Token.fromExpr(IntExpr.zero)];
-        }
+      Expr atExpr = convert(
+        node.at,
+        ansExpressions: ansExpressions,
+        varBindings: varBindings,
+      );
 
-        double h = 1e-6 * math.max(1.0, atVal.abs());
-        final nextBindingsPlus = <String, Expr>{
+      double atVal;
+      try {
+        atVal = atExpr.toDouble();
+      } catch (e) {
+        // Fallback: if 'at' is symbolic (contains variables), return a DerivativeExpr
+        // so it can be handled by SymbolicCalculus if possible.
+        Expr body = convert(
+          node.body,
+          ansExpressions: ansExpressions,
+          varBindings: varBindings,
+        );
+        return [_Token.fromExpr(DerivativeExpr(body, varName))];
+      }
+
+      double h = 1e-6 * math.max(1.0, atVal.abs());
+      final nextBindingsPlus = <String, Expr>{
+        if (varBindings != null) ...varBindings,
+        varName: _doubleToExpr(atVal + h),
+      };
+      final nextBindingsMinus = <String, Expr>{
+        if (varBindings != null) ...varBindings,
+        varName: _doubleToExpr(atVal - h),
+      };
+
+      double fPlus;
+      double fMinus;
+      try {
+        fPlus =
+            convert(
+              node.body,
+              ansExpressions: ansExpressions,
+              varBindings: nextBindingsPlus,
+            ).toDouble();
+        fMinus =
+            convert(
+              node.body,
+              ansExpressions: ansExpressions,
+              varBindings: nextBindingsMinus,
+            ).toDouble();
+      } catch (e) {
+        // Fallback to symbolic if numerical fails
+        Expr body = convert(
+          node.body,
+          ansExpressions: ansExpressions,
+          varBindings: varBindings,
+        );
+        return [_Token.fromExpr(DerivativeExpr(body, varName))];
+      }
+
+      double result = (fPlus - fMinus) / (2 * h);
+      return [_Token.fromExpr(_doubleToExpr(result).simplify())];
+    }
+
+    if (node is IntegralNode) {
+      final String varName =
+          MathNodeToExpr._extractLiteralText(node.variable).trim().isEmpty
+              ? 'x'
+              : MathNodeToExpr._extractLiteralText(node.variable).trim();
+
+      // If bounds are empty, it's a symbolic indefinite integral
+      if (MathNodeToExpr._extractLiteralText(node.lower).trim().isEmpty &&
+          MathNodeToExpr._extractLiteralText(node.upper).trim().isEmpty) {
+        Expr body = convert(
+          node.body,
+          ansExpressions: ansExpressions,
+          varBindings: varBindings,
+        );
+        return [_Token.fromExpr(IntegralExpr(body, varName))];
+      }
+
+      Expr lowerExpr = convert(
+        node.lower,
+        ansExpressions: ansExpressions,
+        varBindings: varBindings,
+      );
+      Expr upperExpr = convert(
+        node.upper,
+        ansExpressions: ansExpressions,
+        varBindings: varBindings,
+      );
+
+      // Definite integral numerical using Simpson's Rule
+      double a, b;
+      try {
+        a = lowerExpr.toDouble();
+        b = upperExpr.toDouble();
+      } catch (e) {
+        // Fallback: if bounds are symbolic, return an IntegralExpr
+        Expr body = convert(
+          node.body,
+          ansExpressions: ansExpressions,
+          varBindings: varBindings,
+        );
+        return [
+          _Token.fromExpr(
+            IntegralExpr(body, varName, lower: lowerExpr, upper: upperExpr),
+          ),
+        ];
+      }
+
+      double sign = 1.0;
+      if (a > b) {
+        final temp = a;
+        a = b;
+        b = temp;
+        sign = -1.0;
+      }
+
+      const int n = 200; // Simpson's rule requires even n
+      double h = (b - a) / n;
+
+      double sum = 0.0;
+      for (int i = 0; i <= n; i++) {
+        double x = a + h * i;
+        final nextBindings = <String, Expr>{
           if (varBindings != null) ...varBindings,
-          varName: _doubleToExpr(atVal + h),
+          varName: _doubleToExpr(x),
         };
-        final nextBindingsMinus = <String, Expr>{
-          if (varBindings != null) ...varBindings,
-          varName: _doubleToExpr(atVal - h),
-        };
-
-        double fPlus;
-        double fMinus;
+        double fx;
         try {
-          fPlus =
+          fx =
               convert(
                 node.body,
                 ansExpressions: ansExpressions,
-                varBindings: nextBindingsPlus,
-              ).toDouble();
-          fMinus =
-              convert(
-                node.body,
-                ansExpressions: ansExpressions,
-                varBindings: nextBindingsMinus,
+                varBindings: nextBindings,
               ).toDouble();
         } catch (e) {
           return [_Token.fromExpr(IntExpr.zero)];
         }
 
-        double result = (fPlus - fMinus) / (2 * h);
-        return [_Token.fromExpr(_doubleToExpr(result).simplify())];
+        if (i == 0 || i == n) {
+          sum += fx;
+        } else if (i % 2 == 0) {
+          sum += 2 * fx;
+        } else {
+          sum += 4 * fx;
+        }
       }
 
-      if (node is IntegralNode) {
-        final String varName =
-            MathNodeToExpr._extractLiteralText(node.variable).trim().isEmpty
-                ? 'x'
-                : MathNodeToExpr._extractLiteralText(node.variable).trim();
+      double result = sign * (sum * h / 3.0);
+      return [_Token.fromExpr(_doubleToExpr(result).simplify())];
+    }
 
-        Expr lowerExpr = convert(
-          node.lower,
-          ansExpressions: ansExpressions,
-          varBindings: varBindings,
-        );
-        Expr upperExpr = convert(
-          node.upper,
-          ansExpressions: ansExpressions,
-          varBindings: varBindings,
-        );
-
-        double a;
-        double b;
-        try {
-          a = lowerExpr.toDouble();
-          b = upperExpr.toDouble();
-        } catch (e) {
-          return [_Token.fromExpr(IntExpr.zero)];
-        }
-
-        double sign = 1.0;
-        if (a > b) {
-          final temp = a;
-          a = b;
-          b = temp;
-          sign = -1.0;
-        }
-
-        const int n = 200; // Simpson's rule requires even n
-        double h = (b - a) / n;
-
-        double sum = 0.0;
-        for (int i = 0; i <= n; i++) {
-          double x = a + h * i;
-          final nextBindings = <String, Expr>{
-            if (varBindings != null) ...varBindings,
-            varName: _doubleToExpr(x),
-          };
-          double fx;
-          try {
-            fx =
-                convert(
-                  node.body,
-                  ansExpressions: ansExpressions,
-                  varBindings: nextBindings,
-                ).toDouble();
-          } catch (e) {
-            return [_Token.fromExpr(IntExpr.zero)];
-          }
-
-          if (i == 0 || i == n) {
-            sum += fx;
-          } else if (i % 2 == 0) {
-            sum += 2 * fx;
-          } else {
-            sum += 4 * fx;
-          }
-        }
-
-        double result = sign * (sum * h / 3.0);
-        return [_Token.fromExpr(_doubleToExpr(result).simplify())];
-      }
-
-      if (node is UnitVectorNode) {
-        return [_Token.fromExpr(VarExpr('e_${node.axis}'))];
-      }
+    if (node is UnitVectorNode) {
+      return [_Token.fromExpr(VarExpr('e_${node.axis}'))];
+    }
     if (node is ConstantNode) {
       ConstType type;
       switch (node.constant) {
@@ -4029,6 +4258,10 @@ class MathNodeToExpr {
           break;
         case 'e':
           type = ConstType.e;
+          break;
+        case '\u03C6': // φ
+        case 'phi':
+          type = ConstType.phi;
           break;
         case '\u03B5\u2080':
           type = ConstType.epsilon0;
@@ -4084,19 +4317,19 @@ class MathNodeToExpr {
     return buffer.toString();
   }
 
-    static BigInt? _tryGetIntValue(Expr expr) {
-      if (expr is IntExpr) return expr.value;
-      if (expr is FracExpr) {
-        if (expr.denominator.value == BigInt.one) {
-          return expr.numerator.value;
-        }
+  static BigInt? _tryGetIntValue(Expr expr) {
+    if (expr is IntExpr) return expr.value;
+    if (expr is FracExpr) {
+      if (expr.denominator.value == BigInt.one) {
+        return expr.numerator.value;
       }
-      return null;
     }
+    return null;
+  }
 
-    static Expr _doubleToExpr(double value) {
-      return _TokenParser(const <_Token>[])._doubleToFraction(value);
-    }
+  static Expr _doubleToExpr(double value) {
+    return _TokenParser(const <_Token>[])._doubleToFraction(value);
+  }
 
   /// Tokenize a literal string into tokens
   static List<_Token> _tokenizeLiteral(
@@ -4127,16 +4360,16 @@ class MathNodeToExpr {
       }
 
       // Operators
-        if (char == '+' ||
-            char == '-' ||
-            char == '*' ||
-            char == '/' ||
-            char == '^' ||
-            char == '%') {
-          tokens.add(_Token(_TokenType.operator, char));
-          i++;
-          continue;
-        }
+      if (char == '+' ||
+          char == '-' ||
+          char == '*' ||
+          char == '/' ||
+          char == '^' ||
+          char == '%') {
+        tokens.add(_Token(_TokenType.operator, char));
+        i++;
+        continue;
+      }
 
       // Equals
       if (char == '=') {
@@ -4192,75 +4425,10 @@ class MathNodeToExpr {
         continue;
       }
 
-      // Check for standalone 'e' (Euler's number) - must not be followed by letter
-      if (char == 'e' && (i + 1 >= text.length || !_isLetter(text[i + 1]))) {
-        tokens.add(_Token.fromExpr(ConstExpr.e));
-        i++;
-        continue;
-      }
-
-      // Check for φ (phi / golden ratio)
-      if (char == 'φ') {
-        tokens.add(_Token.fromExpr(ConstExpr.phi));
-        i++;
-        continue;
-      }
-
-      // Check for ε₀ (vacuum permittivity)
-      if (char == '\u03B5' && i + 1 < text.length && text[i + 1] == '\u2080') {
-        tokens.add(_Token.fromExpr(ConstExpr.epsilon0));
-        i += 2;
-        continue;
-      }
-
-      // Check for μ₀ (vacuum permeability)
-      if ((char == '\u03BC' || char == '\u00B5') &&
-          i + 1 < text.length &&
-          text[i + 1] == '\u2080') {
-        tokens.add(_Token.fromExpr(ConstExpr.mu0));
-        i += 2;
-        continue;
-      }
-
-      // Check for c₀ (speed of light)
-      if (char == 'c' && i + 1 < text.length && text[i + 1] == '\u2080') {
-        tokens.add(_Token.fromExpr(ConstExpr.c0));
-        i += 2;
-        continue;
-      }
-
-      // Check for imaginary unit 'i' - MUST check this BEFORE general letter handling
-      // 'i' is imaginary if it's standalone (not part of a word like 'sin')
-      if (char == 'i') {
-        // Check if it's standalone
-        bool isStandalone = true;
-
-        // Check previous character - if it's a letter, 'i' is part of a word
-        if (i > 0 && _isLetter(text[i - 1])) {
-          isStandalone = false;
-        }
-
-        // Check next character - if it's a letter (not π or other special), 'i' is part of a word
-        if (i + 1 < text.length) {
-          String next = text[i + 1];
-          // Allow i followed by π, digits, operators, etc.
-          // But not i followed by regular letters (like 'in', 'if')
-          if (_isLetter(next) && next != 'π' && next != '\u03C0') {
-            isStandalone = false;
-          }
-        }
-
-        if (isStandalone) {
-          tokens.add(_Token.fromExpr(ImaginaryExpr.i));
-          i++;
-          continue;
-        }
-      }
-
       // Letters (variables or function names)
       if (_isLetter(char)) {
         String word = '';
-        while (i < text.length && _isLetter(text[i])) {
+        while (i < text.length && (_isLetter(text[i]) || _isDigit(text[i]))) {
           // Stop if we hit a special character like π
           if (text[i] == 'π' || text[i] == '\u03C0') {
             break;
@@ -4279,14 +4447,37 @@ class MathNodeToExpr {
           tokens.add(_Token.fromExpr(ConstExpr.pi));
           continue;
         }
-        if (word == 'e' && (i >= text.length || !_isLetter(text[i]))) {
+
+        // Standalone 'e' or 'i'
+        if (word == 'e') {
           tokens.add(_Token.fromExpr(ConstExpr.e));
           continue;
         }
-
-        // Check for imaginary unit (single 'i' that wasn't caught above)
         if (word == 'i') {
           tokens.add(_Token.fromExpr(ImaginaryExpr.i));
+          continue;
+        }
+        if (word == 'φ' || word == '\u03C6' || word == 'phi') {
+          tokens.add(_Token.fromExpr(ConstExpr.phi));
+          continue;
+        }
+        if (word == 'ε₀' || word == '\u03B5\u2080' || word == 'epsilon0') {
+          tokens.add(_Token.fromExpr(ConstExpr.epsilon0));
+          continue;
+        }
+        if (word == 'μ₀' ||
+            word == '\u03BC\u2080' ||
+            word == '\u00B5\u2080' ||
+            word == 'mu0') {
+          tokens.add(_Token.fromExpr(ConstExpr.mu0));
+          continue;
+        }
+        if (word == 'c₀' || word == 'c\u2080') {
+          tokens.add(_Token.fromExpr(ConstExpr.c0));
+          continue;
+        }
+        if (word == 'e⁻' || word == 'e\u207b') {
+          tokens.add(_Token.fromExpr(ConstExpr.eMinus));
           continue;
         }
 
@@ -4299,20 +4490,26 @@ class MathNodeToExpr {
         // Regular variable(s): split multi-letter into implicit multiplication
         if (word.length == 1) {
           tokens.add(_Token.fromExpr(VarExpr(word)));
-          continue;
-        }
-
-        for (int j = 0; j < word.length; j++) {
-          final String letter = word[j];
-          if (varBindings != null && varBindings.containsKey(letter)) {
-            tokens.add(_Token.fromExpr(varBindings[letter]!));
-          } else {
-            tokens.add(_Token.fromExpr(VarExpr(letter)));
+        } else {
+          // Check if the whole word is a known multiple-character variable (should have been caught by varBindings above)
+          // otherwise split it
+          for (int j = 0; j < word.length; j++) {
+            String c = word[j];
+            if (j > 0) {
+              tokens.add(_Token(_TokenType.operator, '*'));
+            }
+            // Check for digits inside word (e.g. x2)
+            if (_isDigit(c)) {
+              tokens.add(_Token(_TokenType.number, c));
+            } else if (varBindings != null && varBindings.containsKey(c)) {
+              tokens.add(_Token.fromExpr(varBindings[c]!));
+            } else {
+              tokens.add(_Token.fromExpr(VarExpr(c)));
+            }
           }
         }
         continue;
       }
-
       // Unknown character - skip
       i++;
     }
@@ -4325,7 +4522,10 @@ class MathNodeToExpr {
   }
 
   static bool _isLetter(String char) {
-    return char.isNotEmpty && RegExp(r'[a-zA-Zα-ωΑ-Ω]').hasMatch(char);
+    return char.isNotEmpty &&
+        RegExp(
+          r'[a-zA-Z\u0370-\u03FF\u1D00-\u1D7F\u2080-\u2089\u2070-\u207F]',
+        ).hasMatch(char);
   }
 }
 
@@ -4387,9 +4587,9 @@ class _TokenParser {
 
       Expr leftExpr = _unwrapPercent(left);
       Expr rightExpr =
-          right.isPercent ? _percentOf(leftExpr, right.expr) : _unwrapPercent(
-            right,
-          );
+          right.isPercent
+              ? _percentOf(leftExpr, right.expr)
+              : _unwrapPercent(right);
 
       if (isPlus) {
         left = _ParsedExpr(SumExpr([leftExpr, rightExpr]));
@@ -4657,10 +4857,7 @@ class _TokenParser {
     final double absValue = value.abs();
     if (absValue == 0) return IntExpr.zero;
 
-    final (num, den) = _bestRationalApproximation(
-      absValue,
-      maxDenominator,
-    );
+    final (num, den) = _bestRationalApproximation(absValue, maxDenominator);
     if (den == 0) return null;
 
     final double approx = num / den;
@@ -4898,16 +5095,10 @@ class ExactMathEngine {
       );
     }
     if (node is PermutationNode) {
-      return PermutationNode(
-        n: _cloneNodes(node.n),
-        r: _cloneNodes(node.r),
-      );
+      return PermutationNode(n: _cloneNodes(node.n), r: _cloneNodes(node.r));
     }
     if (node is CombinationNode) {
-      return CombinationNode(
-        n: _cloneNodes(node.n),
-        r: _cloneNodes(node.r),
-      );
+      return CombinationNode(n: _cloneNodes(node.n), r: _cloneNodes(node.r));
     }
     if (node is SummationNode) {
       return SummationNode(
@@ -5090,14 +5281,9 @@ class ExactMathEngine {
     return vars;
   }
 
-  static ({Expr a, Expr b, Expr c})? _polyCoeffs(
-    Expr expr,
-    String varName,
-  ) {
-    Expr add(Expr left, Expr right) =>
-        SumExpr([left, right]).simplify();
-    Expr mul(Expr left, Expr right) =>
-        ProdExpr([left, right]).simplify();
+  static ({Expr a, Expr b, Expr c})? _polyCoeffs(Expr expr, String varName) {
+    Expr add(Expr left, Expr right) => SumExpr([left, right]).simplify();
+    Expr mul(Expr left, Expr right) => ProdExpr([left, right]).simplify();
 
     ({Expr a, Expr b, Expr c})? multiplyPoly(
       ({Expr a, Expr b, Expr c}) p,
@@ -5157,8 +5343,11 @@ class ExactMathEngine {
     }
 
     if (expr is ProdExpr) {
-      ({Expr a, Expr b, Expr c}) acc =
-          (a: IntExpr.zero, b: IntExpr.zero, c: IntExpr.one);
+      ({Expr a, Expr b, Expr c}) acc = (
+        a: IntExpr.zero,
+        b: IntExpr.zero,
+        c: IntExpr.one,
+      );
       for (final factor in expr.factors) {
         final factorCoeffs = _polyCoeffs(factor, varName);
         if (factorCoeffs == null) return null;
@@ -5224,15 +5413,15 @@ class ExactMathEngine {
           ProdExpr([IntExpr.from(-4), a, c]),
         ]).simplify();
 
-      Expr rootD = RootExpr(discriminant, IntExpr.two).simplify();
+    Expr rootD = RootExpr(discriminant, IntExpr.two).simplify();
 
-      final Expr denom = ProdExpr([IntExpr.two, a]).simplify();
-      final Expr baseTerm = DivExpr(b.negate(), denom).simplify();
-      final Expr rootCoeff = DivExpr(IntExpr.one, denom).simplify();
-      final Expr rootTerm = ProdExpr([rootCoeff, rootD]).simplify();
+    final Expr denom = ProdExpr([IntExpr.two, a]).simplify();
+    final Expr baseTerm = DivExpr(b.negate(), denom).simplify();
+    final Expr rootCoeff = DivExpr(IntExpr.one, denom).simplify();
+    final Expr rootTerm = ProdExpr([rootCoeff, rootD]).simplify();
 
-      Expr sol1 = SumExpr([baseTerm, rootTerm]).simplify();
-      Expr sol2 = SumExpr([baseTerm, rootTerm.negate()]).simplify();
+    Expr sol1 = SumExpr([baseTerm, rootTerm]).simplify();
+    Expr sol2 = SumExpr([baseTerm, rootTerm.negate()]).simplify();
 
     bool zeroDisc = discriminant.isZero;
     try {
@@ -6211,8 +6400,7 @@ class _DecimalExprFormatter {
         return '$coeffText$joiner$remainderText';
       }
 
-      final String numText =
-          numIsOne ? '1' : _format(remainderNumerator);
+      final String numText = numIsOne ? '1' : _format(remainderNumerator);
       final String denText = _format(remainderDenominator);
       String fracText = '($numText)/($denText)';
 
@@ -6319,11 +6507,7 @@ class _DecimalExprFormatter {
       );
     }
 
-    return _RationalSplit(
-      coefficient: 1.0,
-      remainder: expr,
-      hasNumeric: false,
-    );
+    return _RationalSplit(coefficient: 1.0, remainder: expr, hasNumeric: false);
   }
 
   static bool _isNegativeTerm(Expr term) {
@@ -6426,4 +6610,3 @@ Expr prod(List<Expr> factors) => ProdExpr(factors);
 Expr pow(Expr base, Expr exp) => PowExpr(base, exp);
 Expr ln(Expr arg) => LogExpr.ln(arg);
 Expr log(Expr base, Expr arg) => LogExpr(base, arg);
-

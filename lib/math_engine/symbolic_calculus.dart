@@ -68,10 +68,7 @@ class SymbolicCalculus {
           );
           final Expr? integral = _integrateSymbolic(bodyExpr, varName);
           if (integral != null) {
-            final Expr withConstant = SumExpr([
-              integral,
-              VarExpr('c'),
-            ]).simplify();
+            final withConstant = SumExpr([integral, VarExpr('c')]).simplify();
             return ExactMathEngine._buildExactResultFromExpr(withConstant);
           }
         } catch (_) {
@@ -86,8 +83,6 @@ class SymbolicCalculus {
               upper: [LiteralNode(text: '')],
               body: ExactMathEngine._cloneNodes(node.body),
             ),
-            LiteralNode(text: '+'),
-            LiteralNode(text: 'c'),
           ],
           isExact: true,
         );
@@ -132,6 +127,15 @@ class SymbolicCalculus {
     }
     if (expr is CombExpr) {
       return _dependsOnVar(expr.n, varName) || _dependsOnVar(expr.r, varName);
+    }
+    if (expr is DerivativeExpr) {
+      return _dependsOnVar(expr.body, varName) || expr.variable == varName;
+    }
+    if (expr is IntegralExpr) {
+      return _dependsOnVar(expr.body, varName) ||
+          expr.variable == varName ||
+          (expr.lower != null && _dependsOnVar(expr.lower!, varName)) ||
+          (expr.upper != null && _dependsOnVar(expr.upper!, varName));
     }
     return false;
   }
@@ -183,33 +187,40 @@ class SymbolicCalculus {
     }
     if (simplified is DivExpr) {
       if (!_dependsOnVar(simplified.denominator, varName)) {
-        final Expr? numDeriv =
-            _differentiateSymbolic(simplified.numerator, varName);
+        final Expr? numDeriv = _differentiateSymbolic(
+          simplified.numerator,
+          varName,
+        );
         if (numDeriv == null) return null;
         return DivExpr(numDeriv, simplified.denominator).simplify();
       }
-      final Expr? numDeriv =
-          _differentiateSymbolic(simplified.numerator, varName);
-      final Expr? denDeriv =
-          _differentiateSymbolic(simplified.denominator, varName);
+      final Expr? numDeriv = _differentiateSymbolic(
+        simplified.numerator,
+        varName,
+      );
+      final Expr? denDeriv = _differentiateSymbolic(
+        simplified.denominator,
+        varName,
+      );
       if (numDeriv == null || denDeriv == null) return null;
-      final Expr numerator = SumExpr([
-        ProdExpr([numDeriv, simplified.denominator]),
-        ProdExpr([IntExpr.negOne, simplified.numerator, denDeriv]),
-      ]).simplify();
-      final Expr denominator =
-          PowExpr(simplified.denominator, IntExpr.from(2));
+      final Expr numerator =
+          SumExpr([
+            ProdExpr([numDeriv, simplified.denominator]),
+            ProdExpr([IntExpr.negOne, simplified.numerator, denDeriv]),
+          ]).simplify();
+      final Expr denominator = PowExpr(simplified.denominator, IntExpr.from(2));
       return DivExpr(numerator, denominator).simplify();
     }
     if (simplified is PowExpr) {
       final bool baseDepends = _dependsOnVar(simplified.base, varName);
       final bool expDepends = _dependsOnVar(simplified.exponent, varName);
       if (!expDepends) {
-        final Expr? baseDeriv =
-            _differentiateSymbolic(simplified.base, varName);
+        final Expr? baseDeriv = _differentiateSymbolic(
+          simplified.base,
+          varName,
+        );
         if (baseDeriv == null) return null;
-        final Expr? expMinusOne =
-            _subtractOneFromRational(simplified.exponent);
+        final Expr? expMinusOne = _subtractOneFromRational(simplified.exponent);
         if (expMinusOne == null) return null;
         return ProdExpr([
           simplified.exponent,
@@ -218,8 +229,10 @@ class SymbolicCalculus {
         ]).simplify();
       }
       if (!baseDepends) {
-        final Expr? expDeriv =
-            _differentiateSymbolic(simplified.exponent, varName);
+        final Expr? expDeriv = _differentiateSymbolic(
+          simplified.exponent,
+          varName,
+        );
         if (expDeriv == null) return null;
         final Expr lnBase = LogExpr.ln(simplified.base).simplify();
         return ProdExpr([
@@ -229,10 +242,11 @@ class SymbolicCalculus {
         ]).simplify();
       }
 
-      final Expr? baseDeriv =
-          _differentiateSymbolic(simplified.base, varName);
-      final Expr? expDeriv =
-          _differentiateSymbolic(simplified.exponent, varName);
+      final Expr? baseDeriv = _differentiateSymbolic(simplified.base, varName);
+      final Expr? expDeriv = _differentiateSymbolic(
+        simplified.exponent,
+        varName,
+      );
       if (baseDeriv == null || expDeriv == null) return null;
       final Expr term1 =
           ProdExpr([expDeriv, LogExpr.ln(simplified.base)]).simplify();
@@ -254,22 +268,27 @@ class SymbolicCalculus {
       return _differentiateSymbolic(pow, varName);
     }
     if (simplified is LogExpr) {
-      final Expr? argDeriv =
-          _differentiateSymbolic(simplified.argument, varName);
+      final Expr? argDeriv = _differentiateSymbolic(
+        simplified.argument,
+        varName,
+      );
       if (argDeriv == null) return null;
       if (simplified.isNaturalLog) {
         return DivExpr(argDeriv, simplified.argument).simplify();
       }
       if (_dependsOnVar(simplified.base, varName)) return null;
-      final Expr denom = ProdExpr([
-        simplified.argument,
-        LogExpr.ln(simplified.base),
-      ]).simplify();
+      final Expr denom =
+          ProdExpr([
+            simplified.argument,
+            LogExpr.ln(simplified.base),
+          ]).simplify();
       return DivExpr(argDeriv, denom).simplify();
     }
     if (simplified is TrigExpr) {
-      final Expr? argDeriv =
-          _differentiateSymbolic(simplified.argument, varName);
+      final Expr? argDeriv = _differentiateSymbolic(
+        simplified.argument,
+        varName,
+      );
       if (argDeriv == null) return null;
       Expr? outer;
       switch (simplified.func) {
@@ -284,52 +303,56 @@ class SymbolicCalculus {
               ]).simplify();
           break;
         case TrigFunc.tan:
-          outer = DivExpr(
-            IntExpr.one,
-            PowExpr(
-              TrigExpr(TrigFunc.cos, simplified.argument),
-              IntExpr.from(2),
-            ),
-          ).simplify();
+          outer =
+              DivExpr(
+                IntExpr.one,
+                PowExpr(
+                  TrigExpr(TrigFunc.cos, simplified.argument),
+                  IntExpr.from(2),
+                ),
+              ).simplify();
           break;
         case TrigFunc.asin:
-          outer = DivExpr(
-            IntExpr.one,
-            RootExpr(
-              SumExpr([
+          outer =
+              DivExpr(
                 IntExpr.one,
-                ProdExpr([
-                  IntExpr.negOne,
-                  PowExpr(simplified.argument, IntExpr.from(2)),
-                ]),
-              ]).simplify(),
-              IntExpr.from(2),
-            ),
-          ).simplify();
+                RootExpr(
+                  SumExpr([
+                    IntExpr.one,
+                    ProdExpr([
+                      IntExpr.negOne,
+                      PowExpr(simplified.argument, IntExpr.from(2)),
+                    ]),
+                  ]).simplify(),
+                  IntExpr.from(2),
+                ),
+              ).simplify();
           break;
         case TrigFunc.acos:
-          outer = DivExpr(
-            IntExpr.negOne,
-            RootExpr(
-              SumExpr([
-                IntExpr.one,
-                ProdExpr([
-                  IntExpr.negOne,
-                  PowExpr(simplified.argument, IntExpr.from(2)),
-                ]),
-              ]).simplify(),
-              IntExpr.from(2),
-            ),
-          ).simplify();
+          outer =
+              DivExpr(
+                IntExpr.negOne,
+                RootExpr(
+                  SumExpr([
+                    IntExpr.one,
+                    ProdExpr([
+                      IntExpr.negOne,
+                      PowExpr(simplified.argument, IntExpr.from(2)),
+                    ]),
+                  ]).simplify(),
+                  IntExpr.from(2),
+                ),
+              ).simplify();
           break;
         case TrigFunc.atan:
-          outer = DivExpr(
-            IntExpr.one,
-            SumExpr([
-              IntExpr.one,
-              PowExpr(simplified.argument, IntExpr.from(2)),
-            ]).simplify(),
-          ).simplify();
+          outer =
+              DivExpr(
+                IntExpr.one,
+                SumExpr([
+                  IntExpr.one,
+                  PowExpr(simplified.argument, IntExpr.from(2)),
+                ]).simplify(),
+              ).simplify();
           break;
         case TrigFunc.sinh:
           outer = TrigExpr(TrigFunc.cosh, simplified.argument);
@@ -338,25 +361,27 @@ class SymbolicCalculus {
           outer = TrigExpr(TrigFunc.sinh, simplified.argument);
           break;
         case TrigFunc.tanh:
-          outer = DivExpr(
-            IntExpr.one,
-            PowExpr(
-              TrigExpr(TrigFunc.cosh, simplified.argument),
-              IntExpr.from(2),
-            ),
-          ).simplify();
+          outer =
+              DivExpr(
+                IntExpr.one,
+                PowExpr(
+                  TrigExpr(TrigFunc.cosh, simplified.argument),
+                  IntExpr.from(2),
+                ),
+              ).simplify();
           break;
         case TrigFunc.asinh:
-          outer = DivExpr(
-            IntExpr.one,
-            RootExpr(
-              SumExpr([
+          outer =
+              DivExpr(
                 IntExpr.one,
-                PowExpr(simplified.argument, IntExpr.from(2)),
-              ]).simplify(),
-              IntExpr.from(2),
-            ),
-          ).simplify();
+                RootExpr(
+                  SumExpr([
+                    IntExpr.one,
+                    PowExpr(simplified.argument, IntExpr.from(2)),
+                  ]).simplify(),
+                  IntExpr.from(2),
+                ),
+              ).simplify();
           break;
         case TrigFunc.acosh:
         case TrigFunc.atanh:
@@ -367,8 +392,10 @@ class SymbolicCalculus {
       return ProdExpr([outer, argDeriv]).simplify();
     }
     if (simplified is AbsExpr) {
-      final Expr? argDeriv =
-          _differentiateSymbolic(simplified.operand, varName);
+      final Expr? argDeriv = _differentiateSymbolic(
+        simplified.operand,
+        varName,
+      );
       if (argDeriv == null) return null;
       return ProdExpr([
         DivExpr(simplified.operand, AbsExpr(simplified.operand)),
@@ -438,8 +465,11 @@ class SymbolicCalculus {
 
       final Expr? rationalCoeff = _combineRationalFactors(constants);
       if (rationalCoeff != null) {
-        final Expr? monomial =
-            _integrateMonomialWithCoeff(combinedVar, varName, rationalCoeff);
+        final Expr? monomial = _integrateMonomialWithCoeff(
+          combinedVar,
+          varName,
+          rationalCoeff,
+        );
         if (monomial != null) return monomial;
       }
 
@@ -451,26 +481,33 @@ class SymbolicCalculus {
 
     if (simplified is DivExpr) {
       if (!_dependsOnVar(simplified.denominator, varName)) {
-        final Expr? integrated =
-            _integrateSymbolic(simplified.numerator, varName);
+        final Expr? integrated = _integrateSymbolic(
+          simplified.numerator,
+          varName,
+        );
         if (integrated == null) return null;
         return DivExpr(integrated, simplified.denominator).simplify();
       }
 
-      final _LinearForm? linearDen =
-          _extractLinear(simplified.denominator, varName);
+      final _LinearForm? linearDen = _extractLinear(
+        simplified.denominator,
+        varName,
+      );
       if (linearDen != null &&
           !_dependsOnVar(linearDen.coefficient, varName) &&
           !_dependsOnVar(simplified.numerator, varName)) {
-        final Expr scaled = ProdExpr([
-          simplified.numerator,
-          LogExpr.ln(AbsExpr(simplified.denominator)),
-        ]).simplify();
+        final Expr scaled =
+            ProdExpr([
+              simplified.numerator,
+              LogExpr.ln(AbsExpr(simplified.denominator)),
+            ]).simplify();
         return DivExpr(scaled, linearDen.coefficient).simplify();
       }
 
-      final Expr? denDeriv =
-          _differentiateSymbolic(simplified.denominator, varName);
+      final Expr? denDeriv = _differentiateSymbolic(
+        simplified.denominator,
+        varName,
+      );
       if (denDeriv != null) {
         final Expr? scalar = _extractConstantMultiple(
           simplified.numerator,
@@ -489,14 +526,15 @@ class SymbolicCalculus {
 
     if (simplified is PowExpr) {
       if (!_dependsOnVar(simplified.exponent, varName)) {
-        final Expr? exponentPlusOne =
-            _addOneToRational(simplified.exponent);
+        final Expr? exponentPlusOne = _addOneToRational(simplified.exponent);
         if (exponentPlusOne == null) {
           return null;
         }
 
-        final _LinearForm? linearBase =
-            _extractLinear(simplified.base, varName);
+        final _LinearForm? linearBase = _extractLinear(
+          simplified.base,
+          varName,
+        );
         if (linearBase != null &&
             !_dependsOnVar(linearBase.coefficient, varName)) {
           if (_isNegativeOne(simplified.exponent)) {
@@ -519,14 +557,15 @@ class SymbolicCalculus {
       }
 
       if (!_dependsOnVar(simplified.base, varName)) {
-        final _LinearForm? linearExp =
-            _extractLinear(simplified.exponent, varName);
+        final _LinearForm? linearExp = _extractLinear(
+          simplified.exponent,
+          varName,
+        );
         if (linearExp != null &&
             !_dependsOnVar(linearExp.coefficient, varName)) {
           Expr denom = linearExp.coefficient;
           if (!_isBaseE(simplified.base)) {
-            denom =
-                ProdExpr([LogExpr.ln(simplified.base), denom]).simplify();
+            denom = ProdExpr([LogExpr.ln(simplified.base), denom]).simplify();
           }
           return DivExpr(
             PowExpr(simplified.base, simplified.exponent),
@@ -545,10 +584,11 @@ class SymbolicCalculus {
     }
 
     if (simplified is TrigExpr) {
-      final _LinearForm? linearArg =
-          _extractLinear(simplified.argument, varName);
-      if (linearArg == null ||
-          _dependsOnVar(linearArg.coefficient, varName)) {
+      final _LinearForm? linearArg = _extractLinear(
+        simplified.argument,
+        varName,
+      );
+      if (linearArg == null || _dependsOnVar(linearArg.coefficient, varName)) {
         return null;
       }
       final Expr denom = linearArg.coefficient;
@@ -628,8 +668,7 @@ class SymbolicCalculus {
           LogExpr.ln(AbsExpr(VarExpr(varName))),
         ]).simplify();
       }
-      final Expr? exponentPlusOne =
-          _addOneToRational(simplified.exponent);
+      final Expr? exponentPlusOne = _addOneToRational(simplified.exponent);
       if (exponentPlusOne == null || exponentPlusOne.isZero) return null;
       final Expr? newCoeff = _divideRational(coeff, exponentPlusOne);
       if (newCoeff == null) return null;
@@ -762,8 +801,7 @@ class SymbolicCalculus {
           constants.add(factor);
         }
       }
-      if (variableFactor is VarExpr &&
-          variableFactor.name == varName) {
+      if (variableFactor is VarExpr && variableFactor.name == varName) {
         if (constants.isEmpty) return IntExpr.one;
         return ProdExpr(constants).simplify();
       }

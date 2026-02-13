@@ -10,14 +10,16 @@ class TextureGenerator {
   static final Map<int, ui.Image?> _cache = {};
   static final Map<int, Completer<ui.Image?>> _pendingRequests = {};
 
-  static const double intensity = 0.15;
-  static const double scale = 1.65;
-  static const double softness = 1.0;
-
   /// Get or generate a texture for the given color
-  static Future<ui.Image?> getTexture(Color baseColor, Size size) async {
-    final cacheKey = baseColor.value;
-    
+  static Future<ui.Image?> getTexture(
+    Color baseColor,
+    Size size, {
+    double intensity = 0.15,
+    double scale = 1.65,
+    double softness = 1.0,
+  }) async {
+    final cacheKey = baseColor.toARGB32();
+
     // Return cached image if available
     if (_cache.containsKey(cacheKey)) {
       return _cache[cacheKey];
@@ -33,7 +35,13 @@ class TextureGenerator {
     _pendingRequests[cacheKey] = completer;
 
     try {
-      final image = await _generateTexture(baseColor, size);
+      final image = await _generateTexture(
+        baseColor,
+        size,
+        intensity: intensity,
+        scale: scale,
+        softness: softness,
+      );
       _cache[cacheKey] = image;
       completer.complete(image);
     } catch (e) {
@@ -54,16 +62,32 @@ class TextureGenerator {
     _pendingRequests.clear();
   }
 
-  static Future<ui.Image?> _generateTexture(Color baseColor, Size size) async {
+  static Future<ui.Image?> _generateTexture(
+    Color baseColor,
+    Size size, {
+    required double intensity,
+    required double scale,
+    required double softness,
+  }) async {
     final genScale = 0.3 + (softness * 0.2);
     final width = (size.width * genScale).toInt().clamp(50, 600);
     final height = (size.height * genScale).toInt().clamp(50, 600);
 
-    final pixels = _generateNoisePixels(baseColor, width, height);
+    final pixels = _generateNoisePixels(
+      baseColor,
+      width,
+      height,
+      intensity: intensity,
+      scale: scale,
+    );
     return _createImage(pixels, width, height);
   }
 
-  static Future<ui.Image> _createImage(Uint8List pixels, int width, int height) {
+  static Future<ui.Image> _createImage(
+    Uint8List pixels,
+    int width,
+    int height,
+  ) {
     final completer = Completer<ui.Image>();
 
     ui.decodeImageFromPixels(
@@ -77,7 +101,13 @@ class TextureGenerator {
     return completer.future;
   }
 
-  static Uint8List _generateNoisePixels(Color baseColor, int width, int height) {
+  static Uint8List _generateNoisePixels(
+    Color baseColor,
+    int width,
+    int height, {
+    required double intensity,
+    required double scale,
+  }) {
     final pixels = Uint8List(width * height * 4);
     final random = math.Random(42);
 
@@ -135,9 +165,9 @@ class TextureGenerator {
         final noise = layeredNoise(x.toDouble(), y.toDouble());
         final variation = (noise - 0.5) * 2 * intensity;
 
-        final r = ((baseColor.red * (1 + variation))).round().clamp(0, 255);
-        final g = ((baseColor.green * (1 + variation))).round().clamp(0, 255);
-        final b = ((baseColor.blue * (1 + variation))).round().clamp(0, 255);
+        final r = ((baseColor.r * 255 * (1 + variation))).round().clamp(0, 255);
+        final g = ((baseColor.g * 255 * (1 + variation))).round().clamp(0, 255);
+        final b = ((baseColor.b * 255 * (1 + variation))).round().clamp(0, 255);
 
         final idx = (y * width + x) * 4;
         pixels[idx] = r;

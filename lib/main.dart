@@ -13,6 +13,7 @@ import 'walkthrough/walkthrough_service.dart';
 import 'walkthrough/walkthrough_overlay.dart';
 import 'utils/app_state.dart';
 import 'math_renderer/expression_selection.dart';
+import 'utils/compute_service.dart';
 import 'math_renderer/math_editor_controller.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'math_engine/math_engine_exact.dart';
@@ -147,6 +148,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _listenerAdded = false;
   Timer? _deleteTimer;
 
+  // Compute service for background isolate computation
+  late ComputeService _computeService;
+
   // Walkthrough
   late WalkthroughService _walkthroughService;
   bool _walkthroughInitialized = false;
@@ -222,6 +226,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
 
+    // Initialize compute service
+    _computeService = ComputeService(
+      debounceDuration: const Duration(milliseconds: 150),
+      onResult: _onComputeResult,
+    );
+
     // Initialize walkthrough service
     _walkthroughService = WalkthroughService();
     _walkthroughService.addListener(_onWalkthroughChanged);
@@ -251,7 +261,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     mathEditorControllers[index] = MathEditorController();
 
     mathEditorControllers[index]!.onResultChanged = () {
-      _cascadeUpdates(index);
+      _requestComputation(index);
     };
 
     mathEditorControllers[index]!.addListener(() {
@@ -272,150 +282,193 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     exactResultExprs[index] = null;
   }
 
-  void _updateExactResult(int index) {
+  /// Request computation for a cell via the background ComputeService.
+  /// This debounces the request and runs it in a background isolate.
+  void _requestComputation(int index) {
     final controller = mathEditorControllers[index];
     if (controller == null) return;
 
-    try {
-      // Collect valid previous exact results for substitution
-      Map<int, Expr> ansExprs = {};
-      List<int> sortedKeys = mathEditorControllers.keys.toList()..sort();
-      for (int key in sortedKeys) {
-        if (key < index) {
-          Expr? prevExpr = exactResultExprs[key];
-          if (prevExpr != null) {
-            ansExprs[key] = prevExpr;
-          }
+    // Collect ans expressions for exact engine
+    Map<int, Expr> ansExprs = {};
+    List<int> sortedKeys = mathEditorControllers.keys.toList()..sort();
+    for (int key in sortedKeys) {
+      if (key < index) {
+        Expr? prevExpr = exactResultExprs[key];
+        if (prevExpr != null) {
+          ansExprs[key] = prevExpr;
         }
       }
+    }
 
-      ExactResult result = ExactMathEngine.evaluate(
-        controller.expression,
-        ansExpressions: ansExprs,
-      );
+    // Collect ans values for decimal engine
+    Map<int, String> ansValues = _getAnsValues();
 
-      if (result.isEmpty || result.hasError) {
-        exactResultNodes[index] = null;
-        exactResultExprs[index] = null;
-      } else if (result.mathNodes != null && result.mathNodes!.isNotEmpty) {
-        exactResultNodes[index] = result.mathNodes;
-        exactResultExprs[index] = result.expr;
+    _computeService.computeForCell(
+      cellIndex: index,
+      expression: controller.expression,
+      ansValues: ansValues,
+      ansExpressions: ansExprs,
+    );
+  }
+
+  /// Callback invoked when a background computation completes.
+  void _onComputeResult(CellComputeResult result) {
+    if (!mounted) return;
+
+    final index = result.cellIndex;
+    final controller = mathEditorControllers[index];
+    if (controller == null) return;
+
+    final oldDecimal = controller.result;
+    final oldExactExpr = exactResultExprs[index];
+
+    final newDecimal = result.decimalResult;
+    final newExactExpr = result.exactExpr;
+
+    // Check if result effectively changed
+    bool decimalChanged = oldDecimal != newDecimal;
+    bool exactChanged = false;
+
+    if (oldExactExpr == null && newExactExpr != null) {
+      exactChanged = true;
+    } else if (oldExactExpr != null && newExactExpr == null) {
+      exactChanged = true;
+    } else if (oldExactExpr != null && newExactExpr != null) {
+      exactChanged = !oldExactExpr.structurallyEquals(newExactExpr);
+    }
+
+    bool hasChanged = decimalChanged || exactChanged;
+    bool isActiveCell = index == activeIndex;
+
+    // Always update if active cell (user typing) OR if result changed
+    if (isActiveCell || hasChanged) {
+      // Update decimal result
+      controller.result = newDecimal;
+      controller.updateAnswer(textDisplayControllers[index]);
+
+      // Update exact result
+      if (result.exactNodes != null && result.exactNodes!.isNotEmpty) {
+        exactResultNodes[index] = result.exactNodes;
+        exactResultExprs[index] = result.exactExpr;
       } else {
         exactResultNodes[index] = null;
         exactResultExprs[index] = null;
       }
-    } catch (e) {
-      exactResultNodes[index] = null;
-      exactResultExprs[index] = null;
-    }
 
-    // Notify that exact result changed
-    final notifier = exactResultVersionNotifiers[index];
-    if (notifier != null) {
-      notifier.value = notifier.value + 1;
+      // Notify that exact result changed (triggers animation)
+      final notifier = exactResultVersionNotifiers[index];
+      if (notifier != null) {
+        notifier.value = notifier.value + 1;
+      }
+
+      // Only cascade if the result actually changed
+      if (hasChanged) {
+        _cascadeToDependents(index);
+      }
+
+      setState(() {});
     }
   }
 
+  Widget _buildExpressionDisplay(
+    int index,
+    AppColors colors, {
+    double? maxPlotHeight,
+    bool forcePlotExpanded = false,
+  }) {
+    final mathEditorController = mathEditorControllers[index];
+    final mathEditorKey = mathEditorKeys[index];
+    final scrollController = scrollControllers[index];
+    final bool isFocused = (activeIndex == index);
+    final bool shouldAddKeys = index == activeIndex;
 
-Widget _buildExpressionDisplay(
-  int index,
-  AppColors colors, {
-  double? maxPlotHeight,
-  bool forcePlotExpanded = false,
-}) {
-  final mathEditorController = mathEditorControllers[index];
-  final mathEditorKey = mathEditorKeys[index];
-  final scrollController = scrollControllers[index];
-  final bool isFocused = (activeIndex == index);
-  final bool shouldAddKeys = index == activeIndex;
-
-  return LayoutBuilder(
-    builder: (context, constraints) {
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: <Widget>[
-          TexturedContainer(
-            baseColor: colors.containerBackground,
-            decoration: BoxDecoration(
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  spreadRadius: 2,
-                  blurRadius: 7,
-                  offset: const Offset(0, 0),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: <Widget>[
-                // Expression input area - transparent background
-                SizedBox(
-                  key: shouldAddKeys ? _expressionKey : null,
-                  width: double.infinity,
-                  // No color - let texture show through
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: AnimatedOpacity(
-                      curve: Curves.easeIn,
-                      duration: const Duration(milliseconds: 500),
-                      opacity: isVisible ? 1.0 : 0.0,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          return Center(
-                            child: SingleChildScrollView(
-                              controller: scrollController,
-                              scrollDirection: Axis.horizontal,
-                              reverse: true,
-                              child: MathEditorInline(
-                                key: mathEditorKey,
-                                controller: mathEditorController!,
-                                showCursor: isFocused,
-                                minWidth: constraints.maxWidth,
-                                onFocus: () {
-                                  if (activeIndex != index) {
-                                    setState(() {
-                                      activeIndex = index;
-                                    });
-                                  }
-                                },
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: <Widget>[
+            TexturedContainer(
+              baseColor: colors.containerBackground,
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    spreadRadius: 2,
+                    blurRadius: 7,
+                    offset: const Offset(0, 0),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  // Expression input area - transparent background
+                  SizedBox(
+                    key: shouldAddKeys ? _expressionKey : null,
+                    width: double.infinity,
+                    // No color - let texture show through
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: AnimatedOpacity(
+                        curve: Curves.easeIn,
+                        duration: const Duration(milliseconds: 500),
+                        opacity: isVisible ? 1.0 : 0.0,
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return Center(
+                              child: SingleChildScrollView(
+                                controller: scrollController,
+                                scrollDirection: Axis.horizontal,
+                                reverse: true,
+                                child: MathEditorInline(
+                                  key: mathEditorKey,
+                                  controller: mathEditorController!,
+                                  showCursor: isFocused,
+                                  minWidth: constraints.maxWidth,
+                                  onFocus: () {
+                                    if (activeIndex != index) {
+                                      setState(() {
+                                        activeIndex = index;
+                                      });
+                                    }
+                                  },
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                // Result area - transparent background
-                _ResultPageViewWidget(
-                  key: ValueKey('result_pageview_${index}_$_globalClearId'),
-                  index: index,
-                  colors: colors,
-                  shouldAddKeys: shouldAddKeys,
-                  isVisible: isVisible,
-                  exactResultNodes: exactResultNodes,
-                  currentResultPage: currentResultPage,
-                  currentResultPageNotifiers: currentResultPageNotifiers,
-                  resultPageProgressNotifiers: resultPageProgressNotifiers,
-                  exactResultVersionNotifiers: exactResultVersionNotifiers,
-                  resultPageControllers: resultPageControllers,
-                  textDisplayControllers: textDisplayControllers,
-                  ansIndexKey: _ansIndexKey,
-                  resultKey: _resultKey,
-                  calculateDecimalResultHeight: _calculateDecimalResultHeight,
-                  calculateExactResultHeight: _calculateExactResultHeight,
-                  useTransparentBackground: true, // ADD THIS
-                ),
-              ],
+                  // Result area - transparent background
+                  _ResultPageViewWidget(
+                    key: ValueKey('result_pageview_${index}_$_globalClearId'),
+                    index: index,
+                    colors: colors,
+                    shouldAddKeys: shouldAddKeys,
+                    isVisible: isVisible,
+                    exactResultNodes: exactResultNodes,
+                    currentResultPage: currentResultPage,
+                    currentResultPageNotifiers: currentResultPageNotifiers,
+                    resultPageProgressNotifiers: resultPageProgressNotifiers,
+                    exactResultVersionNotifiers: exactResultVersionNotifiers,
+                    resultPageControllers: resultPageControllers,
+                    textDisplayControllers: textDisplayControllers,
+                    ansIndexKey: _ansIndexKey,
+                    resultKey: _resultKey,
+                    calculateDecimalResultHeight: _calculateDecimalResultHeight,
+                    calculateExactResultHeight: _calculateExactResultHeight,
+                    useTransparentBackground: true, // ADD THIS
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      );
-    },
-  );
-}
+          ],
+        );
+      },
+    );
+  }
 
   double _calculateDecimalResultHeight(int index) {
     final resController = textDisplayControllers[index];
@@ -431,8 +484,8 @@ Widget _buildExpressionDisplay(
             decimalNodes,
             FONTSIZE,
           );
-          double totalHeight = measuredHeight + 16 + 10;
-          return totalHeight.clamp(80.0, 300.0);
+          double totalHeight = measuredHeight + 20 + 15;
+          return totalHeight.clamp(80.0, 500.0);
         }
       }
       return 80.0;
@@ -444,8 +497,8 @@ Widget _buildExpressionDisplay(
       FONTSIZE,
     );
 
-    double totalHeight = measuredHeight + 16 + 10;
-    return totalHeight.clamp(80.0, 300.0);
+    double totalHeight = measuredHeight + 20 + 15;
+    return totalHeight.clamp(80.0, 500.0);
   }
 
   double _calculateExactResultHeight(int index) {
@@ -462,8 +515,8 @@ Widget _buildExpressionDisplay(
     );
 
     // Add identical padding and clamping as Decimal
-    double totalHeight = measuredHeight + 16 + 10;
-    return totalHeight.clamp(80.0, 300.0);
+    double totalHeight = measuredHeight + 20 + 15;
+    return totalHeight.clamp(80.0, 500.0);
   }
 
   int _estimateNodesHeight(List<MathNode> nodes) {
@@ -502,6 +555,7 @@ Widget _buildExpressionDisplay(
   @override
   void dispose() {
     _deleteTimer?.cancel();
+    _computeService.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _saveCells();
 
@@ -595,7 +649,7 @@ Widget _buildExpressionDisplay(
     // Update exact results for all cells after loading
     WidgetsBinding.instance.addPostFrameCallback((_) {
       for (int i = 0; i < count; i++) {
-        _updateExactResult(i);
+        _requestComputation(i);
       }
     });
   }
@@ -620,56 +674,57 @@ Widget _buildExpressionDisplay(
     await CellPersistence.saveActiveIndex(activeIndex);
   }
 
-// In _HomePageState
-void _onSettingsChanged() {
-  
-  // Clear texture cache when theme changes
-  TextureGenerator.clearCache();
-  
-  updateMathEditor();
+  // In _HomePageState
+  void _onSettingsChanged() {
+    // Clear texture cache when theme changes
+    TextureGenerator.clearCache();
 
-  for (final controller in mathEditorControllers.values) {
-    controller.refreshDisplay();
-  }
-  
-  // Force rebuild to reload textures
-  setState(() {});
-}
+    updateMathEditor();
 
-  void _cascadeUpdates(int changedIndex) {
-    if (_isUpdating) return;
-    _isUpdating = true;
-
-    try {
-      mathEditorControllers[changedIndex]?.updateAnswer(
-        textDisplayControllers[changedIndex],
-      );
-
-      // NEW: Update exact result
-      _updateExactResult(changedIndex);
-
-      List<int> keys = mathEditorControllers.keys.toList()..sort();
-
-      for (int key in keys) {
-        if (key > changedIndex) {
-          String expr = mathEditorControllers[key]?.expr ?? '';
-
-          if (expr.contains('ans$changedIndex') || expr.contains('ans')) {
-            Map<int, String> ansValues = _getAnsValues();
-            mathEditorControllers[key]?.onCalculate(ansValues: ansValues);
-            mathEditorControllers[key]?.updateAnswer(
-              textDisplayControllers[key],
-            );
-            // NEW: Update exact result for cascaded cells
-            _updateExactResult(key);
-          }
-        }
-      }
-    } finally {
-      _isUpdating = false;
+    for (final controller in mathEditorControllers.values) {
+      controller.refreshDisplay();
     }
 
+    // Force rebuild to reload textures
     setState(() {});
+  }
+
+  /// Cascade computation to cells that depend on the changed cell.
+  /// Uses immediate (non-debounced) computation since the trigger
+  /// has already been debounced.
+  void _cascadeToDependents(int changedIndex) {
+    List<int> keys = mathEditorControllers.keys.toList()..sort();
+
+    for (int key in keys) {
+      if (key > changedIndex) {
+        String expr = mathEditorControllers[key]?.expr ?? '';
+
+        if (expr.contains('ans$changedIndex') || expr.contains('ans')) {
+          final controller = mathEditorControllers[key];
+          if (controller == null) continue;
+
+          // Collect ans expressions for exact engine
+          Map<int, Expr> ansExprs = {};
+          for (int prevKey in keys) {
+            if (prevKey < key) {
+              Expr? prevExpr = exactResultExprs[prevKey];
+              if (prevExpr != null) {
+                ansExprs[prevKey] = prevExpr;
+              }
+            }
+          }
+
+          Map<int, String> ansValues = _getAnsValues();
+
+          _computeService.computeForCellImmediate(
+            cellIndex: key,
+            expression: controller.expression,
+            ansValues: ansValues,
+            ansExpressions: ansExprs,
+          );
+        }
+      }
+    }
   }
 
   void focusManager(int index) {
@@ -719,79 +774,91 @@ void _onSettingsChanged() {
     });
   }
 
-void _addDisplay({int? insertAt}) {
-  // Default: insert after the active cell
-  int insertIndex = insertAt ?? (activeIndex + 1);
-  
-  // Clamp to valid range
-  insertIndex = insertIndex.clamp(0, count);
-  
-  if (insertIndex < count) {
-    // Need to shift existing controllers to make room
-    _shiftControllersUp(insertIndex);
-  }
-  
-  _createControllers(insertIndex);
-  
-  setState(() {
-    count += 1;
-    activeIndex = insertIndex;
-  });
-  
-  // Recalculate results for cells after the inserted one (ans references may have shifted)
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    for (int i = insertIndex + 1; i < count; i++) {
-      _updateExactResult(i);
-    }
-  });
-}
+  void _addDisplay({int? insertAt}) {
+    // Default: insert after the active cell
+    int insertIndex = insertAt ?? (activeIndex + 1);
 
-void _shiftControllersUp(int fromIndex) {
-  // Work backwards from the end to avoid overwriting
-  for (int i = count - 1; i >= fromIndex; i--) {
-    int newIndex = i + 1;
-    
-    // Move all controller references
-    mathEditorControllers[newIndex] = mathEditorControllers[i]!;
-    textDisplayControllers[newIndex] = textDisplayControllers[i]!;
-    focusNodes[newIndex] = focusNodes[i]!;
-    scrollControllers[newIndex] = scrollControllers[i]!;
-    mathEditorKeys[newIndex] = mathEditorKeys[i]!;
-    exactResultNodes[newIndex] = exactResultNodes[i];
-    exactResultExprs[newIndex] = exactResultExprs[i];
-    currentResultPage[newIndex] = currentResultPage[i] ?? 0;
-    currentResultPageNotifiers[newIndex] = currentResultPageNotifiers[i]!;
-    resultPageProgressNotifiers[newIndex] = resultPageProgressNotifiers[i]!;
-    exactResultVersionNotifiers[newIndex] = exactResultVersionNotifiers[i]!;
-    
-    // Move resultPageControllers if it exists
-    if (resultPageControllers.containsKey(i)) {
-      resultPageControllers[newIndex] = resultPageControllers[i]!;
+    // Clamp to valid range
+    insertIndex = insertIndex.clamp(0, count);
+
+    if (insertIndex < count) {
+      // Need to shift existing controllers to make room
+      _shiftControllersUp(insertIndex);
     }
-    
-    // Move plot expanded state
-    if (_plotExpanded.containsKey(i)) {
-      _plotExpanded[newIndex] = _plotExpanded[i]!;
-    }
+
+    _createControllers(insertIndex);
+
+    setState(() {
+      count += 1;
+      activeIndex = insertIndex;
+    });
+
+    // Recalculate results for cells after the inserted one (ans references may have shifted)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (int i = insertIndex + 1; i < count; i++) {
+        _requestComputation(i);
+      }
+    });
   }
-  
-  // Clear the old references at fromIndex (will be replaced by _createControllers)
-  mathEditorControllers.remove(fromIndex);
-  textDisplayControllers.remove(fromIndex);
-  focusNodes.remove(fromIndex);
-  scrollControllers.remove(fromIndex);
-  mathEditorKeys.remove(fromIndex);
-  resultPageControllers.remove(fromIndex);
-  exactResultNodes.remove(fromIndex);
-  exactResultExprs.remove(fromIndex);
-  currentResultPage.remove(fromIndex);
-  currentResultPageNotifiers.remove(fromIndex);
-  resultPageProgressNotifiers.remove(fromIndex);
-  exactResultVersionNotifiers.remove(fromIndex);
-  _plotExpanded.remove(fromIndex);
-}
+
+  void _shiftControllersUp(int fromIndex) {
+    // NEW: Update ANS indices in all existing controllers
+    for (final controller in mathEditorControllers.values) {
+      controller.updateAnsReferences(fromIndex, 1);
+    }
+
+    // Work backwards from the end to avoid overwriting
+    for (int i = count - 1; i >= fromIndex; i--) {
+      int newIndex = i + 1;
+
+      // Move all controller references
+      mathEditorControllers[newIndex] = mathEditorControllers[i]!;
+      textDisplayControllers[newIndex] = textDisplayControllers[i]!;
+      focusNodes[newIndex] = focusNodes[i]!;
+      scrollControllers[newIndex] = scrollControllers[i]!;
+      mathEditorKeys[newIndex] = mathEditorKeys[i]!;
+      exactResultNodes[newIndex] = exactResultNodes[i];
+      exactResultExprs[newIndex] = exactResultExprs[i];
+      currentResultPage[newIndex] = currentResultPage[i] ?? 0;
+      currentResultPageNotifiers[newIndex] = currentResultPageNotifiers[i]!;
+      resultPageProgressNotifiers[newIndex] = resultPageProgressNotifiers[i]!;
+      exactResultVersionNotifiers[newIndex] = exactResultVersionNotifiers[i]!;
+
+      // Move resultPageControllers if it exists
+      if (resultPageControllers.containsKey(i)) {
+        resultPageControllers[newIndex] = resultPageControllers[i]!;
+      }
+
+      // Move plot expanded state
+      if (_plotExpanded.containsKey(i)) {
+        _plotExpanded[newIndex] = _plotExpanded[i]!;
+      }
+    }
+
+    // Clear the old references at fromIndex (will be replaced by _createControllers)
+    mathEditorControllers.remove(fromIndex);
+    textDisplayControllers.remove(fromIndex);
+    focusNodes.remove(fromIndex);
+    scrollControllers.remove(fromIndex);
+    mathEditorKeys.remove(fromIndex);
+    resultPageControllers.remove(fromIndex);
+    exactResultNodes.remove(fromIndex);
+    exactResultExprs.remove(fromIndex);
+    currentResultPage.remove(fromIndex);
+    currentResultPageNotifiers.remove(fromIndex);
+    resultPageProgressNotifiers.remove(fromIndex);
+    exactResultVersionNotifiers.remove(fromIndex);
+    _plotExpanded.remove(fromIndex);
+  }
+
   void _removeDisplay(int indexToRemove) {
     if (count <= 1) return;
+
+    // NEW: Update ANS indices in all remaining controllers
+    // Any reference to a cell AFTER the removed one must be decremented
+    for (final controller in mathEditorControllers.values) {
+      controller.updateAnsReferences(indexToRemove + 1, -1);
+    }
 
     mathEditorControllers[indexToRemove]?.dispose();
     mathEditorControllers.remove(indexToRemove);
@@ -1215,18 +1282,13 @@ void _shiftControllersUp(int fromIndex) {
       List<int> keys = mathEditorControllers.keys.toList()..sort();
 
       for (int key in keys) {
-        Map<int, String> ansValues = _getAnsValues();
-        mathEditorControllers[key]?.onCalculate(ansValues: ansValues);
-        mathEditorControllers[key]?.updateAnswer(textDisplayControllers[key]);
-
-        // NEW: Update exact result
-        _updateExactResult(key);
+        // Trigger the async compute pipeline for each cell
+        _requestComputation(key);
       }
     } finally {
       _isUpdating = false;
     }
 
-    setState(() {});
     _saveCells();
   }
 
@@ -1275,26 +1337,26 @@ void _shiftControllersUp(int fromIndex) {
     String cleaned = expressions;
 
     // List of function names and keywords to remove (order matters - longer first)
-      const functionsToRemove = [
-        'sqrt',
-        'sin',
-        'cos',
-        'tan',
-        'asin',
-        'acos',
-        'atan',
-        'log',
-        'ln',
-        'abs',
-        'perm',
-        'comb',
-        'sum',
-        'prod',
-        'diff',
-        'int',
-        'ans',
-        'exp',
-      ];
+    const functionsToRemove = [
+      'sqrt',
+      'sin',
+      'cos',
+      'tan',
+      'asin',
+      'acos',
+      'atan',
+      'log',
+      'ln',
+      'abs',
+      'perm',
+      'comb',
+      'sum',
+      'prod',
+      'diff',
+      'int',
+      'ans',
+      'exp',
+    ];
 
     for (String func in functionsToRemove) {
       cleaned = cleaned.replaceAll(func, ' ');
@@ -1470,7 +1532,10 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
 
     double? page = _pageController.page;
     if (page != null) {
-      widget.resultPageProgressNotifiers[widget.index]?.value = page.clamp(0.0, 1.0);
+      widget.resultPageProgressNotifiers[widget.index]?.value = page.clamp(
+        0.0,
+        1.0,
+      );
     }
   }
 
@@ -1482,8 +1547,10 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
   }
 
   // Helper to get background color
-  Color get _backgroundColor => 
-      widget.useTransparentBackground ? Colors.transparent : widget.colors.containerBackground;
+  Color get _backgroundColor =>
+      widget.useTransparentBackground
+          ? Colors.transparent
+          : widget.colors.containerBackground;
 
   @override
   Widget build(BuildContext context) {
@@ -1491,16 +1558,22 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
       valueListenable:
           widget.exactResultVersionNotifiers[widget.index] ?? ValueNotifier(0),
       builder: (context, version, _) {
-        double targetDecimalHeight = widget.calculateDecimalResultHeight(widget.index);
-        double targetExactHeight = widget.calculateExactResultHeight(widget.index);
+        double targetDecimalHeight = widget.calculateDecimalResultHeight(
+          widget.index,
+        );
+        double targetExactHeight = widget.calculateExactResultHeight(
+          widget.index,
+        );
 
         return _AnimatedHeightContainer(
           targetDecimalHeight: targetDecimalHeight,
           targetExactHeight: targetExactHeight,
           lastDecimalHeight: _lastDecimalHeight,
           lastExactHeight: _lastExactHeight,
+          resultVersion: version, // Pass version here
           progressNotifier:
-              widget.resultPageProgressNotifiers[widget.index] ?? ValueNotifier(0.0),
+              widget.resultPageProgressNotifiers[widget.index] ??
+              ValueNotifier(0.0),
           onHeightsAnimated: (decimal, exact) {
             _lastDecimalHeight = decimal;
             _lastExactHeight = exact;
@@ -1543,7 +1616,10 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
             child: Align(
               alignment: Alignment.center,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 10,
+                ),
                 child: AnimatedOpacity(
                   curve: Curves.easeIn,
                   duration: const Duration(milliseconds: 500),
@@ -1612,7 +1688,10 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
             child: Align(
               alignment: Alignment.center,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 10,
+                ),
                 child: AnimatedOpacity(
                   curve: Curves.easeIn,
                   duration: const Duration(milliseconds: 500),
@@ -1655,7 +1734,10 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
     return Row(
       children: <Widget>[
         Container(
-          key: (widget.shouldAddKeys && pageIndex == 0) ? widget.ansIndexKey : null,
+          key:
+              (widget.shouldAddKeys && pageIndex == 0)
+                  ? widget.ansIndexKey
+                  : null,
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Text(
             "${widget.index}",
@@ -1677,9 +1759,10 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
               margin: const EdgeInsets.symmetric(horizontal: 2),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _currentPage == 0
-                    ? widget.colors.textSecondary
-                    : widget.colors.textSecondary.withValues(alpha: 0.3),
+                color:
+                    _currentPage == 0
+                        ? widget.colors.textSecondary
+                        : widget.colors.textSecondary.withValues(alpha: 0.3),
               ),
             ),
             Container(
@@ -1688,9 +1771,10 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
               margin: const EdgeInsets.symmetric(horizontal: 2),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _currentPage == 1
-                    ? widget.colors.textSecondary
-                    : widget.colors.textSecondary.withValues(alpha: 0.3),
+                color:
+                    _currentPage == 1
+                        ? widget.colors.textSecondary
+                        : widget.colors.textSecondary.withValues(alpha: 0.3),
               ),
             ),
             const SizedBox(width: 6),
@@ -1698,10 +1782,14 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
               label,
               style: TextStyle(
                 fontSize: 8,
-                color: _currentPage == pageIndex
-                    ? widget.colors.textSecondary
-                    : widget.colors.textSecondary.withValues(alpha: 0.5),
-                fontWeight: _currentPage == pageIndex ? FontWeight.bold : FontWeight.normal,
+                color:
+                    _currentPage == pageIndex
+                        ? widget.colors.textSecondary
+                        : widget.colors.textSecondary.withValues(alpha: 0.5),
+                fontWeight:
+                    _currentPage == pageIndex
+                        ? FontWeight.bold
+                        : FontWeight.normal,
               ),
             ),
           ],
@@ -1726,6 +1814,7 @@ class _AnimatedHeightContainer extends StatefulWidget {
   final double lastExactHeight;
   final ValueNotifier<double> progressNotifier;
   final void Function(double decimal, double exact) onHeightsAnimated;
+  final int resultVersion;
   final Widget child;
 
   const _AnimatedHeightContainer({
@@ -1733,6 +1822,7 @@ class _AnimatedHeightContainer extends StatefulWidget {
     required this.targetExactHeight,
     required this.lastDecimalHeight,
     required this.lastExactHeight,
+    required this.resultVersion,
     required this.progressNotifier,
     required this.onHeightsAnimated,
     required this.child,
@@ -1819,7 +1909,9 @@ class _AnimatedHeightContainerState extends State<_AnimatedHeightContainer>
     bool exactHeightChanged =
         (widget.targetExactHeight - _animatedExactHeight).abs() > 0.5;
 
-    if (decimalHeightChanged || exactHeightChanged) {
+    bool versionChanged = widget.resultVersion != oldWidget.resultVersion;
+
+    if (decimalHeightChanged || exactHeightChanged || versionChanged) {
       _setupAnimations();
       _animationController.forward(from: 0.0);
     }

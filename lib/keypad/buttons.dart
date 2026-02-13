@@ -63,7 +63,7 @@ class MyButton extends StatelessWidget {
           ],
         ),
         child: ClipRRect(
-          // borderRadius: BorderRadius.circular(4),
+          // borderRadius: BorderRadius.circular(effectiveBorderRadius24),
           child: Material(
             color: color,
             child: InkWell(

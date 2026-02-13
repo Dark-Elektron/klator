@@ -2,8 +2,6 @@ import 'selection_manager.dart';
 import 'renderer.dart';
 import 'selection_wrapper.dart';
 import '../math_engine/math_expression_serializer.dart';
-import '../math_engine/math_engine.dart';
-import '../math_engine/math_engine_exact.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'expression_selection.dart';
@@ -736,6 +734,7 @@ class MathEditorController extends ChangeNotifier {
       }
       return value.isNotEmpty;
     }
+
     if (baseText.length > 1 && isAllLetters(baseText)) {
       prefixText += baseText.substring(0, baseText.length - 1);
       baseText = baseText.substring(baseText.length - 1);
@@ -2103,6 +2102,7 @@ class MathEditorController extends ChangeNotifier {
       }
       return value.isNotEmpty;
     }
+
     if (baseText.length > 1 && isAllLetters(baseText)) {
       prefixText += baseText.substring(0, baseText.length - 1);
       baseText = baseText.substring(baseText.length - 1);
@@ -3007,31 +3007,14 @@ class MathEditorController extends ChangeNotifier {
 
   // function to calculate the input operation
   void onCalculate({Map<int, String>? ansValues}) {
-    // Get expression from the math editor
+    // Get expression from the math editor (lightweight serialization only)
     expr = MathExpressionSerializer.serialize(expression);
 
-    // Try exact engine first (better for i, fractions, etc.)
-    final exactResult = ExactMathEngine.evaluate(expression);
+    // NOTE: Heavy computation (ExactMathEngine.evaluate + MathSolverNew.solve)
+    // has been moved to ComputeService which runs in a background isolate.
+    // This method now only serializes and notifies, keeping the UI responsive.
 
-    if (!exactResult.isEmpty && !exactResult.hasError) {
-      // Use exact result if it has imaginary parts OR if the input expression contains 'i'
-      // This ensures 5i*5i = -25 is correctly displayed as a numerical result.
-      if ((exactResult.expr?.hasImaginary ?? false) || expr.contains('i')) {
-        result = exactResult.toNumericalString();
-        onResultChanged?.call();
-        // return;
-      }
-
-      // If it's a simple exact result, we can use it.
-      // But for now, let's fall back to MathSolverNew for regular decimals
-      // to maintain exactly the same behavior as before.
-    }
-
-    // Solve it with decimal engine
-    String decimalResult = MathSolverNew.solve(expr, ansValues: ansValues) ?? '';
-
-    result = decimalResult;
-    // Notify that result changed (for cascading updates)
+    // Notify that expression changed (triggers async compute pipeline)
     onResultChanged?.call();
   }
 
@@ -5994,6 +5977,76 @@ class MathEditorController extends ChangeNotifier {
     _contentBoundsValid = true;
     return _cachedContentBounds;
   }
+
+  /// Updates all AnsNode indices in the expression based on a cell insertion or removal.
+  /// [atIndex] is the index where the change occurred.
+  /// [delta] is typically +1 for insertion and -1 for removal.
+  void updateAnsReferences(int atIndex, int delta) {
+    _updateAnsIndicesRecursive(expression, atIndex, delta);
+    // Serialize to update the 'expr' string used for computation trigger
+    expr = MathExpressionSerializer.serialize(expression);
+    _structureVersion++;
+    notifyListeners();
+  }
+
+  void _updateAnsIndicesRecursive(
+    List<MathNode> nodes,
+    int atIndex,
+    int delta,
+  ) {
+    for (final node in nodes) {
+      if (node is AnsNode) {
+        String idxStr = MathExpressionSerializer.serialize(node.index);
+        int? idx = int.tryParse(idxStr);
+        if (idx != null && idx >= atIndex) {
+          int newIdx = idx + delta;
+          if (newIdx < 0) newIdx = 0;
+          node.index = [LiteralNode(text: newIdx.toString())];
+        }
+      }
+
+      if (node is FractionNode) {
+        _updateAnsIndicesRecursive(node.numerator, atIndex, delta);
+        _updateAnsIndicesRecursive(node.denominator, atIndex, delta);
+      } else if (node is ExponentNode) {
+        _updateAnsIndicesRecursive(node.base, atIndex, delta);
+        _updateAnsIndicesRecursive(node.power, atIndex, delta);
+      } else if (node is ParenthesisNode) {
+        _updateAnsIndicesRecursive(node.content, atIndex, delta);
+      } else if (node is TrigNode) {
+        _updateAnsIndicesRecursive(node.argument, atIndex, delta);
+      } else if (node is RootNode) {
+        _updateAnsIndicesRecursive(node.index, atIndex, delta);
+        _updateAnsIndicesRecursive(node.radicand, atIndex, delta);
+      } else if (node is LogNode) {
+        _updateAnsIndicesRecursive(node.base, atIndex, delta);
+        _updateAnsIndicesRecursive(node.argument, atIndex, delta);
+      } else if (node is PermutationNode) {
+        _updateAnsIndicesRecursive(node.n, atIndex, delta);
+        _updateAnsIndicesRecursive(node.r, atIndex, delta);
+      } else if (node is CombinationNode) {
+        _updateAnsIndicesRecursive(node.n, atIndex, delta);
+        _updateAnsIndicesRecursive(node.r, atIndex, delta);
+      } else if (node is SummationNode) {
+        _updateAnsIndicesRecursive(node.lower, atIndex, delta);
+        _updateAnsIndicesRecursive(node.upper, atIndex, delta);
+        _updateAnsIndicesRecursive(node.body, atIndex, delta);
+      } else if (node is ProductNode) {
+        _updateAnsIndicesRecursive(node.lower, atIndex, delta);
+        _updateAnsIndicesRecursive(node.upper, atIndex, delta);
+        _updateAnsIndicesRecursive(node.body, atIndex, delta);
+      } else if (node is IntegralNode) {
+        _updateAnsIndicesRecursive(node.lower, atIndex, delta);
+        _updateAnsIndicesRecursive(node.upper, atIndex, delta);
+        _updateAnsIndicesRecursive(node.body, atIndex, delta);
+      } else if (node is DerivativeNode) {
+        _updateAnsIndicesRecursive(node.at, atIndex, delta);
+        _updateAnsIndicesRecursive(node.body, atIndex, delta);
+      } else if (node is ComplexNode) {
+        _updateAnsIndicesRecursive(node.content, atIndex, delta);
+      }
+    }
+  }
 }
 
 class _ParentListInfo {
@@ -6057,5 +6110,3 @@ class CursorPaintNotifier extends ChangeNotifier {
     onNeedsPaint?.call();
   }
 }
-
-

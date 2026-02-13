@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import '../utils/texture_generator.dart';
+import '../utils/app_colors.dart';
 
 class TexturedContainer extends StatefulWidget {
   final Color baseColor;
@@ -36,18 +37,21 @@ class _TexturedContainerState extends State<TexturedContainer> {
   @override
   void initState() {
     super.initState();
-    debugPrint('🖼️ TexturedContainer initState - color: ${widget.baseColor.value.toRadixString(16)}');
+    // Initial load happens in didChangeDependencies
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     _loadTexture();
   }
 
   @override
   void didUpdateWidget(TexturedContainer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    debugPrint('🖼️ didUpdateWidget - old: ${oldWidget.baseColor.value.toRadixString(16)}, new: ${widget.baseColor.value.toRadixString(16)}');
-    
+
     // Always reload if color changed
-    if (oldWidget.baseColor.value != widget.baseColor.value) {
-      debugPrint('🖼️ Color changed! Reloading texture...');
+    if (oldWidget.baseColor.toARGB32() != widget.baseColor.toARGB32()) {
       _textureImage = null; // Clear old image immediately
       _loadTexture();
     }
@@ -55,38 +59,45 @@ class _TexturedContainerState extends State<TexturedContainer> {
 
   Future<void> _loadTexture() async {
     final colorToLoad = widget.baseColor;
-    final colorValue = colorToLoad.value;
-    
-    debugPrint('🖼️ _loadTexture called for color: ${colorValue.toRadixString(16)}, isLoading: $_isLoading');
-    
+    final colorValue = colorToLoad.toARGB32();
+
+    // debugPrint('🖼️ _loadTexture called for color: ${colorValue.toRadixString(16)}, isLoading: $_isLoading');
+
     // If already loading this exact color, skip
     if (_isLoading && _loadedColorValue == colorValue) {
-      debugPrint('🖼️ Already loading this color, skipping');
       return;
     }
-    
+
     _isLoading = true;
     _loadedColorValue = colorValue;
 
-    const textureSize = Size(400, 300);
-    
     try {
-      final image = await TextureGenerator.getTexture(colorToLoad, textureSize);
-      
-      debugPrint('🖼️ Texture generated, mounted: $mounted, colorMatch: ${widget.baseColor.value == colorValue}');
-      
-      if (mounted && widget.baseColor.value == colorValue) {
+      final colors = AppColors.of(context, listen: false);
+      const textureSize = Size(400, 300);
+
+      final image = await TextureGenerator.getTexture(
+        colorToLoad,
+        textureSize,
+        intensity: colors.textureIntensity,
+        scale: colors.textureScale,
+        softness: colors.textureSoftness,
+      );
+
+      final mounted = image != null;
+      debugPrint(
+        '🖼️ Texture generated, mounted: $mounted, colorMatch: ${widget.baseColor.toARGB32() == colorValue}',
+      );
+
+      if (mounted && widget.baseColor.toARGB32() == colorValue) {
         setState(() {
           _textureImage = image;
           _isLoading = false;
         });
-        debugPrint('🖼️ Texture applied!');
       } else {
         _isLoading = false;
-        debugPrint('🖼️ Texture discarded (color changed during load or unmounted)');
       }
     } catch (e) {
-      debugPrint('🖼️ Error loading texture: $e');
+      debugPrint('🖼️ Error generating texture: $e');
       _isLoading = false;
     }
   }
@@ -100,9 +111,7 @@ class _TexturedContainerState extends State<TexturedContainer> {
       height: widget.height,
       padding: widget.padding,
       margin: widget.margin,
-      decoration: baseDecoration.copyWith(
-        color: widget.baseColor,
-      ),
+      decoration: baseDecoration.copyWith(color: widget.baseColor),
       child: ClipRect(
         child: Stack(
           fit: StackFit.passthrough,

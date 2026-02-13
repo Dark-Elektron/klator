@@ -1659,40 +1659,32 @@ class MathRenderer extends StatelessWidget {
       final double fracHeight =
           numHeight + barMargin + barHeight + barMargin + denHeight;
 
-      // d/dx fraction bar position from top of frac
-      final double fracBarFromTop = numHeight + barMargin + barHeight / 2;
+      // Fraction center
+      final double fracCenterY = fracHeight / 2;
 
-      // Parentheses padding
+      // Body (parentheses) measurements
       final double vPadding = fontSize * 0.1;
       final double parenHeight = bodyHeight + vPadding * 2;
 
-      // Body reference line from top of parentheses content area
-      final double bodyRefFromTop = vPadding + (bodyHeight - bodyRef);
+      // Body center
+      final double parenCenterY = parenHeight / 2;
 
-      // Align d/dx fraction bar with body reference line
-      final double fracTopPadding = bodyRefFromTop - fracBarFromTop;
+      // BIDIRECTIONAL centering (like integral)
+      final double fracTopPadding = math.max(0, parenCenterY - fracCenterY);
+      final double parenTopPadding = math.max(0, fracCenterY - parenCenterY);
 
-      // Handle negative padding
-      final double actualFracTopPadding = math.max(0, fracTopPadding);
-      final double parenTopPadding = math.max(0, -fracTopPadding);
-
-      // Calculate bottom positions
-      final double fracBottom = actualFracTopPadding + fracHeight;
+      // Calculate total height and positions
+      final double fracBottom = fracTopPadding + fracHeight;
       final double parenBottom = parenTopPadding + parenHeight;
+      final double totalHeight = math.max(fracBottom, parenBottom);
 
-      // Eval bar: matches paren when paren is taller, otherwise matches frac
-      double evalBarHeight;
-      double evalBarTopPadding;
+      // Eval bar spans full height
+      final double evalBarHeight = totalHeight;
+      final double evalBarTopPadding = 0.0;
 
-      if (parenBottom > fracBottom) {
-        // Paren is taller - eval bar matches paren height and position
-        evalBarHeight = parenHeight;
-        evalBarTopPadding = parenTopPadding;
-      } else {
-        // Frac is taller or equal - eval bar matches frac height
-        evalBarHeight = fracHeight;
-        evalBarTopPadding = actualFracTopPadding;
-      }
+      // Body reference from top of node (for potential future use)
+      final double bodyRefFromTop =
+          parenTopPadding + vPadding + (bodyHeight - bodyRef);
 
       String varText = '';
       for (final n in variable) {
@@ -1772,7 +1764,7 @@ class MathRenderer extends StatelessWidget {
         ),
       );
 
-      // Eval bar widget
+      // Eval bar widget - spans full height
       Widget evalBarWidget = SizedBox(
         height: evalBarHeight,
         child: Row(
@@ -1834,18 +1826,18 @@ class MathRenderer extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Fraction part
+            // Fraction part - pushed down when body is taller
             Padding(
-              padding: EdgeInsets.only(top: actualFracTopPadding),
+              padding: EdgeInsets.only(top: fracTopPadding),
               child: fracWidget,
             ),
             SizedBox(width: fontSize * 0.2),
-            // Parentheses
+            // Parentheses - pushed down when fraction is taller
             Padding(
               padding: EdgeInsets.only(top: parenTopPadding),
               child: parenWidget,
             ),
-            // Eval bar
+            // Eval bar - starts at top, spans full height
             SizedBox(width: fontSize * 0.1),
             Padding(
               padding: EdgeInsets.only(top: evalBarTopPadding),
@@ -2029,6 +2021,7 @@ class MathRenderer extends StatelessWidget {
       // Calculate metrics for alignment
       final bodyMetrics = _getListMetrics(body, fontSize);
       final double bodyHeight = math.max(fontSize, bodyMetrics.$1);
+      final double bodyRef = bodyMetrics.$2; // Reference from bottom
 
       final upperMetrics = _getListMetrics(upper, boundSize);
       final double upperHeight = math.max(upperMetrics.$1, boundSize * 0.7);
@@ -2038,9 +2031,20 @@ class MathRenderer extends StatelessWidget {
       final double totalSymbolHeight =
           upperHeight + fontSize * 0.05 + symbolHeight + lowerGap + lowerHeight;
 
-      // Center alignment
-      final double symbolCenter = totalSymbolHeight / 2;
-      final double bodyCenter = (bodyHeight + fontSize * 0.2) / 2;
+      // Body section measurements
+      final double vPadding = fontSize * 0.1;
+      final double bodyTotalHeight = bodyHeight + vPadding * 2;
+
+      // Bidirectional centering
+      final double columnCenterY = totalSymbolHeight / 2;
+      final double bodyCenterY = bodyTotalHeight / 2;
+
+      final double symbolTopPadding = math.max(0, bodyCenterY - columnCenterY);
+      final double bodyTopPadding = math.max(0, columnCenterY - bodyCenterY);
+
+      // Body reference line from top of IntegralNode
+      final double bodyRefFromTop =
+          bodyTopPadding + vPadding + (bodyHeight - bodyRef);
 
       final Widget dxWidget = Row(
         mainAxisSize: MainAxisSize.min,
@@ -2065,28 +2069,29 @@ class MathRenderer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Integral symbol column
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                upperWidget,
-                SizedBox(height: fontSize * 0.05),
-                Text(
-                  '\u222B',
-                  style: MathTextStyle.getStyle(
-                    fontSize * 1.4,
-                  ).copyWith(color: Colors.white),
-                  textScaler: textScaler,
-                ),
-                SizedBox(height: lowerGap),
-                lowerWidget,
-              ],
+            Padding(
+              padding: EdgeInsets.only(top: symbolTopPadding),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  upperWidget,
+                  SizedBox(height: fontSize * 0.05),
+                  Text(
+                    '\u222B',
+                    style: MathTextStyle.getStyle(
+                      fontSize * 1.4,
+                    ).copyWith(color: Colors.white),
+                    textScaler: textScaler,
+                  ),
+                  SizedBox(height: lowerGap),
+                  lowerWidget,
+                ],
+              ),
             ),
             SizedBox(width: fontSize * 0.2),
-            // Parentheses with body - vertically centered with symbol
+            // Parentheses with body
             Padding(
-              padding: EdgeInsets.only(
-                top: math.max(0, symbolCenter - bodyCenter),
-              ),
+              padding: EdgeInsets.only(top: bodyTopPadding),
               child: IntrinsicHeight(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2101,7 +2106,7 @@ class MathRenderer extends StatelessWidget {
                     Padding(
                       padding: EdgeInsets.symmetric(
                         horizontal: fontSize * 0.15,
-                        vertical: fontSize * 0.1,
+                        vertical: vPadding,
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -2121,13 +2126,9 @@ class MathRenderer extends StatelessWidget {
               ),
             ),
             SizedBox(width: fontSize * 0.1),
-            // dx widget - vertically centered with body
+            // dx widget — BASELINE ALIGNED with body reference
             Padding(
-              padding: EdgeInsets.only(
-                top:
-                    math.max(0, symbolCenter - bodyCenter) +
-                    (bodyHeight + fontSize * 0.2 - dxSize) / 2,
-              ),
+              padding: EdgeInsets.only(top: bodyRefFromTop - dxSize / 2),
               child: dxWidget,
             ),
           ],
@@ -2464,6 +2465,7 @@ class MathRenderer extends StatelessWidget {
     if (node is ConstantNode) {
       return (fontSize, fontSize / 2);
     }
+
     if (node is UnitVectorNode) {
       return (fontSize, fontSize / 2);
     }
@@ -2683,23 +2685,25 @@ class MathRenderer extends StatelessWidget {
       // Fraction center
       final double fracCenterY = fracHeight / 2;
 
-      // Body section measurements (matching render code)
+      // Body (parentheses) measurements
       final double vPadding = fontSize * 0.1;
-      final double bodyTotalHeight = bodyHeight + vPadding * 2;
+      final double parenHeight = bodyHeight + vPadding * 2;
 
-      // Body top padding to center with fraction
-      final double bodyTopPadding = math.max(
-        0,
-        fracCenterY - bodyTotalHeight / 2,
-      );
+      // Body center
+      final double parenCenterY = parenHeight / 2;
+
+      // BIDIRECTIONAL centering (matches render code)
+      final double fracTopPadding = math.max(0, parenCenterY - fracCenterY);
+      final double parenTopPadding = math.max(0, fracCenterY - parenCenterY);
 
       // Total height
-      final double bodyBottom = bodyTopPadding + bodyTotalHeight;
-      final double totalHeight = math.max(fracHeight, bodyBottom);
+      final double fracBottom = fracTopPadding + fracHeight;
+      final double parenBottom = parenTopPadding + parenHeight;
+      final double totalHeight = math.max(fracBottom, parenBottom);
 
       // Body reference from top of node
       final double bodyRefFromTop =
-          bodyTopPadding + vPadding + (bodyHeight - bodyRef);
+          parenTopPadding + vPadding + (bodyHeight - bodyRef);
 
       // Node reference from bottom
       final double refFromBottom = totalHeight - bodyRefFromTop;
@@ -2725,23 +2729,22 @@ class MathRenderer extends StatelessWidget {
       final double symbolColumnHeight =
           upperHeight + fontSize * 0.05 + symbolHeight + lowerGap + lowerHeight;
 
-      // Body section measurements (matching render code)
+      // Body section measurements
       final double vPadding = fontSize * 0.1;
       final double bodyTotalHeight = bodyHeight + vPadding * 2;
 
-      // Symbol center position
-      final double symbolTopOffset = upperHeight + fontSize * 0.05;
-      final double symbolCenterY = symbolTopOffset + symbolHeight / 2;
+      // FIX: Use column center for centering (matches render code)
+      final double columnCenterY = symbolColumnHeight / 2;
+      final double bodyCenterY = bodyTotalHeight / 2;
 
-      // Body top padding to center with symbol
-      final double bodyTopPadding = math.max(
-        0,
-        symbolCenterY - bodyTotalHeight / 2,
-      );
+      // FIX: Bidirectional centering
+      final double symbolTopPadding = math.max(0, bodyCenterY - columnCenterY);
+      final double bodyTopPadding = math.max(0, columnCenterY - bodyCenterY);
 
-      // Total height
+      // Total height accounts for both paddings
+      final double symbolBottom = symbolTopPadding + symbolColumnHeight;
       final double bodyBottom = bodyTopPadding + bodyTotalHeight;
-      final double totalHeight = math.max(symbolColumnHeight, bodyBottom);
+      final double totalHeight = math.max(symbolBottom, bodyBottom);
 
       // Body reference from top of node
       final double bodyRefFromTop =

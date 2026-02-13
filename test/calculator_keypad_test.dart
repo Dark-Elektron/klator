@@ -94,14 +94,18 @@ void main() {
       expect(find.byType(Column), findsWidgets);
     });
 
-    testWidgets('should have AnimatedContainer for basic keypad', (tester) async {
+    testWidgets('should have AnimatedContainer for basic keypad', (
+      tester,
+    ) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
       expect(find.byType(AnimatedContainer), findsOneWidget);
     });
 
-    testWidgets('should have GestureDetector for basic keypad toggle', (tester) async {
+    testWidgets('should have GestureDetector for basic keypad toggle', (
+      tester,
+    ) async {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -134,7 +138,9 @@ void main() {
     });
 
     group('Walkthrough Integration', () {
-      testWidgets('should register callbacks with walkthrough service', (tester) async {
+      testWidgets('should register callbacks with walkthrough service', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestWidget());
         await tester.pumpAndSettle();
 
@@ -142,7 +148,9 @@ void main() {
         expect(walkthroughService.onNavigateToKeypadPage, isNotNull);
       });
 
-      testWidgets('should reset keypad when walkthrough resets', (tester) async {
+      testWidgets('should reset keypad when walkthrough resets', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestWidget());
         await tester.pumpAndSettle();
 
@@ -153,7 +161,9 @@ void main() {
         expect(find.byType(CalculatorKeypad), findsOneWidget);
       });
 
-      testWidgets('should navigate to page when walkthrough requests', (tester) async {
+      testWidgets('should navigate to page when walkthrough requests', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestWidget());
         await tester.pumpAndSettle();
 
@@ -170,20 +180,18 @@ void main() {
 
     group('Landscape Mode', () {
       testWidgets('should render in landscape mode', (tester) async {
-        await tester.pumpWidget(buildTestWidget(
-          screenWidth: 800,
-          isLandscape: true,
-        ));
+        await tester.pumpWidget(
+          buildTestWidget(screenWidth: 800, isLandscape: true),
+        );
         await tester.pumpAndSettle();
 
         expect(find.byType(CalculatorKeypad), findsOneWidget);
       });
 
       testWidgets('should set tablet mode for wide screens', (tester) async {
-        await tester.pumpWidget(buildTestWidget(
-          screenWidth: 800,
-          isLandscape: true,
-        ));
+        await tester.pumpWidget(
+          buildTestWidget(screenWidth: 800, isLandscape: true),
+        );
         await tester.pumpAndSettle();
 
         // Allow post-frame callback to execute
@@ -194,7 +202,9 @@ void main() {
     });
 
     group('Physics during walkthrough', () {
-      testWidgets('should use normal physics when walkthrough inactive', (tester) async {
+      testWidgets('should use normal physics when walkthrough inactive', (
+        tester,
+      ) async {
         await tester.pumpWidget(buildTestWidget());
         await tester.pumpAndSettle();
 
@@ -202,7 +212,9 @@ void main() {
         expect(find.byType(CalculatorKeypad), findsOneWidget);
       });
 
-      testWidgets('should have directional physics on swipe step', (tester) async {
+      testWidgets('should have directional physics on swipe step', (
+        tester,
+      ) async {
         final testWalkthroughService = WalkthroughService();
         testWalkthroughService.startWalkthrough();
 
@@ -217,9 +229,9 @@ void main() {
           isIn([WalkthroughAction.swipeLeft, WalkthroughAction.swipeRight]),
         );
 
-        await tester.pumpWidget(buildTestWidget(
-          customWalkthroughService: testWalkthroughService,
-        ));
+        await tester.pumpWidget(
+          buildTestWidget(customWalkthroughService: testWalkthroughService),
+        );
 
         // Use pump() instead of pumpAndSettle() because animations run forever
         await tester.pump();
@@ -230,7 +242,9 @@ void main() {
         testWalkthroughService.dispose();
       });
 
-      testWidgets('should allow correct swipe direction during walkthrough', (tester) async {
+      testWidgets('should allow correct swipe direction during walkthrough', (
+        tester,
+      ) async {
         final testWalkthroughService = WalkthroughService();
         testWalkthroughService.startWalkthrough();
 
@@ -251,9 +265,9 @@ void main() {
           return;
         }
 
-        await tester.pumpWidget(buildTestWidget(
-          customWalkthroughService: testWalkthroughService,
-        ));
+        await tester.pumpWidget(
+          buildTestWidget(customWalkthroughService: testWalkthroughService),
+        );
 
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));

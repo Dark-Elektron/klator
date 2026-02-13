@@ -548,15 +548,12 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         widget.isLandscape
             ? _buttonsBasicLandscape.length
             : _buttonsBasic.length;
-    final int basicRowCount =
-        (basicButtonsCount / crossAxisCountBasic).ceil();
+    final int basicRowCount = (basicButtonsCount / crossAxisCountBasic).ceil();
     final double basicChildAspectRatio =
         widget.isLandscape ? landscapeChildAspectRatio : 1.0;
-    final double basicCellWidth =
-        widget.screenWidth / crossAxisCountBasic;
+    final double basicCellWidth = widget.screenWidth / crossAxisCountBasic;
     final double basicCellHeight = basicCellWidth / basicChildAspectRatio;
-    final double basicKeypadExpandedHeight =
-        basicCellHeight * basicRowCount;
+    final double basicKeypadExpandedHeight = basicCellHeight * basicRowCount;
 
     double basicKeypadHeight =
         _isBasicKeypadExpanded
@@ -628,27 +625,26 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                   ? ListenableBuilder(
                     listenable: widget.walkthroughService,
                     builder: (context, _) {
-                      return PageView(
-                        padEnds: false,
-                        controller: _keypadController!,
-                        physics: _getKeypadPhysics(),
-                        onPageChanged: _onKeypadPageChanged,
-                        children: [
-                          // Use SizedBox.expand() for children that need to fill space
-                          SizedBox.expand(
-                            key: widget.scientificKeypadKey,
-                            child: _buildScientificGrid(widget.isLandscape),
-                          ),
-                          SizedBox.expand(
-                            key: widget.numberKeypadKey,
-                            child: _buildNumberGrid(widget.isLandscape),
-                          ),
-                          SizedBox.expand(
-                            key: widget.extrasKeypadKey,
-                            child: _buildExtrasGrid(widget.isLandscape),
-                          ),
-                        ],
-                      );
+                      return EasySnapPageView(
+  controller: _keypadController!,
+  onPageChanged: _onKeypadPageChanged,
+  padEnds: false,
+  enableTransitions: !isTablet, // Disable transitions on tablet
+  children: [
+    SizedBox.expand(
+      key: widget.scientificKeypadKey,
+      child: _buildScientificGrid(widget.isLandscape),
+    ),
+    SizedBox.expand(
+      key: widget.numberKeypadKey,
+      child: _buildNumberGrid(widget.isLandscape),
+    ),
+    SizedBox.expand(
+      key: widget.extrasKeypadKey,
+      child: _buildExtrasGrid(widget.isLandscape),
+    ),
+  ],
+);
                     },
                   )
                   : const SizedBox.shrink(),
@@ -671,10 +667,10 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         crossAxisCount: crossAxisCount,
         childAspectRatio: isLandscape ? 1.5 : 1.0,
       ),
-        itemBuilder: (context, index) {
-          String buttonText = buttons[index];
+      itemBuilder: (context, index) {
+        String buttonText = buttons[index];
 
-          if (buttonText == '+') {
+        if (buttonText == '+') {
           return MyButton(
             buttontapped: () {
               _activeController?.insertCharacter('+');
@@ -691,13 +687,13 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u2212',
-              color: Colors.white,
-              textColor: Colors.black,
-            );
-          } else if (buttonText == 'x') {
-            return MyButton(
-              buttontapped: () {
-                _activeController?.insertCharacter(
+            color: Colors.white,
+            textColor: Colors.black,
+          );
+        } else if (buttonText == 'x') {
+          return MyButton(
+            buttontapped: () {
+              _activeController?.insertCharacter(
                 widget.settingsProvider.multiplicationSign,
               );
               widget.onUpdateMathEditor();
@@ -1548,8 +1544,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                   _handleButtonWithSelection(
                     wrapAction:
                         () =>
-                            _activeController!
-                                .selectionWrapper
+                            _activeController!.selectionWrapper
                                 .wrapInExponent(),
                     normalAction: () => _activeController?.insertCharacter('^'),
                   );
@@ -1604,7 +1599,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             separatorColor: Colors.black12,
             onTap: () {
               _handleButtonWithSelection(
-                wrapAction: () => _activeController!.selectionWrapper.wrapInSummation(),
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInSummation(),
                 normalAction: () => _activeController?.insertSummation(),
               );
             },
@@ -1613,7 +1609,9 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 label: '\u220F',
                 onTap: () {
                   _handleButtonWithSelection(
-                    wrapAction: () => _activeController!.selectionWrapper.wrapInProduct(),
+                    wrapAction:
+                        () =>
+                            _activeController!.selectionWrapper.wrapInProduct(),
                     normalAction: () => _activeController?.insertProduct(),
                   );
                 },
@@ -1626,7 +1624,9 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           return MyButton(
             buttontapped: () {
               _handleButtonWithSelection(
-                wrapAction: () => _activeController!.selectionWrapper.wrapInDerivative(),
+                wrapAction:
+                    () =>
+                        _activeController!.selectionWrapper.wrapInDerivative(),
                 normalAction: () => _activeController?.insertDerivative(),
               );
             },
@@ -1640,7 +1640,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           return MyButton(
             buttontapped: () {
               _handleButtonWithSelection(
-                wrapAction: () => _activeController!.selectionWrapper.wrapInIntegral(),
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInIntegral(),
                 normalAction: () => _activeController?.insertIntegral(),
               );
             },
@@ -1897,3 +1898,229 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     );
   }
 }
+
+class CustomPageScrollPhysics extends PageScrollPhysics {
+  final double threshold; // 0.0 - 1.0
+
+  const CustomPageScrollPhysics({
+    this.threshold = 0.1, // 10% drag required
+    super.parent,
+  });
+
+  @override
+  CustomPageScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return CustomPageScrollPhysics(
+      threshold: threshold,
+      parent: buildParent(ancestor),
+    );
+  }
+
+  @override
+  double _getTargetPixels(
+    ScrollMetrics position,
+    Tolerance tolerance,
+    double velocity,
+  ) {
+    final PageMetrics pageMetrics = position as PageMetrics;
+    double page = pageMetrics.page!;
+
+    if (velocity < -tolerance.velocity) {
+      page -= 1.0;
+    } else if (velocity > tolerance.velocity) {
+      page += 1.0;
+    } else {
+      // ✅ Custom threshold logic instead of 0.5
+      final double fractional = page - page.floorToDouble();
+      if (fractional > threshold) {
+        page = page.floorToDouble() + 1.0;
+      } else {
+        page = page.floorToDouble();
+      }
+    }
+
+    return page * pageMetrics.viewportDimension;
+  }
+}
+
+class CustomSnapPageView extends StatefulWidget {
+  final PageController controller;
+  final List<Widget> children;
+  final ValueChanged<int>? onPageChanged;
+  final double threshold; // fraction of page width to trigger snap
+
+  const CustomSnapPageView({
+    super.key,
+    required this.controller,
+    required this.children,
+    this.onPageChanged,
+    this.threshold = 0.05, // 5% of page width
+  });
+
+  @override
+  State<CustomSnapPageView> createState() => _CustomSnapPageViewState();
+}
+
+class _CustomSnapPageViewState extends State<CustomSnapPageView> {
+  double? _dragStartPage;
+  bool _isAnimating = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (_isAnimating) return false;
+
+        if (notification is ScrollStartNotification &&
+            notification.dragDetails != null) {
+          // User started dragging — record starting page
+          _dragStartPage = widget.controller.page;
+        }
+
+        if (notification is ScrollUpdateNotification &&
+            notification.dragDetails != null &&
+            _dragStartPage != null) {
+          final currentPage = widget.controller.page!;
+          final delta = currentPage - _dragStartPage!;
+
+          if (delta.abs() > widget.threshold) {
+            // Determine target page
+            int targetPage;
+            if (delta > 0) {
+              targetPage = _dragStartPage!.ceil(); // swiped forward
+            } else {
+              targetPage = _dragStartPage!.floor(); // swiped backward
+            }
+
+            // Clamp to valid range
+            targetPage = targetPage.clamp(0, widget.children.length - 1);
+
+            _dragStartPage = null;
+            _isAnimating = true;
+
+            widget.controller
+                .animateToPage(
+                  targetPage,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                )
+                .then((_) {
+                  _isAnimating = false;
+                });
+          }
+        }
+
+        if (notification is ScrollEndNotification) {
+          _dragStartPage = null;
+        }
+
+        return false;
+      },
+      child: PageView(
+        controller: widget.controller,
+        physics: const PageScrollPhysics(), // Keep default physics
+        onPageChanged: widget.onPageChanged,
+        padEnds: false,
+        children: widget.children,
+      ),
+    );
+  }
+}
+
+class EasySnapPageView extends StatefulWidget {
+  final PageController controller;
+  final List<Widget> children;
+  final ValueChanged<int>? onPageChanged;
+  final bool padEnds;
+  final bool enableTransitions; // Add this
+
+  const EasySnapPageView({
+    super.key,
+    required this.controller,
+    required this.children,
+    this.onPageChanged,
+    this.padEnds = false,
+    this.enableTransitions = true, // Default true for phone
+  });
+
+  @override
+  State<EasySnapPageView> createState() => _EasySnapPageViewState();
+}
+
+class _EasySnapPageViewState extends State<EasySnapPageView> {
+  bool _handled = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onHorizontalDragStart: (_) {
+        _handled = false;
+      },
+      onHorizontalDragUpdate: (details) {
+        if (_handled) return;
+
+        final delta = details.primaryDelta ?? 0;
+        if (delta == 0) return;
+
+        _handled = true;
+
+        final currentPage = widget.controller.page?.round() ?? 0;
+        final targetPage = delta > 0
+            ? (currentPage - 1).clamp(0, widget.children.length - 1)
+            : (currentPage + 1).clamp(0, widget.children.length - 1);
+
+        widget.controller.animateToPage(
+          targetPage,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+        );
+      },
+      child: widget.enableTransitions
+          ? _buildWithTransitions()
+          : _buildWithoutTransitions(),
+    );
+  }
+
+  Widget _buildWithTransitions() {
+    return AnimatedBuilder(
+      animation: widget.controller,
+      builder: (context, _) {
+        return PageView.builder(
+          controller: widget.controller,
+          physics: const NeverScrollableScrollPhysics(),
+          onPageChanged: widget.onPageChanged,
+          padEnds: widget.padEnds,
+          itemCount: widget.children.length,
+          itemBuilder: (context, index) {
+            double page = 0;
+            if (widget.controller.position.hasContentDimensions) {
+              page = widget.controller.page ?? 0;
+            }
+
+            final double offset = (page - index).abs();
+            final double scale = (1 - (offset * 0.15)).clamp(0.85, 1.0);
+            final double opacity = (1 - (offset * 0.5)).clamp(0.5, 1.0);
+
+            return Transform.scale(
+              scale: scale,
+              child: Opacity(
+                opacity: opacity,
+                child: widget.children[index],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildWithoutTransitions() {
+    return PageView(
+      controller: widget.controller,
+      physics: const NeverScrollableScrollPhysics(),
+      onPageChanged: widget.onPageChanged,
+      padEnds: widget.padEnds,
+      children: widget.children,
+    );
+  }
+}
+

@@ -26,10 +26,9 @@ class MathResultDisplay extends StatelessWidget {
     final lines = _staticSplitIntoLines(nodes);
     double total = 0;
     for (int i = 0; i < lines.length; i++) {
-      total += calculateLineHeight(lines[i], fontSize);
-      if (i < lines.length - 1) {
-        total += 4; // Padding(vertical: 2) between lines
-      }
+      total +=
+          calculateLineHeight(lines[i], fontSize) +
+          6; // Padding(vertical: 3) on each line
     }
     return total;
   }
@@ -61,15 +60,13 @@ class MathResultDisplay extends StatelessWidget {
     List<MathNode> currentLine = [];
     for (var node in nodes) {
       if (node is NewlineNode) {
-        if (currentLine.isNotEmpty) {
-          lines.add(List.from(currentLine));
-          currentLine = [];
-        }
+        lines.add(List.from(currentLine));
+        currentLine = [];
       } else {
         currentLine.add(node);
       }
     }
-    if (currentLine.isNotEmpty) lines.add(currentLine);
+    lines.add(currentLine);
     return lines;
   }
 
@@ -107,7 +104,7 @@ class MathResultDisplay extends StatelessWidget {
       children:
           lines.map((line) {
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
+              padding: const EdgeInsets.symmetric(vertical: 3),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,17 +121,13 @@ class MathResultDisplay extends StatelessWidget {
 
     for (var node in nodes) {
       if (node is NewlineNode) {
-        if (currentLine.isNotEmpty) {
-          lines.add(List.from(currentLine));
-          currentLine = [];
-        }
+        lines.add(List.from(currentLine));
+        currentLine = [];
       } else {
         currentLine.add(node);
       }
     }
-    if (currentLine.isNotEmpty) {
-      lines.add(currentLine);
-    }
+    lines.add(currentLine);
     return lines;
   }
 
@@ -534,20 +527,10 @@ class MathResultDisplay extends StatelessWidget {
     if (node is SummationNode || node is ProductNode) {
       final bool isSum = node is SummationNode;
       final double smallSize = fontSize * 0.7;
-      final variable =
-          isSum
-              ? (node).variable
-              : (node as ProductNode).variable;
-      final lower =
-          isSum
-              ? (node).lower
-              : (node as ProductNode).lower;
-      final upper =
-          isSum
-              ? (node).upper
-              : (node as ProductNode).upper;
-      final body =
-          isSum ? (node).body : (node as ProductNode).body;
+      final variable = isSum ? (node).variable : (node as ProductNode).variable;
+      final lower = isSum ? (node).lower : (node as ProductNode).lower;
+      final upper = isSum ? (node).upper : (node as ProductNode).upper;
+      final body = isSum ? (node).body : (node as ProductNode).body;
 
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -561,13 +544,13 @@ class MathResultDisplay extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(upper, smallSize),
               ),
-              SizedBox(height: fontSize * 0.05),
+              SizedBox(height: fontSize * 0.1),
               SumProdSymbol(
                 type: isSum ? SumProdType.sum : SumProdType.product,
                 fontSize: fontSize,
                 color: textColor,
               ),
-              SizedBox(height: fontSize * 0.05),
+              SizedBox(height: fontSize * 0.1),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -695,7 +678,9 @@ class MathResultDisplay extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 1),
             child: Text(
               '=',
-              style: MathTextStyle.getStyle(evalSize).copyWith(color: textColor),
+              style: MathTextStyle.getStyle(
+                evalSize,
+              ).copyWith(color: textColor),
               textScaler: textScaler,
             ),
           ),
@@ -725,10 +710,7 @@ class MathResultDisplay extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: barWidth,
-              color: textColor,
-            ),
+            Container(width: barWidth, color: textColor),
             SizedBox(width: evalSize * 0.15),
             Column(
               mainAxisSize: MainAxisSize.max,
@@ -772,10 +754,7 @@ class MathResultDisplay extends StatelessWidget {
               ],
             ),
           ),
-          if (!atEmpty) ...[
-            SizedBox(width: fontSize * 0.1),
-            evalHolder,
-          ],
+          if (!atEmpty) ...[SizedBox(width: fontSize * 0.1), evalHolder],
         ],
       );
     }
@@ -798,8 +777,7 @@ class MathResultDisplay extends StatelessWidget {
         children: [
           Text(
             'd',
-            style:
-                MathTextStyle.getStyle(dxSize).copyWith(color: textColor),
+            style: MathTextStyle.getStyle(dxSize).copyWith(color: textColor),
             textScaler: textScaler,
           ),
           Row(
@@ -811,11 +789,8 @@ class MathResultDisplay extends StatelessWidget {
       );
 
       final Widget alignedDxWidget = SizedBox(
-        height: bodyHeight,
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: dxWidget,
-        ),
+        height: bodyHeight + fontSize * 0.2,
+        child: Align(alignment: Alignment.bottomCenter, child: dxWidget),
       );
 
       return Row(
@@ -830,10 +805,12 @@ class MathResultDisplay extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: _renderNodeList(upper, boundSize),
               ),
+              SizedBox(height: fontSize * 0.05),
               Text(
                 '\u222B',
-                style:
-                    MathTextStyle.getStyle(fontSize * 1.4).copyWith(color: textColor),
+                style: MathTextStyle.getStyle(
+                  fontSize * 1.4,
+                ).copyWith(color: textColor),
                 textScaler: textScaler,
               ),
               SizedBox(height: lowerGap),
@@ -856,7 +833,10 @@ class MathResultDisplay extends StatelessWidget {
                   color: textColor,
                 ),
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: fontSize * 0.15),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: fontSize * 0.15,
+                    vertical: fontSize * 0.1,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -873,6 +853,23 @@ class MathResultDisplay extends StatelessWidget {
           ),
           SizedBox(width: fontSize * 0.1),
           alignedDxWidget,
+        ],
+      );
+    }
+
+    if (node is ComplexNode) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ..._renderNodeList(node.content, fontSize),
+          Text(
+            'i',
+            style: MathTextStyle.getStyle(
+              fontSize,
+            ).copyWith(color: textColor, fontStyle: FontStyle.italic),
+            textScaler: textScaler,
+          ),
         ],
       );
     }
@@ -906,14 +903,11 @@ class MathResultDisplay extends StatelessWidget {
     double fontSize,
   ) {
     if (node is LiteralNode) {
-      return (fontSize * 1.2, fontSize * 0.6);
+      return (fontSize, fontSize * 0.5);
     }
 
     if (node is ConstantNode) {
-      return (fontSize * 1.2, fontSize * 0.6);
-    }
-    if (node is UnitVectorNode) {
-      return (fontSize, fontSize / 2);
+      return (fontSize, fontSize * 0.5);
     }
     if (node is UnitVectorNode) {
       return (fontSize, fontSize / 2);
@@ -1028,7 +1022,9 @@ class MathResultDisplay extends StatelessWidget {
     if (node is SummationNode || node is ProductNode) {
       final double smallSize = fontSize * 0.7;
       final variable =
-          node is SummationNode ? node.variable : (node as ProductNode).variable;
+          node is SummationNode
+              ? node.variable
+              : (node as ProductNode).variable;
       final lower =
           node is SummationNode ? node.lower : (node as ProductNode).lower;
       final upper =
@@ -1048,8 +1044,15 @@ class MathResultDisplay extends StatelessWidget {
         smallSize * 0.7,
       );
       final double symbolColumnHeight =
-          upperHeight + symbolHeight + lowerHeight;
-      final double height = math.max(symbolColumnHeight, bodyMetrics.$1);
+          upperHeight +
+          fontSize * 0.1 +
+          symbolHeight +
+          fontSize * 0.1 +
+          lowerHeight;
+      final double height = math.max(
+        symbolColumnHeight,
+        bodyMetrics.$1 + fontSize * 0.2,
+      );
       return (height, height / 2);
     }
 
@@ -1059,10 +1062,9 @@ class MathResultDisplay extends StatelessWidget {
       final double barMargin = symbolSize * 0.06;
       final bodyMetrics = _staticGetListMetrics(node.body, fontSize);
 
-      final numMetrics = _staticGetListMetrics(
-        [LiteralNode(text: 'd')],
-        symbolSize,
-      );
+      final numMetrics = _staticGetListMetrics([
+        LiteralNode(text: 'd'),
+      ], symbolSize);
       final varMetrics = _staticGetListMetrics(node.variable, symbolSize);
       final double denHeight = math.max(numMetrics.$1, varMetrics.$1);
       final double fracHeight =
@@ -1084,12 +1086,17 @@ class MathResultDisplay extends StatelessWidget {
       final double upperHeight = math.max(upperMetrics.$1, boundSize * 0.7);
       final double lowerHeight = math.max(lowerMetrics.$1, boundSize * 0.7);
       final double symbolColumnHeight =
-          upperHeight + symbolHeight + lowerGap + lowerHeight;
+          upperHeight + fontSize * 0.05 + symbolHeight + lowerGap + lowerHeight;
       final double height = math.max(
         symbolColumnHeight,
-        math.max(bodyMetrics.$1, dxSize),
+        math.max(bodyMetrics.$1 + fontSize * 0.2, dxSize),
       );
       return (height, height / 2);
+    }
+
+    if (node is ComplexNode) {
+      final contentMetrics = _staticGetListMetrics(node.content, fontSize);
+      return (contentMetrics.$1, contentMetrics.$2);
     }
 
     if (node is AnsNode) {
@@ -1135,11 +1142,11 @@ class MathResultDisplay extends StatelessWidget {
 
   (double, double) _getNodeMetrics(MathNode node, double fontSize) {
     if (node is LiteralNode) {
-      return (fontSize * 1.2, fontSize * 0.6);
+      return (fontSize, fontSize * 0.5);
     }
 
     if (node is ConstantNode) {
-      return (fontSize * 1.2, fontSize * 0.6);
+      return (fontSize, fontSize * 0.5);
     }
 
     if (node is ExponentNode) {
@@ -1251,7 +1258,9 @@ class MathResultDisplay extends StatelessWidget {
     if (node is SummationNode || node is ProductNode) {
       final double smallSize = fontSize * 0.7;
       final variable =
-          node is SummationNode ? node.variable : (node as ProductNode).variable;
+          node is SummationNode
+              ? node.variable
+              : (node as ProductNode).variable;
       final lower =
           node is SummationNode ? node.lower : (node as ProductNode).lower;
       final upper =
@@ -1271,8 +1280,15 @@ class MathResultDisplay extends StatelessWidget {
         smallSize * 0.7,
       );
       final double symbolColumnHeight =
-          upperHeight + symbolHeight + lowerHeight;
-      final double height = math.max(symbolColumnHeight, bodyMetrics.$1);
+          upperHeight +
+          fontSize * 0.1 +
+          symbolHeight +
+          fontSize * 0.1 +
+          lowerHeight;
+      final double height = math.max(
+        symbolColumnHeight,
+        bodyMetrics.$1 + fontSize * 0.2,
+      );
       return (height, height / 2);
     }
 
@@ -1282,10 +1298,7 @@ class MathResultDisplay extends StatelessWidget {
       final double barMargin = symbolSize * 0.06;
       final bodyMetrics = _getListMetrics(node.body, fontSize);
 
-      final numMetrics = _getListMetrics(
-        [LiteralNode(text: 'd')],
-        symbolSize,
-      );
+      final numMetrics = _getListMetrics([LiteralNode(text: 'd')], symbolSize);
       final varMetrics = _getListMetrics(node.variable, symbolSize);
       final double denHeight = math.max(numMetrics.$1, varMetrics.$1);
       final double fracHeight =
@@ -1307,12 +1320,17 @@ class MathResultDisplay extends StatelessWidget {
       final double upperHeight = math.max(upperMetrics.$1, boundSize * 0.7);
       final double lowerHeight = math.max(lowerMetrics.$1, boundSize * 0.7);
       final double symbolColumnHeight =
-          upperHeight + symbolHeight + lowerGap + lowerHeight;
+          upperHeight + fontSize * 0.05 + symbolHeight + lowerGap + lowerHeight;
       final double height = math.max(
         symbolColumnHeight,
-        math.max(bodyMetrics.$1, dxSize),
+        math.max(bodyMetrics.$1 + fontSize * 0.2, dxSize),
       );
       return (height, height / 2);
+    }
+
+    if (node is ComplexNode) {
+      final contentMetrics = _getListMetrics(node.content, fontSize);
+      return (contentMetrics.$1, contentMetrics.$2);
     }
 
     if (node is AnsNode) {
