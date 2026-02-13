@@ -461,43 +461,6 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     }
   }
 
-  /// Get the appropriate scroll physics based on walkthrough state
-  ScrollPhysics _getKeypadPhysics() {
-    // IMPORTANT: Allow normal scrolling during programmatic navigation
-    if (_isNavigatingProgrammatically) {
-      return const PageScrollPhysics();
-    }
-
-    final service = widget.walkthroughService;
-
-    // If walkthrough is not active, allow normal scrolling
-    if (!service.isActive || !service.isInitialized) {
-      return const PageScrollPhysics();
-    }
-
-    final step = service.currentStepData;
-
-    // Only restrict if it's a swipe-required step
-    if (!step.requiresAction || step.requiredAction == null) {
-      return const PageScrollPhysics();
-    }
-
-    // Restrict based on required action
-    if (step.requiredAction == WalkthroughAction.swipeLeft) {
-      return const DirectionalScrollPhysics(
-        allowLeftSwipe: true,
-        allowRightSwipe: false,
-      );
-    } else if (step.requiredAction == WalkthroughAction.swipeRight) {
-      return const DirectionalScrollPhysics(
-        allowLeftSwipe: false,
-        allowRightSwipe: true,
-      );
-    }
-
-    return const PageScrollPhysics();
-  }
-
   @override
   Widget build(BuildContext context) {
     bool isWideScreen = widget.screenWidth > 600;
@@ -626,25 +589,26 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                     listenable: widget.walkthroughService,
                     builder: (context, _) {
                       return EasySnapPageView(
-  controller: _keypadController!,
-  onPageChanged: _onKeypadPageChanged,
-  padEnds: false,
-  enableTransitions: !isTablet, // Disable transitions on tablet
-  children: [
-    SizedBox.expand(
-      key: widget.scientificKeypadKey,
-      child: _buildScientificGrid(widget.isLandscape),
-    ),
-    SizedBox.expand(
-      key: widget.numberKeypadKey,
-      child: _buildNumberGrid(widget.isLandscape),
-    ),
-    SizedBox.expand(
-      key: widget.extrasKeypadKey,
-      child: _buildExtrasGrid(widget.isLandscape),
-    ),
-  ],
-);
+                        controller: _keypadController!,
+                        onPageChanged: _onKeypadPageChanged,
+                        padEnds: false,
+                        enableTransitions:
+                            !isTablet, // Disable transitions on tablet
+                        children: [
+                          SizedBox.expand(
+                            key: widget.scientificKeypadKey,
+                            child: _buildScientificGrid(widget.isLandscape),
+                          ),
+                          SizedBox.expand(
+                            key: widget.numberKeypadKey,
+                            child: _buildNumberGrid(widget.isLandscape),
+                          ),
+                          SizedBox.expand(
+                            key: widget.extrasKeypadKey,
+                            child: _buildExtrasGrid(widget.isLandscape),
+                          ),
+                        ],
+                      );
                     },
                   )
                   : const SizedBox.shrink(),
@@ -1915,31 +1879,6 @@ class CustomPageScrollPhysics extends PageScrollPhysics {
     );
   }
 
-  @override
-  double _getTargetPixels(
-    ScrollMetrics position,
-    Tolerance tolerance,
-    double velocity,
-  ) {
-    final PageMetrics pageMetrics = position as PageMetrics;
-    double page = pageMetrics.page!;
-
-    if (velocity < -tolerance.velocity) {
-      page -= 1.0;
-    } else if (velocity > tolerance.velocity) {
-      page += 1.0;
-    } else {
-      // ✅ Custom threshold logic instead of 0.5
-      final double fractional = page - page.floorToDouble();
-      if (fractional > threshold) {
-        page = page.floorToDouble() + 1.0;
-      } else {
-        page = page.floorToDouble();
-      }
-    }
-
-    return page * pageMetrics.viewportDimension;
-  }
 }
 
 class CustomSnapPageView extends StatefulWidget {
@@ -2064,9 +2003,10 @@ class _EasySnapPageViewState extends State<EasySnapPageView> {
         _handled = true;
 
         final currentPage = widget.controller.page?.round() ?? 0;
-        final targetPage = delta > 0
-            ? (currentPage - 1).clamp(0, widget.children.length - 1)
-            : (currentPage + 1).clamp(0, widget.children.length - 1);
+        final targetPage =
+            delta > 0
+                ? (currentPage - 1).clamp(0, widget.children.length - 1)
+                : (currentPage + 1).clamp(0, widget.children.length - 1);
 
         widget.controller.animateToPage(
           targetPage,
@@ -2074,9 +2014,10 @@ class _EasySnapPageViewState extends State<EasySnapPageView> {
           curve: Curves.easeOutCubic,
         );
       },
-      child: widget.enableTransitions
-          ? _buildWithTransitions()
-          : _buildWithoutTransitions(),
+      child:
+          widget.enableTransitions
+              ? _buildWithTransitions()
+              : _buildWithoutTransitions(),
     );
   }
 
@@ -2102,10 +2043,7 @@ class _EasySnapPageViewState extends State<EasySnapPageView> {
 
             return Transform.scale(
               scale: scale,
-              child: Opacity(
-                opacity: opacity,
-                child: widget.children[index],
-              ),
+              child: Opacity(opacity: opacity, child: widget.children[index]),
             );
           },
         );
@@ -2123,4 +2061,3 @@ class _EasySnapPageViewState extends State<EasySnapPageView> {
     );
   }
 }
-

@@ -1649,7 +1649,6 @@ class MathRenderer extends StatelessWidget {
       // Calculate metrics
       final bodyMetrics = _getListMetrics(body, fontSize);
       final double bodyHeight = math.max(fontSize, bodyMetrics.$1);
-      final double bodyRef = bodyMetrics.$2;
 
       // Fraction measurements
       final numMetrics = _getListMetrics([LiteralNode(text: 'd')], symbolSize);
@@ -1681,10 +1680,6 @@ class MathRenderer extends StatelessWidget {
       // Eval bar spans full height
       final double evalBarHeight = totalHeight;
       final double evalBarTopPadding = 0.0;
-
-      // Body reference from top of node (for potential future use)
-      final double bodyRefFromTop =
-          parenTopPadding + vPadding + (bodyHeight - bodyRef);
 
       String varText = '';
       for (final n in variable) {

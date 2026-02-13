@@ -235,7 +235,7 @@ class _TexturePlaygroundState extends State<TexturePlayground> {
                         spacing: 8,
                         runSpacing: 8,
                         children: _presetColors.map((themeColor) {
-                          final isSelected = _baseColor.value == themeColor.color.value;
+                          final isSelected = _baseColor.toARGB32() == themeColor.color.toARGB32();
                           return Tooltip(
                             message: themeColor.name,
                             child: GestureDetector(
@@ -265,7 +265,7 @@ class _TexturePlaygroundState extends State<TexturePlayground> {
                       // Show current theme name
                       Text(
                         'Current: ${_presetColors.firstWhere(
-                          (t) => t.color.value == _baseColor.value,
+                          (t) => t.color.toARGB32() == _baseColor.toARGB32(),
                           orElse: () => _ThemeColor('Custom', _baseColor),
                         ).name}',
                         style: const TextStyle(color: Colors.grey),
