@@ -130,6 +130,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
   Timer? _deleteTimer;
   bool _isDeleting = false;
   int _deleteSpeed = 150;
+  bool _deletedContentInCurrentBackspaceSession = false;
 
   int _currentKeypadIndex = 1;
 
@@ -217,7 +218,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     'x!',
     'ans',
     'sin',
-    '',
+    '|x|',
     '',
     'nPr',
     '\u24D8',
@@ -378,10 +379,13 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
   }
 
   void _startContinuousDelete() {
+    _deletedContentInCurrentBackspaceSession = false;
     _isDeleting = true;
     _deleteSpeed = 150;
     _performDelete();
-    _scheduleNextDelete();
+    if (_isDeleting) {
+      _scheduleNextDelete();
+    }
   }
 
   void _scheduleNextDelete() {
@@ -400,13 +404,28 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
     _deleteTimer = null;
   }
 
+  void _handleSingleBackspace() {
+    _deletedContentInCurrentBackspaceSession = false;
+    _performDelete();
+  }
+
   void _performDelete() {
-    if (_activeController?.expr == '') {
-      widget.onRemoveDisplay(widget.activeIndex);
+    final controller = _activeController;
+    if (controller == null) {
       _stopContinuousDelete();
       return;
     }
-    _activeController?.deleteChar();
+
+    if (controller.getExpression().isEmpty) {
+      if (!_deletedContentInCurrentBackspaceSession) {
+        widget.onRemoveDisplay(widget.activeIndex);
+      }
+      _stopContinuousDelete();
+      return;
+    }
+
+    controller.deleteChar();
+    _deletedContentInCurrentBackspaceSession = true;
     widget.onUpdateMathEditor();
     widget.onSetState();
   }
@@ -692,14 +711,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             onLongPressEnd: (_) => _stopContinuousDelete(),
             onLongPressCancel: _stopContinuousDelete,
             child: MyButton(
-              buttontapped: () {
-                _activeController?.deleteChar();
-                widget.onUpdateMathEditor();
-                if (_activeController?.expr == '') {
-                  widget.onRemoveDisplay(widget.activeIndex);
-                }
-                widget.onSetState();
-              },
+              buttontapped: _handleSingleBackspace,
               buttonText: '\u232B',
               color: const Color.fromARGB(255, 226, 104, 104),
               textColor: Colors.black,
@@ -1270,14 +1282,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             onLongPressEnd: (_) => _stopContinuousDelete(),
             onLongPressCancel: _stopContinuousDelete,
             child: MyButton(
-              buttontapped: () {
-                _activeController?.deleteChar();
-                widget.onUpdateMathEditor();
-                if (_activeController?.expr == '') {
-                  widget.onRemoveDisplay(widget.activeIndex);
-                }
-                widget.onSetState();
-              },
+              buttontapped: _handleSingleBackspace,
               buttonText: '\u232B',
               color: const Color.fromARGB(255, 226, 104, 104),
               textColor: Colors.black,
@@ -1730,6 +1735,73 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             separatorColor: Colors.black12,
             indicatorColor: widget.colors.textSecondary,
           );
+        } else if (index == 11) {
+          // Absolute value with complex function variants
+          return PopupMenuCalcButton(
+            buttonText: '|x|',
+            onTap: () {
+              _handleButtonWithSelection(
+                wrapAction:
+                    () => _activeController!.selectionWrapper.wrapInTrig('abs'),
+                normalAction: () => _activeController?.insertTrig('abs'),
+              );
+            },
+            menuItems: [
+              CalcMenuItem(
+                label: 'arg',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () => _activeController!.selectionWrapper.wrapInTrig(
+                          'arg',
+                        ),
+                    normalAction: () => _activeController?.insertTrig('arg'),
+                  );
+                },
+              ),
+              CalcMenuItem(
+                label: 'Re',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () => _activeController!.selectionWrapper.wrapInTrig(
+                          'Re',
+                        ),
+                    normalAction: () => _activeController?.insertTrig('Re'),
+                  );
+                },
+              ),
+              CalcMenuItem(
+                label: 'Im',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () => _activeController!.selectionWrapper.wrapInTrig(
+                          'Im',
+                        ),
+                    normalAction: () => _activeController?.insertTrig('Im'),
+                  );
+                },
+              ),
+              CalcMenuItem(
+                label: 'sgn',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () => _activeController!.selectionWrapper.wrapInTrig(
+                          'sgn',
+                        ),
+                    normalAction: () => _activeController?.insertTrig('sgn'),
+                  );
+                },
+              ),
+            ],
+            color: Colors.white,
+            textColor: Colors.black,
+            menuBackgroundColor: Colors.white,
+            separatorColor: Colors.black12,
+            indicatorColor: widget.colors.textSecondary,
+          );
         } else if (index == 15) {
           // asin with popup for acos/atan/asinh/acosh/atanh
           return PopupMenuCalcButton(
@@ -1878,7 +1950,6 @@ class CustomPageScrollPhysics extends PageScrollPhysics {
       parent: buildParent(ancestor),
     );
   }
-
 }
 
 class CustomSnapPageView extends StatefulWidget {

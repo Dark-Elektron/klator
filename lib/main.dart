@@ -131,10 +131,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Map<int, ValueNotifier<double>> resultPageProgressNotifiers = {};
   int activeIndex = 0;
-  PageController pgViewController = PageController(
-    initialPage: 1,
-    viewportFraction: 1,
-  );
   bool isVisible = true;
   bool isTypingExponent = false;
   bool _isUpdating = false;
@@ -239,12 +235,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _loadCells();
 
-    if (mathEditorControllers.isEmpty) {
-      _createControllers(0);
-      count = 1;
-      activeIndex = 0;
-    }
-
     // Initialize walkthrough after build is complete
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeWalkthrough();
@@ -257,16 +247,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  void _createControllers(int index) {
-    mathEditorControllers[index] = MathEditorController();
+  int? _findControllerIndex(MathEditorController controller) {
+    for (final entry in mathEditorControllers.entries) {
+      if (identical(entry.value, controller)) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
 
-    mathEditorControllers[index]!.onResultChanged = () {
-      _requestComputation(index);
+  void _bindControllerCallbacks(MathEditorController controller) {
+    controller.onResultChanged = () {
+      final index = _findControllerIndex(controller);
+      if (index != null) {
+        _requestComputation(index);
+      }
     };
 
-    mathEditorControllers[index]!.addListener(() {
-      _autoScrollToEnd(index);
+    controller.addListener(() {
+      final index = _findControllerIndex(controller);
+      if (index != null) {
+        _autoScrollToEnd(index);
+      }
     });
+  }
+
+  void _createControllers(int index) {
+    final controller = MathEditorController();
+    mathEditorControllers[index] = controller;
+    _bindControllerCallbacks(controller);
 
     textDisplayControllers[index] = TextEditingController();
     focusNodes[index] = FocusNode();
@@ -578,9 +587,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       scrollController.dispose();
     }
 
-    for (PageController pageController in resultPageControllers.values) {
-      pageController.dispose();
-    }
+    // Result page controllers are owned by _ResultPageViewWidgetState.
+    // Each widget disposes its own PageController in its dispose method.
 
     for (ValueNotifier<double> notifier in resultPageProgressNotifiers.values) {
       notifier.dispose();
@@ -602,6 +610,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
+    if (state == AppLifecycleState.resumed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        for (final controller in mathEditorControllers.values) {
+          controller.refreshDisplay();
+        }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          mathEditorControllers[activeIndex]?.recalculateCursorRect();
+        });
+      });
+      return;
+    }
+
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
@@ -621,8 +645,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadCells() async {
+    _computeService.cancelAll();
+
     List<CellData> savedCells = await CellPersistence.loadCells();
     int savedIndex = await CellPersistence.loadActiveIndex();
+    if (!mounted) return;
 
     if (savedCells.isEmpty) {
       _createControllers(0);
@@ -635,19 +662,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         List<MathNode> nodes = MathExpressionSerializer.deserializeFromJson(
           savedCells[i].expressionJson,
         );
-        mathEditorControllers[i]?.setExpression(nodes);
-
-        textDisplayControllers[i]?.text = savedCells[i].answer;
+        final mathController = mathEditorControllers[i];
+        mathController?.setExpression(nodes);
+        mathController?.result = savedCells[i].answer;
+        mathController?.updateAnswer(textDisplayControllers[i]);
       }
 
       count = savedCells.length;
       activeIndex = savedIndex.clamp(0, count - 1);
     }
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     // Update exact results for all cells after loading
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       for (int i = 0; i < count; i++) {
         _requestComputation(i);
       }
@@ -765,6 +795,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     // Schedule scroll after layout is complete
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       if (scrollController.hasClients) {
         // With reverse: true, position 0 is the RIGHT end (where cursor is)
         if (scrollController.offset != 0) {
@@ -775,6 +806,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _addDisplay({int? insertAt}) {
+    _computeService.cancelAll();
+
     // Default: insert after the active cell
     int insertIndex = insertAt ?? (activeIndex + 1);
 
@@ -853,6 +886,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   void _removeDisplay(int indexToRemove) {
     if (count <= 1) return;
+    _computeService.cancelAll();
 
     // NEW: Update ANS indices in all remaining controllers
     // Any reference to a cell AFTER the removed one must be decremented
@@ -870,7 +904,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     scrollControllers.remove(indexToRemove);
     mathEditorKeys.remove(indexToRemove);
 
-    resultPageControllers[indexToRemove]?.dispose();
     resultPageControllers.remove(indexToRemove);
     exactResultNodes.remove(indexToRemove);
     currentResultPage.remove(indexToRemove);
@@ -899,6 +932,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _clearAllDisplays() {
+    _computeService.cancelAll();
     _saveAppStateForUndo();
 
     for (var controller in mathEditorControllers.values) {
@@ -973,7 +1007,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       newFocusNodes[newIndex] = focusNodes[oldKey]!;
       newScrollControllers[newIndex] = scrollControllers[oldKey]!;
       newMathEditorKeys[newIndex] = mathEditorKeys[oldKey]!;
-      newResultPageControllers[newIndex] = resultPageControllers[oldKey]!;
+      if (resultPageControllers.containsKey(oldKey)) {
+        newResultPageControllers[newIndex] = resultPageControllers[oldKey]!;
+      }
       newExactResultNodes[newIndex] = exactResultNodes[oldKey];
       newExactResultExprs[newIndex] = exactResultExprs[oldKey];
       newCurrentResultPage[newIndex] = currentResultPage[oldKey] ?? 0;
@@ -1000,6 +1036,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _restoreAppState(AppState state) {
+    _computeService.cancelAll();
+
     for (var controller in mathEditorControllers.values) {
       controller.dispose();
     }
@@ -1041,10 +1079,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     for (int i = 0; i < state.expressions.length; i++) {
       _createControllers(i);
-      mathEditorControllers[i]?.setExpression(
+      final mathController = mathEditorControllers[i];
+      mathController?.setExpression(
         MathClipboard.deepCopyNodes(state.expressions[i]),
       );
-      textDisplayControllers[i]?.text = state.answers[i];
+      mathController?.result = state.answers[i];
+      mathController?.updateAnswer(textDisplayControllers[i]);
     }
 
     if (state.expressions.isEmpty) {
@@ -1174,10 +1214,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
                                 if (reversedIndex >= 0 &&
                                     reversedIndex < keys.length) {
+                                  final cellIndex = keys[reversedIndex];
                                   return Padding(
+                                    key: ValueKey(
+                                      'cell_${cellIndex}_$_globalClearId',
+                                    ),
                                     padding: EdgeInsets.only(top: 5),
                                     child: _buildExpressionDisplay(
-                                      keys[reversedIndex],
+                                      cellIndex,
                                       colors,
                                     ),
                                   );
@@ -1348,6 +1392,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       'log',
       'ln',
       'abs',
+      'arg',
+      're',
+      'im',
+      'sgn',
+      'Re',
+      'Im',
       'perm',
       'comb',
       'sum',
@@ -1503,6 +1553,9 @@ class _ResultPageViewWidget extends StatefulWidget {
 
 class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
   late PageController _pageController;
+  final ValueNotifier<int> _fallbackVersionNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<double> _fallbackProgressNotifier =
+      ValueNotifier<double>(0.0);
   int _currentPage = 0;
   double _lastDecimalHeight = 70.0;
   double _lastExactHeight = 70.0;
@@ -1522,8 +1575,13 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
 
   @override
   void dispose() {
+    if (widget.resultPageControllers[widget.index] == _pageController) {
+      widget.resultPageControllers.remove(widget.index);
+    }
     _pageController.removeListener(_onPageScroll);
     _pageController.dispose();
+    _fallbackVersionNotifier.dispose();
+    _fallbackProgressNotifier.dispose();
     super.dispose();
   }
 
@@ -1554,9 +1612,15 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final versionNotifier =
+        widget.exactResultVersionNotifiers[widget.index] ??
+        _fallbackVersionNotifier;
+    final progressNotifier =
+        widget.resultPageProgressNotifiers[widget.index] ??
+        _fallbackProgressNotifier;
+
     return ValueListenableBuilder<int>(
-      valueListenable:
-          widget.exactResultVersionNotifiers[widget.index] ?? ValueNotifier(0),
+      valueListenable: versionNotifier,
       builder: (context, version, _) {
         double targetDecimalHeight = widget.calculateDecimalResultHeight(
           widget.index,
@@ -1571,9 +1635,7 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
           lastDecimalHeight: _lastDecimalHeight,
           lastExactHeight: _lastExactHeight,
           resultVersion: version, // Pass version here
-          progressNotifier:
-              widget.resultPageProgressNotifiers[widget.index] ??
-              ValueNotifier(0.0),
+          progressNotifier: progressNotifier,
           onHeightsAnimated: (decimal, exact) {
             _lastDecimalHeight = decimal;
             _lastExactHeight = exact;

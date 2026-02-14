@@ -789,6 +789,45 @@ class SumExpr extends Expr {
     return [...realTerms, ...imaginaryTerms];
   }
 
+  bool _containsIntegrationConstant(Expr expr) {
+    if (expr is VarExpr) {
+      return _isIntegrationConstantVariable(expr.name);
+    }
+    if (expr is SumExpr) {
+      return expr.terms.any(_containsIntegrationConstant);
+    }
+    if (expr is ProdExpr) {
+      return expr.factors.any(_containsIntegrationConstant);
+    }
+    if (expr is DivExpr) {
+      return _containsIntegrationConstant(expr.numerator) ||
+          _containsIntegrationConstant(expr.denominator);
+    }
+    if (expr is PowExpr) {
+      return _containsIntegrationConstant(expr.base) ||
+          _containsIntegrationConstant(expr.exponent);
+    }
+    if (expr is RootExpr) {
+      return _containsIntegrationConstant(expr.radicand) ||
+          _containsIntegrationConstant(expr.index);
+    }
+    if (expr is LogExpr) {
+      return _containsIntegrationConstant(expr.base) ||
+          _containsIntegrationConstant(expr.argument);
+    }
+    if (expr is TrigExpr) {
+      return _containsIntegrationConstant(expr.argument);
+    }
+    if (expr is AbsExpr) {
+      return _containsIntegrationConstant(expr.operand);
+    }
+    return false;
+  }
+
+  bool _isIntegrationConstantVariable(String name) {
+    return RegExp(r'^c[\u2080-\u2089]+$').hasMatch(name);
+  }
+
   Expr? _tryFactorCommon(List<Expr> terms) {
     if (terms.length < 2) return null;
 
@@ -869,6 +908,13 @@ class SumExpr extends Expr {
     }
 
     if (commonFactors.isEmpty) return null;
+
+    // Keep expanded forms for expressions carrying integration constants,
+    // e.g., x^3/6 + c₀x + c₁ instead of x*(x^2/6 + c₀) + c₁.
+    if (commonFactors.length == 1 &&
+        terms.any((term) => _containsIntegrationConstant(term))) {
+      return null;
+    }
 
     final Expr commonExpr =
         commonFactors.length == 1
@@ -1290,6 +1336,35 @@ class ProdExpr extends Expr {
       }
     }
 
+    // Step 1.6: Pull rational denominators out of division factors.
+    // This lets expressions like x * (x^2/6) simplify to x^3/6.
+    Expr pulledRational = IntExpr.one;
+    List<Expr> rewritten = [];
+    bool extractedRationalDivisor = false;
+
+    for (final factor in flat) {
+      if (factor is DivExpr) {
+        final Expr den = factor.denominator.simplify();
+        if (den is IntExpr || den is FracExpr) {
+          final Expr reciprocal = DivExpr(IntExpr.one, den).simplify();
+          if (reciprocal is IntExpr || reciprocal is FracExpr) {
+            pulledRational = _multiplyRational(pulledRational, reciprocal);
+            rewritten.add(factor.numerator);
+            extractedRationalDivisor = true;
+            continue;
+          }
+        }
+      }
+      rewritten.add(factor);
+    }
+
+    if (extractedRationalDivisor) {
+      if (!pulledRational.isOne) {
+        rewritten.insert(0, pulledRational);
+      }
+      return ProdExpr(rewritten).simplify();
+    }
+
     // Step 2: Distribute over sums if any factor is a SumExpr
     // Find all SumExpr indices
     List<int> sumIndices = [];
@@ -1603,6 +1678,30 @@ class ProdExpr extends Expr {
     return ProdExpr(newFactors);
   }
 
+  static bool _isVariableLikeFactor(Expr expr) {
+    return expr is VarExpr || (expr is PowExpr && expr.base is VarExpr);
+  }
+
+  static bool _isImplicitCoeffTarget(Expr expr) {
+    return expr is RootExpr ||
+        expr is ConstExpr ||
+        expr is ImaginaryExpr ||
+        _isVariableLikeFactor(expr);
+  }
+
+  static bool _isImplicitMultiplicationPair(Expr left, Expr right) {
+    if (left.isRational) {
+      return _isImplicitCoeffTarget(right);
+    }
+
+    // Keep symbolic products compact: c₀x, c₀xy, x^2y, etc.
+    if (_isVariableLikeFactor(left) && _isVariableLikeFactor(right)) {
+      return true;
+    }
+
+    return false;
+  }
+
   @override
   List<MathNode> toMathNode() {
     if (factors.isEmpty) return [LiteralNode(text: '1')];
@@ -1611,16 +1710,8 @@ class ProdExpr extends Expr {
 
     for (int i = 0; i < factors.length; i++) {
       if (i > 0) {
-        // Add multiplication sign between factors
-        // But skip if it's coefficient * root (implicit multiplication)
-        bool implicit =
-            factors[i - 1].isRational &&
-            (factors[i] is RootExpr ||
-                factors[i] is ConstExpr ||
-                factors[i] is ImaginaryExpr ||
-                factors[i] is VarExpr ||
-                (factors[i] is PowExpr &&
-                    (factors[i] as PowExpr).base is VarExpr));
+        // Add multiplication sign between factors, except for implied products.
+        bool implicit = _isImplicitMultiplicationPair(factors[i - 1], factors[i]);
         if (!implicit) {
           nodes.add(LiteralNode(text: '·'));
         }
@@ -2378,6 +2469,10 @@ enum TrigFunc {
   asinh,
   acosh,
   atanh,
+  arg,
+  re,
+  im,
+  sgn,
 }
 
 /// Represents a trigonometric function
@@ -2393,6 +2488,15 @@ class TrigExpr extends Expr {
   @override
   Expr simplify() {
     Expr arg = argument.simplify();
+
+    if (func == TrigFunc.arg ||
+        func == TrigFunc.re ||
+        func == TrigFunc.im ||
+        func == TrigFunc.sgn) {
+      final Expr? special = _trySimplifyComplexFunction(arg);
+      if (special != null) return special;
+      return TrigExpr(func, arg);
+    }
 
     // Check for known exact values
     Expr? exact = _tryExactValue(arg);
@@ -2431,6 +2535,14 @@ class TrigExpr extends Expr {
           return null; // acosh(0) not real
         case TrigFunc.atanh:
           return IntExpr.zero; // atanh(0) = 0
+        case TrigFunc.arg:
+          return IntExpr.zero;
+        case TrigFunc.re:
+          return IntExpr.zero;
+        case TrigFunc.im:
+          return IntExpr.zero;
+        case TrigFunc.sgn:
+          return IntExpr.zero;
       }
     }
 
@@ -2445,6 +2557,10 @@ class TrigExpr extends Expr {
         case TrigFunc.atan:
           // atan(1) = π/4
           return DivExpr(ConstExpr.pi, IntExpr.from(4)).simplify();
+        case TrigFunc.arg:
+        case TrigFunc.re:
+        case TrigFunc.im:
+        case TrigFunc.sgn:
         default:
           break;
       }
@@ -2459,6 +2575,10 @@ class TrigExpr extends Expr {
         case TrigFunc.acos:
           // acos(-1) = π
           return ConstExpr.pi;
+        case TrigFunc.arg:
+        case TrigFunc.re:
+        case TrigFunc.im:
+        case TrigFunc.sgn:
         default:
           break;
       }
@@ -2488,6 +2608,44 @@ class TrigExpr extends Expr {
       default:
         return null;
     }
+  }
+
+  Expr? _trySimplifyComplexFunction(Expr arg) {
+    final Complex? value = _tryEvalComplexValue(arg);
+    if (value == null) return null;
+
+    switch (func) {
+      case TrigFunc.arg:
+        return _exprFromDouble(math.atan2(value.imag, value.real));
+      case TrigFunc.re:
+        return _exprFromDouble(value.real);
+      case TrigFunc.im:
+        return _exprFromDouble(value.imag);
+      case TrigFunc.sgn:
+        final double mag = value.magnitude;
+        if (mag < _complexEvalEpsilon) return IntExpr.zero;
+        final double real = value.real / mag;
+        final double imag = value.imag / mag;
+        if (imag.abs() < _complexEvalEpsilon) {
+          return real >= 0 ? IntExpr.one : IntExpr.negOne;
+        }
+        return _buildComplexExpr(real, imag);
+      default:
+        return null;
+    }
+  }
+
+  Expr _buildComplexExpr(double real, double imag) {
+    final Expr realExpr = _exprFromDouble(real);
+    final Expr imagExpr = _exprFromDouble(imag);
+
+    if (imagExpr.isZero) return realExpr;
+
+    final Expr imagTerm = ProdExpr([imagExpr, ImaginaryExpr.i]).simplify();
+
+    if (realExpr.isZero) return imagTerm;
+
+    return SumExpr([realExpr, imagTerm]).simplify();
   }
 
   /// Check if expr is a rational multiple of π
@@ -2647,6 +2805,33 @@ class TrigExpr extends Expr {
 
   @override
   double toDouble() {
+    if (func == TrigFunc.arg ||
+        func == TrigFunc.re ||
+        func == TrigFunc.im ||
+        func == TrigFunc.sgn) {
+      final Complex? c = _tryEvalComplexValue(argument);
+      if (c == null) return double.nan;
+      switch (func) {
+        case TrigFunc.arg:
+          return math.atan2(c.imag, c.real);
+        case TrigFunc.re:
+          return c.real;
+        case TrigFunc.im:
+          return c.imag;
+        case TrigFunc.sgn:
+          if (c.real.abs() < _complexEvalEpsilon &&
+              c.imag.abs() < _complexEvalEpsilon) {
+            return 0.0;
+          }
+          if (c.imag.abs() < _complexEvalEpsilon) {
+            return c.real > 0 ? 1.0 : -1.0;
+          }
+          return double.nan;
+        default:
+          return double.nan;
+      }
+    }
+
     double a = argument.toDouble();
     switch (func) {
       case TrigFunc.sin:
@@ -2673,6 +2858,11 @@ class TrigExpr extends Expr {
         return math.log(a + math.sqrt(a * a - 1));
       case TrigFunc.atanh:
         return 0.5 * math.log((1 + a) / (1 - a));
+      case TrigFunc.arg:
+      case TrigFunc.re:
+      case TrigFunc.im:
+      case TrigFunc.sgn:
+        return double.nan;
     }
   }
 
@@ -2774,6 +2964,18 @@ class TrigExpr extends Expr {
       case TrigFunc.atanh:
         funcName = 'atanh';
         break;
+      case TrigFunc.arg:
+        funcName = 'arg';
+        break;
+      case TrigFunc.re:
+        funcName = 'Re';
+        break;
+      case TrigFunc.im:
+        funcName = 'Im';
+        break;
+      case TrigFunc.sgn:
+        funcName = 'sgn';
+        break;
     }
 
     return [TrigNode(function: funcName, argument: argument.toMathNode())];
@@ -2792,6 +2994,150 @@ class _PiFraction {
   final int denominator;
 
   _PiFraction(this.numerator, this.denominator);
+}
+
+const double _complexEvalEpsilon = 1e-12;
+
+Expr _exprFromDouble(double value) {
+  return MathNodeToExpr._doubleToExpr(value);
+}
+
+Complex? _tryEvalComplexValue(Expr expr) {
+  if (expr is IntExpr) {
+    return Complex(expr.value.toDouble(), 0);
+  }
+  if (expr is FracExpr) {
+    return Complex(
+      expr.numerator.value.toDouble() / expr.denominator.value.toDouble(),
+      0,
+    );
+  }
+  if (expr is ConstExpr) {
+    return Complex(expr.toDouble(), 0);
+  }
+  if (expr is ImaginaryExpr) {
+    return Complex(0, 1);
+  }
+  if (expr is SumExpr) {
+    Complex sum = Complex(0, 0);
+    for (final term in expr.terms) {
+      final Complex? c = _tryEvalComplexValue(term);
+      if (c == null) return null;
+      sum = sum + c;
+    }
+    return sum;
+  }
+  if (expr is ProdExpr) {
+    Complex prod = Complex(1, 0);
+    for (final factor in expr.factors) {
+      final Complex? c = _tryEvalComplexValue(factor);
+      if (c == null) return null;
+      prod = prod * c;
+    }
+    return prod;
+  }
+  if (expr is DivExpr) {
+    final Complex? num = _tryEvalComplexValue(expr.numerator);
+    final Complex? den = _tryEvalComplexValue(expr.denominator);
+    if (num == null || den == null) return null;
+    if (den.magnitude < _complexEvalEpsilon) return null;
+    return num / den;
+  }
+  if (expr is PowExpr) {
+    final Complex? base = _tryEvalComplexValue(expr.base);
+    final Complex? exponent = _tryEvalComplexValue(expr.exponent);
+    if (base == null || exponent == null) return null;
+    if (exponent.imag.abs() > _complexEvalEpsilon) return null;
+    if (base.magnitude < _complexEvalEpsilon) return Complex(0, 0);
+    final double power = exponent.real;
+    final double r = base.magnitude;
+    final double theta = base.phase;
+    final double rPow = math.pow(r, power).toDouble();
+    return Complex(
+      rPow * math.cos(theta * power),
+      rPow * math.sin(theta * power),
+    );
+  }
+  if (expr is RootExpr) {
+    final Complex? rad = _tryEvalComplexValue(expr.radicand);
+    final Complex? idx = _tryEvalComplexValue(expr.index);
+    if (rad == null || idx == null) return null;
+    if (rad.imag.abs() > _complexEvalEpsilon) return null;
+    if (idx.imag.abs() > _complexEvalEpsilon) return null;
+    if (idx.real.abs() < _complexEvalEpsilon) return null;
+    if (rad.real < 0) return null;
+    final double value = math.pow(rad.real, 1 / idx.real).toDouble();
+    return Complex(value, 0);
+  }
+  if (expr is LogExpr) {
+    final Complex? arg = _tryEvalComplexValue(expr.argument);
+    if (arg == null || arg.imag.abs() > _complexEvalEpsilon) return null;
+    final Complex base =
+        expr.isNaturalLog
+            ? Complex(math.e, 0)
+            : (_tryEvalComplexValue(expr.base) ?? Complex(0, 0));
+    if (base.magnitude < _complexEvalEpsilon ||
+        base.imag.abs() > _complexEvalEpsilon) {
+      return null;
+    }
+    if (arg.real <= 0 || base.real <= 0) return null;
+    final double result =
+        expr.isNaturalLog
+            ? math.log(arg.real)
+            : math.log(arg.real) / math.log(base.real);
+    return Complex(result, 0);
+  }
+  if (expr is TrigExpr) {
+    final Complex? arg = _tryEvalComplexValue(expr.argument);
+    if (arg == null) return null;
+    if (arg.imag.abs() > _complexEvalEpsilon) return null;
+    final double a = arg.real;
+    switch (expr.func) {
+      case TrigFunc.sin:
+        return Complex(math.sin(a), 0);
+      case TrigFunc.cos:
+        return Complex(math.cos(a), 0);
+      case TrigFunc.tan:
+        return Complex(math.tan(a), 0);
+      case TrigFunc.asin:
+        return Complex(math.asin(a), 0);
+      case TrigFunc.acos:
+        return Complex(math.acos(a), 0);
+      case TrigFunc.atan:
+        return Complex(math.atan(a), 0);
+      case TrigFunc.sinh:
+        return Complex((math.exp(a) - math.exp(-a)) / 2, 0);
+      case TrigFunc.cosh:
+        return Complex((math.exp(a) + math.exp(-a)) / 2, 0);
+      case TrigFunc.tanh:
+        return Complex(
+          (math.exp(a) - math.exp(-a)) / (math.exp(a) + math.exp(-a)),
+          0,
+        );
+      case TrigFunc.asinh:
+        return Complex(math.log(a + math.sqrt(a * a + 1)), 0);
+      case TrigFunc.acosh:
+        return Complex(math.log(a + math.sqrt(a * a - 1)), 0);
+      case TrigFunc.atanh:
+        return Complex(0.5 * math.log((1 + a) / (1 - a)), 0);
+      case TrigFunc.arg:
+        return Complex(math.atan2(arg.imag, arg.real), 0);
+      case TrigFunc.re:
+        return Complex(arg.real, 0);
+      case TrigFunc.im:
+        return Complex(0, 0);
+      case TrigFunc.sgn:
+        if (arg.magnitude < _complexEvalEpsilon) return Complex(0, 0);
+        return Complex(arg.real / arg.magnitude, arg.imag / arg.magnitude);
+    }
+  }
+  if (expr is AbsExpr) {
+    final Complex? val = _tryEvalComplexValue(expr.operand);
+    if (val == null) return null;
+    return Complex(val.magnitude, 0);
+  }
+
+  return null;
 }
 
 // ============================================================
@@ -2834,7 +3180,11 @@ class AbsExpr extends Expr {
   }
 
   @override
-  double toDouble() => operand.toDouble().abs();
+  double toDouble() {
+    final Complex? value = _tryEvalComplexValue(operand);
+    if (value != null) return value.magnitude;
+    return operand.toDouble().abs();
+  }
 
   @override
   bool structurallyEquals(Expr other) {
@@ -3594,7 +3944,10 @@ class IntegralExpr extends Expr {
         variable,
       );
       if (result != null) {
-        return SumExpr([result, VarExpr('c')]).simplify();
+        return SumExpr([
+          result,
+          SymbolicCalculus._nextIntegrationConstant(),
+        ]).simplify();
       }
     }
     return IntegralExpr(
@@ -3762,6 +4115,10 @@ class MathNodeToExpr {
     'ln',
     'sqrt',
     'abs',
+    'arg',
+    're',
+    'im',
+    'sgn',
     'exp',
     'perm',
     'comb',
@@ -3979,6 +4336,18 @@ class MathNodeToExpr {
           break;
         case 'atanh':
           func = TrigFunc.atanh;
+          break;
+        case 'arg':
+          func = TrigFunc.arg;
+          break;
+        case 're':
+          func = TrigFunc.re;
+          break;
+        case 'im':
+          func = TrigFunc.im;
+          break;
+        case 'sgn':
+          func = TrigFunc.sgn;
           break;
         case 'abs':
           return [_Token.fromExpr(AbsExpr(argument))];
@@ -4946,80 +5315,82 @@ class ExactMathEngine {
     List<MathNode> expression, {
     Map<int, Expr>? ansExpressions,
   }) {
-    try {
-      if (_isEmptyExpression(expression)) {
-        return ExactResult.empty();
-      }
-
-      // Normalize expression nodes (split embedded = and \n)
-      expression = _normalizeNodes(expression);
-
-      final ExactResult? symbolicCalculus = _tryBuildSymbolicCalculusResult(
-        expression,
-        ansExpressions: ansExpressions,
-      );
-      if (symbolicCalculus != null) {
-        return symbolicCalculus;
-      }
-
-      if (_isIncompleteExpression(expression)) {
-        // print('DEBUG: Incomplete expression');
-        return ExactResult.empty();
-      }
-
-      // 1. Handle multi-line results (system of equations)
-      if (expression.any((n) => n is NewlineNode)) {
-        // print('DEBUG: Routing to _solveMultiLine');
-        return _solveMultiLine(expression, ansExpressions);
-      }
-
-      // 2. Handle single equation
-      if (expression.any((n) => n is LiteralNode && n.text.contains('='))) {
-        // print('DEBUG: Routing to _solveSingleEquation');
-        return _solveSingleEquation(expression, ansExpressions);
-      }
-
-      // 3. Regular expression evaluation
-      Expr expr = MathNodeToExpr.convert(
-        expression,
-        ansExpressions: ansExpressions,
-      );
-
-      Expr simplified = expr.simplify();
-
-      double? numerical;
+    return SymbolicCalculus.withFreshIntegrationConstants(() {
       try {
-        numerical = simplified.toDouble();
-      } catch (e) {
-        numerical = null;
-      }
-
-      if (numerical != null && numerical.isNaN) {
-        // If it's NaN but has imaginary parts, that's expected for pure 'i' expressions
-        if (!(simplified.hasImaginary)) {
+        if (_isEmptyExpression(expression)) {
           return ExactResult.empty();
         }
-      }
 
-      if (numerical != null && numerical.isInfinite) {
+        // Normalize expression nodes (split embedded = and \n)
+        expression = _normalizeNodes(expression);
+
+        final ExactResult? symbolicCalculus = _tryBuildSymbolicCalculusResult(
+          expression,
+          ansExpressions: ansExpressions,
+        );
+        if (symbolicCalculus != null) {
+          return symbolicCalculus;
+        }
+
+        if (_isIncompleteExpression(expression)) {
+          // print('DEBUG: Incomplete expression');
+          return ExactResult.empty();
+        }
+
+        // 1. Handle multi-line results (system of equations)
+        if (expression.any((n) => n is NewlineNode)) {
+          // print('DEBUG: Routing to _solveMultiLine');
+          return _solveMultiLine(expression, ansExpressions);
+        }
+
+        // 2. Handle single equation
+        if (expression.any((n) => n is LiteralNode && n.text.contains('='))) {
+          // print('DEBUG: Routing to _solveSingleEquation');
+          return _solveSingleEquation(expression, ansExpressions);
+        }
+
+        // 3. Regular expression evaluation
+        Expr expr = MathNodeToExpr.convert(
+          expression,
+          ansExpressions: ansExpressions,
+        );
+
+        Expr simplified = expr.simplify();
+
+        double? numerical;
+        try {
+          numerical = simplified.toDouble();
+        } catch (e) {
+          numerical = null;
+        }
+
+        if (numerical != null && numerical.isNaN) {
+          // If it's NaN but has imaginary parts, that's expected for pure 'i' expressions
+          if (!(simplified.hasImaginary)) {
+            return ExactResult.empty();
+          }
+        }
+
+        if (numerical != null && numerical.isInfinite) {
+          return ExactResult(
+            expr: simplified,
+            mathNodes: [
+              LiteralNode(text: numerical.isNegative ? '\u2212∞' : '∞'),
+            ],
+            numerical: numerical,
+          );
+        }
+
         return ExactResult(
           expr: simplified,
-          mathNodes: [
-            LiteralNode(text: numerical.isNegative ? '\u2212∞' : '∞'),
-          ],
+          mathNodes: simplified.toMathNode(),
           numerical: numerical,
+          isExact: _hasIrrationalParts(simplified),
         );
+      } catch (e) {
+        return ExactResult.empty();
       }
-
-      return ExactResult(
-        expr: simplified,
-        mathNodes: simplified.toMathNode(),
-        numerical: numerical,
-        isExact: _hasIrrationalParts(simplified),
-      );
-    } catch (e) {
-      return ExactResult.empty();
-    }
+    });
   }
 
   static ExactResult? _tryBuildSymbolicCalculusResult(
@@ -6466,20 +6837,11 @@ class _DecimalExprFormatter {
   }
 
   static bool _isImplicitMultiplication(Expr left, Expr right) {
-    if (!left.isRational) return false;
-    return right is RootExpr ||
-        right is ConstExpr ||
-        right is ImaginaryExpr ||
-        right is VarExpr ||
-        (right is PowExpr && right.base is VarExpr);
+    return ProdExpr._isImplicitMultiplicationPair(left, right);
   }
 
   static bool _isImplicitCoeffTarget(Expr expr) {
-    return expr is RootExpr ||
-        expr is ConstExpr ||
-        expr is ImaginaryExpr ||
-        expr is VarExpr ||
-        (expr is PowExpr && expr.base is VarExpr);
+    return ProdExpr._isImplicitCoeffTarget(expr);
   }
 
   static _RationalSplit _splitLeadingRational(Expr expr) {

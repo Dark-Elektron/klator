@@ -359,6 +359,10 @@ class MathSolverNew {
         'ln',
         'sqrt',
         'abs',
+        'arg',
+        're',
+        'im',
+        'sgn',
         'exp',
         'diff',
         'int',
@@ -518,6 +522,10 @@ class MathSolverNew {
       'ln',
       'sqrt',
       'abs',
+      'arg',
+      're',
+      'im',
+      'sgn',
       'exp',
       'e',
       'pi',
@@ -1507,12 +1515,17 @@ class _ExpressionParser {
       'ln',
       'sqrt',
       'abs',
+      'arg',
+      're',
+      'im',
+      'sgn',
       'exp',
     ];
 
     for (String func in functions) {
       if (_pos + func.length <= expression.length &&
-          expression.substring(_pos, _pos + func.length) == func) {
+          expression.substring(_pos, _pos + func.length).toLowerCase() ==
+              func) {
         // Make sure it's followed by '(' to confirm it's a function
         if (_pos + func.length < expression.length &&
             expression[_pos + func.length] == '(') {
@@ -1566,6 +1579,16 @@ class _ExpressionParser {
         return sqrt(a);
       case 'abs':
         return a.abs();
+      case 'arg':
+        return atan2(0.0, a);
+      case 're':
+        return a;
+      case 'im':
+        return 0.0;
+      case 'sgn':
+        if (a > 0) return 1.0;
+        if (a < 0) return -1.0;
+        return 0.0;
       case 'exp':
         return exp(a);
       default:
@@ -1577,6 +1600,17 @@ class _ExpressionParser {
     switch (func) {
       case 'abs':
         return Complex(z.magnitude, 0);
+      case 'arg':
+        return Complex(atan2(z.imag, z.real), 0);
+      case 're':
+        return Complex(z.real, 0);
+      case 'im':
+        return Complex(z.imag, 0);
+      case 'sgn':
+        if (z.real == 0 && z.imag == 0) {
+          return Complex(0, 0);
+        }
+        return z / Complex(z.magnitude, 0);
       case 'exp':
         return _complexExp(z);
       case 'ln':

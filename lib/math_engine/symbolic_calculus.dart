@@ -1,6 +1,46 @@
 part of 'math_engine_exact.dart';
 
 class SymbolicCalculus {
+  static int _integrationConstantCounter = -1;
+  static const List<String> _subscriptDigits = [
+    '\u2080',
+    '\u2081',
+    '\u2082',
+    '\u2083',
+    '\u2084',
+    '\u2085',
+    '\u2086',
+    '\u2087',
+    '\u2088',
+    '\u2089',
+  ];
+
+  static T withFreshIntegrationConstants<T>(T Function() action) {
+    final int previous = _integrationConstantCounter;
+    _integrationConstantCounter = -1;
+    try {
+      return action();
+    } finally {
+      _integrationConstantCounter = previous;
+    }
+  }
+
+  static VarExpr _nextIntegrationConstant() {
+    _integrationConstantCounter += 1;
+    return VarExpr('c${_toSubscript(_integrationConstantCounter)}');
+  }
+
+  static String _toSubscript(int value) {
+    final String digits = value.toString();
+    final StringBuffer out = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      final int? n = int.tryParse(digits[i]);
+      if (n == null) continue;
+      out.write(_subscriptDigits[n]);
+    }
+    return out.toString();
+  }
+
   static ExactResult? tryBuildSymbolicCalculusResult(
     List<MathNode> expression, {
     Map<int, Expr>? ansExpressions,
@@ -68,7 +108,8 @@ class SymbolicCalculus {
           );
           final Expr? integral = _integrateSymbolic(bodyExpr, varName);
           if (integral != null) {
-            final withConstant = SumExpr([integral, VarExpr('c')]).simplify();
+            final withConstant =
+                SumExpr([integral, _nextIntegrationConstant()]).simplify();
             return ExactMathEngine._buildExactResultFromExpr(withConstant);
           }
         } catch (_) {
@@ -387,6 +428,12 @@ class SymbolicCalculus {
         case TrigFunc.atanh:
           outer = null;
           break;
+        case TrigFunc.arg:
+        case TrigFunc.re:
+        case TrigFunc.im:
+        case TrigFunc.sgn:
+          outer = null;
+          break;
       }
       if (outer == null) return null;
       return ProdExpr([outer, argDeriv]).simplify();
@@ -635,6 +682,10 @@ class SymbolicCalculus {
         case TrigFunc.asinh:
         case TrigFunc.acosh:
         case TrigFunc.atanh:
+        case TrigFunc.arg:
+        case TrigFunc.re:
+        case TrigFunc.im:
+        case TrigFunc.sgn:
           return null;
       }
     }

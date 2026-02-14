@@ -71,6 +71,183 @@ void main() {
     return found;
   }
 
+  String _toSubscript(int value) {
+    const List<String> digits = [
+      '\u2080',
+      '\u2081',
+      '\u2082',
+      '\u2083',
+      '\u2084',
+      '\u2085',
+      '\u2086',
+      '\u2087',
+      '\u2088',
+      '\u2089',
+    ];
+    final String raw = value.toString();
+    final StringBuffer buffer = StringBuffer();
+    for (int i = 0; i < raw.length; i++) {
+      final int d = int.parse(raw[i]);
+      buffer.write(digits[d]);
+    }
+    return buffer.toString();
+  }
+
+  bool _isIntegrationConstant(Expr expr, {int? index}) {
+    if (expr is! VarExpr) return false;
+    if (index != null) {
+      return expr.name == 'c${_toSubscript(index)}';
+    }
+    return RegExp(r'^c[\u2080-\u2089]+$').hasMatch(expr.name);
+  }
+
+  bool _hasOneSixthFactor(Expr expr) {
+    bool found = false;
+    void visit(Expr node) {
+      if (found) return;
+      if (node is FracExpr) {
+        if (node.numerator.value == BigInt.one &&
+            node.denominator.value == BigInt.from(6)) {
+          found = true;
+          return;
+        }
+      }
+      if (node is DivExpr &&
+          node.denominator is IntExpr &&
+          (node.denominator as IntExpr).value == BigInt.from(6)) {
+        found = true;
+        return;
+      }
+      if (node is ProdExpr) {
+        for (final factor in node.factors) {
+          visit(factor);
+        }
+      } else if (node is SumExpr) {
+        for (final term in node.terms) {
+          visit(term);
+        }
+      } else if (node is DivExpr) {
+        visit(node.numerator);
+        visit(node.denominator);
+      }
+    }
+
+    visit(expr);
+    return found;
+  }
+
+  double _evaluateExprWithBindings(Expr expr, Map<String, int> bindings) {
+    final Map<String, Expr> exprBindings = {
+      for (final entry in bindings.entries)
+        entry.key: IntExpr.from(entry.value),
+    };
+    final Expr substituted =
+        MathNodeToExpr.convert(
+          expr.toMathNode(),
+          varBindings: exprBindings,
+        ).simplify();
+    return substituted.toDouble();
+  }
+
+  bool _hasVariable(Expr expr, String name) {
+    bool found = false;
+    void visit(Expr node) {
+      if (found) return;
+      if (node is VarExpr && node.name == name) {
+        found = true;
+        return;
+      }
+      if (node is SumExpr) {
+        for (final term in node.terms) {
+          visit(term);
+        }
+      } else if (node is ProdExpr) {
+        for (final factor in node.factors) {
+          visit(factor);
+        }
+      } else if (node is DivExpr) {
+        visit(node.numerator);
+        visit(node.denominator);
+      } else if (node is PowExpr) {
+        visit(node.base);
+        visit(node.exponent);
+      }
+    }
+
+    visit(expr);
+    return found;
+  }
+
+  bool _hasExplicitMultiplyNode(List<MathNode> nodes) {
+    bool found = false;
+
+    bool isMultiplyLiteral(String text) {
+      final t = text.trim();
+      return t == '·' || t == 'Â·' || t == '*' || t == '×' || t == 'Ã—';
+    }
+
+    void visit(List<MathNode> list) {
+      for (final node in list) {
+        if (found) return;
+
+        if (node is LiteralNode) {
+          if (isMultiplyLiteral(node.text)) {
+            found = true;
+            return;
+          }
+        } else if (node is FractionNode) {
+          visit(node.numerator);
+          visit(node.denominator);
+        } else if (node is ExponentNode) {
+          visit(node.base);
+          visit(node.power);
+        } else if (node is ParenthesisNode) {
+          visit(node.content);
+        } else if (node is TrigNode) {
+          visit(node.argument);
+        } else if (node is RootNode) {
+          visit(node.index);
+          visit(node.radicand);
+        } else if (node is LogNode) {
+          visit(node.base);
+          visit(node.argument);
+        } else if (node is PermutationNode) {
+          visit(node.n);
+          visit(node.r);
+        } else if (node is CombinationNode) {
+          visit(node.n);
+          visit(node.r);
+        } else if (node is SummationNode) {
+          visit(node.variable);
+          visit(node.lower);
+          visit(node.upper);
+          visit(node.body);
+        } else if (node is DerivativeNode) {
+          visit(node.variable);
+          visit(node.at);
+          visit(node.body);
+        } else if (node is IntegralNode) {
+          visit(node.variable);
+          visit(node.lower);
+          visit(node.upper);
+          visit(node.body);
+        } else if (node is ProductNode) {
+          visit(node.variable);
+          visit(node.lower);
+          visit(node.upper);
+          visit(node.body);
+        } else if (node is ComplexNode) {
+          visit(node.content);
+        } else if (node is AnsNode) {
+          visit(node.index);
+        }
+      }
+    }
+
+    visit(nodes);
+    return found;
+  }
+
   group('ExactMathEngine - Implicit Multiplication', () {
     test('splits xy into x * y', () {
       final expr = MathNodeToExpr.convert([LiteralNode(text: 'xy')]);
@@ -166,7 +343,7 @@ void main() {
       );
     });
 
-    test('integral of xy^2 returns (x^2*y^2)/2 + c', () {
+    test('integral of xy^2 returns (x^2*y^2)/2 + c₀', () {
       final controller = MathEditorController();
       for (final ch in ['x', 'y', '^', '2']) {
         controller.insertCharacter(ch);
@@ -184,18 +361,18 @@ void main() {
       expect(result.expr, isA<SumExpr>());
       final sum = result.expr as SumExpr;
       expect(
-        sum.terms.any((term) => term is VarExpr && term.name == 'c'),
+        sum.terms.any((term) => _isIntegrationConstant(term, index: 0)),
         isTrue,
       );
       final nonConstant = sum.terms.firstWhere(
-        (term) => !(term is VarExpr && term.name == 'c'),
+        (term) => !_isIntegrationConstant(term),
       );
       expect(_hasPowOfVar(nonConstant, 'x', 2), isTrue);
       expect(_hasPowOfVar(nonConstant, 'y', 2), isTrue);
       expect(_hasHalfFactor(nonConstant), isTrue);
     });
 
-    test('indefinite integral in compound expression (+ 4) includes + c', () {
+    test('indefinite integral in compound expression (+ 4) includes + c₀', () {
       final nodes = [
         IntegralNode(
           variable: [LiteralNode(text: 'x')],
@@ -210,14 +387,16 @@ void main() {
       expect(result.expr, isNotNull);
       expect(result.expr, isA<SumExpr>());
       final sum = result.expr as SumExpr;
-      // Should have x^2/2, 4, and c
-      expect(sum.terms.any((t) => t is VarExpr && t.name == 'c'), isTrue);
+      // Should have x^2/2, 4, and c₀
+      expect(sum.terms.any((t) => _isIntegrationConstant(t, index: 0)), isTrue);
       expect(
         sum.terms.any((t) => t is IntExpr && t.value == BigInt.from(4)),
         isTrue,
       );
       final xPart = sum.terms.firstWhere(
-        (t) => t is! VarExpr && (t is! IntExpr || t.value != BigInt.from(4)),
+        (t) =>
+            !_isIntegrationConstant(t) &&
+            (t is! IntExpr || t.value != BigInt.from(4)),
       );
       expect(_hasPowOfVar(xPart, 'x', 2), isTrue);
     });
@@ -375,7 +554,7 @@ void main() {
       expect(result.numerical!, closeTo(-0.5, 1e-3));
     });
 
-    test('indefinite integral returns symbolic + c', () {
+    test('indefinite integral returns symbolic + c₀', () {
       final nodes = [
         IntegralNode(
           variable: [LiteralNode(text: 'x')],
@@ -389,13 +568,13 @@ void main() {
       expect(result.expr, isA<SumExpr>());
       final sum = result.expr as SumExpr;
       expect(
-        sum.terms.any((term) => term is VarExpr && term.name == 'c'),
+        sum.terms.any((term) => _isIntegrationConstant(term, index: 0)),
         isTrue,
       );
       expect(sum.terms.any((term) => term is DivExpr), isTrue);
     });
 
-    test('indefinite integral of 3x^2+3 returns x^3+3x+c', () {
+    test('indefinite integral of 3x^2+3 returns x^3+3x+c₀', () {
       final nodes = [
         IntegralNode(
           variable: [LiteralNode(text: 'x')],
@@ -409,7 +588,7 @@ void main() {
       expect(result.expr, isA<SumExpr>());
       final sum = result.expr as SumExpr;
       expect(
-        sum.terms.any((term) => term is VarExpr && term.name == 'c'),
+        sum.terms.any((term) => _isIntegrationConstant(term, index: 0)),
         isTrue,
       );
       expect(
@@ -438,7 +617,7 @@ void main() {
       );
     });
 
-    test('indefinite integral of x*x^2 returns x^4/4+c', () {
+    test('indefinite integral of x*x^2 returns x^4/4+c₀', () {
       final nodes = [
         IntegralNode(
           variable: [LiteralNode(text: 'x')],
@@ -452,7 +631,7 @@ void main() {
       expect(result.expr, isA<SumExpr>());
       final sum = result.expr as SumExpr;
       expect(
-        sum.terms.any((term) => term is VarExpr && term.name == 'c'),
+        sum.terms.any((term) => _isIntegrationConstant(term, index: 0)),
         isTrue,
       );
       expect(_hasPowOfVar(sum, 'x', 4), isTrue);
@@ -533,7 +712,7 @@ void main() {
       expect(result.expr, isA<SumExpr>());
       final sum = result.expr as SumExpr;
       final nonConstant = sum.terms.where(
-        (term) => !(term is VarExpr && term.name == 'c'),
+        (term) => !_isIntegrationConstant(term),
       );
       expect(nonConstant.length, equals(1));
       final term = nonConstant.first;
@@ -546,6 +725,128 @@ void main() {
         isTrue,
       );
       expect(_hasHalfFactor(term), isTrue);
+    });
+
+    test('double integral of x returns x^3/6 + c₀x + c₁', () {
+      final inner = IntegralNode(
+        variable: [LiteralNode(text: 'x')],
+        lower: [LiteralNode(text: '')],
+        upper: [LiteralNode(text: '')],
+        body: [LiteralNode(text: 'x')],
+      );
+      final outer = IntegralNode(
+        variable: [LiteralNode(text: 'x')],
+        lower: [LiteralNode(text: '')],
+        upper: [LiteralNode(text: '')],
+        body: [inner],
+      );
+
+      final result = ExactMathEngine.evaluate([outer]);
+      expect(result.expr, isNotNull);
+      expect(result.expr, isA<SumExpr>());
+      expect(result.mathNodes, isNotNull);
+      expect(_hasExplicitMultiplyNode(result.mathNodes!), isFalse);
+
+      final sum = result.expr as SumExpr;
+      expect(_hasVariable(sum, 'c${_toSubscript(0)}'), isTrue);
+      expect(_hasVariable(sum, 'c${_toSubscript(1)}'), isTrue);
+
+      expect(_hasPowOfVar(sum, 'x', 3), isTrue);
+      expect(_hasOneSixthFactor(sum), isTrue);
+      expect(
+        sum.terms.any(
+          (term) =>
+              term is ProdExpr &&
+              term.factors.any(
+                (f) => f is VarExpr && f.name == 'c${_toSubscript(0)}',
+              ) &&
+              term.factors.any((f) => f is VarExpr && f.name == 'x'),
+        ),
+        isTrue,
+      );
+    });
+
+    test('integration constants reset per evaluation call', () {
+      final nodes = [
+        IntegralNode(
+          variable: [LiteralNode(text: 'x')],
+          lower: [LiteralNode(text: '')],
+          upper: [LiteralNode(text: '')],
+          body: [LiteralNode(text: 'x')],
+        ),
+      ];
+
+      final first = ExactMathEngine.evaluate(nodes);
+      final second = ExactMathEngine.evaluate(nodes);
+
+      expect(first.expr, isA<SumExpr>());
+      expect(second.expr, isA<SumExpr>());
+
+      final firstSum = first.expr as SumExpr;
+      final secondSum = second.expr as SumExpr;
+
+      expect(
+        firstSum.terms.any((t) => _isIntegrationConstant(t, index: 0)),
+        isTrue,
+      );
+      expect(
+        secondSum.terms.any((t) => _isIntegrationConstant(t, index: 0)),
+        isTrue,
+      );
+      expect(
+        firstSum.terms.any((t) => _isIntegrationConstant(t, index: 1)),
+        isFalse,
+      );
+      expect(
+        secondSum.terms.any((t) => _isIntegrationConstant(t, index: 1)),
+        isFalse,
+      );
+    });
+
+    test(
+      'derivative with multiple variables keeps non-target variables symbolic',
+      () {
+        final nodes = [
+          DerivativeNode(
+            variable: [LiteralNode(text: 'x')],
+            at: [LiteralNode(text: '')],
+            body: [LiteralNode(text: 'xy+yz+x^2z')],
+          ),
+        ];
+
+        final result = ExactMathEngine.evaluate(nodes);
+        expect(result.expr, isNotNull);
+
+        final Expr expr = result.expr!.simplify();
+        final double numeric = _evaluateExprWithBindings(expr, {
+          'x': 2,
+          'y': 3,
+          'z': 5,
+        });
+
+        // y + 2xz at x=2, y=3, z=5 -> 3 + 20 = 23
+        expect(numeric, equals(23.0));
+      },
+    );
+
+    test('summation with multiple variables scales each symbolic term', () {
+      final nodes = [
+        SummationNode(
+          variable: [LiteralNode(text: 'i')],
+          lower: [LiteralNode(text: '1')],
+          upper: [LiteralNode(text: '3')],
+          body: [LiteralNode(text: 'iy+z')],
+        ),
+      ];
+
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.expr, isNotNull);
+
+      final Expr expr = result.expr!.simplify();
+      final double numeric = _evaluateExprWithBindings(expr, {'y': 2, 'z': 3});
+
+      // (1y+z) + (2y+z) + (3y+z) = 6y + 3z -> 6*2 + 3*3 = 21
+      expect(numeric, equals(21.0));
     });
   });
 }

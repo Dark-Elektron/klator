@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:klator/math_engine/math_engine_exact.dart';
 import 'package:klator/math_renderer/math_nodes.dart';
@@ -65,6 +66,61 @@ void main() {
       final nodes = [LiteralNode(text: '-2i')];
       final result = ExactMathEngine.evaluate(nodes);
       expect(result.toNumericalString(), '\u22122i');
+    });
+
+    test('abs of complex number', () {
+      final nodes = [
+        TrigNode(function: 'abs', argument: [LiteralNode(text: '3+4i')]),
+      ];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.toNumericalString(), '5');
+    });
+
+    test('arg of complex number', () {
+      final nodes = [
+        TrigNode(function: 'arg', argument: [LiteralNode(text: '3+4i')]),
+      ];
+      final result = ExactMathEngine.evaluate(nodes);
+      final value = double.parse(result.toNumericalString());
+      expect(value, closeTo(atan2(4, 3), 1e-6));
+    });
+
+    test('arg of negative real is pi', () {
+      final nodes = [
+        TrigNode(function: 'arg', argument: [LiteralNode(text: '-2')]),
+      ];
+      final result = ExactMathEngine.evaluate(nodes);
+      final value = double.parse(result.toNumericalString());
+      expect(value, closeTo(pi, 1e-6));
+    });
+
+    test('Re and Im of complex number', () {
+      final reNodes = [
+        TrigNode(function: 'Re', argument: [LiteralNode(text: '3+4i')]),
+      ];
+      final imNodes = [
+        TrigNode(function: 'Im', argument: [LiteralNode(text: '3+4i')]),
+      ];
+      final reResult = ExactMathEngine.evaluate(reNodes);
+      final imResult = ExactMathEngine.evaluate(imNodes);
+      expect(reResult.toNumericalString(), '3');
+      expect(imResult.toNumericalString(), '4');
+    });
+
+    test('Im of real number is 0', () {
+      final nodes = [
+        TrigNode(function: 'Im', argument: [LiteralNode(text: '7')]),
+      ];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.toNumericalString(), '0');
+    });
+
+    test('sgn of complex number', () {
+      final nodes = [
+        TrigNode(function: 'sgn', argument: [LiteralNode(text: '3+4i')]),
+      ];
+      final result = ExactMathEngine.evaluate(nodes);
+      expect(result.toNumericalString(), '0.6 + 0.8i');
     });
   });
 }

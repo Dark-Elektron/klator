@@ -43,6 +43,10 @@ void main() {
       bool isLandscape = false,
       WalkthroughService? customWalkthroughService,
       SettingsProvider? customSettingsProvider,
+      int activeIndex = 0,
+      VoidCallback? onUpdateMathEditor,
+      void Function(int index)? onRemoveDisplay,
+      VoidCallback? onSetState,
     }) {
       final provider = customSettingsProvider ?? settingsProvider;
       final walkthrough = customWalkthroughService ?? walkthroughService;
@@ -58,16 +62,16 @@ void main() {
                   screenWidth: screenWidth,
                   isLandscape: isLandscape,
                   colors: AppColors.of(context),
-                  activeIndex: 0,
+                  activeIndex: activeIndex,
                   mathEditorControllers: mathEditorControllers,
                   textDisplayControllers: textDisplayControllers,
                   settingsProvider: provider,
-                  onUpdateMathEditor: () {},
+                  onUpdateMathEditor: onUpdateMathEditor ?? () {},
                   onAddDisplay: () {},
-                  onRemoveDisplay: (_) {},
+                  onRemoveDisplay: onRemoveDisplay ?? (_) {},
                   onClearAllDisplays: () {},
                   countVariablesInExpressions: (_) => 0,
-                  onSetState: () {},
+                  onSetState: onSetState ?? () {},
                   walkthroughService: walkthrough,
                   basicKeypadKey: GlobalKey(),
                   basicKeypadHandleKey: GlobalKey(),
@@ -199,6 +203,101 @@ void main() {
 
         expect(walkthroughService.isTabletMode, true);
       });
+    });
+
+    group('Backspace behavior', () {
+      testWidgets(
+        'single taps delete content first, then delete empty cell on next tap',
+        (tester) async {
+          int cellCount = 2;
+          int removedCells = 0;
+
+          mathEditorControllers[0]!.insertCharacter('9');
+          mathEditorControllers[0]!.expr =
+              mathEditorControllers[0]!.getExpression();
+
+          await tester.pumpWidget(
+            buildTestWidget(
+              onUpdateMathEditor: () {
+                mathEditorControllers[0]!.expr =
+                    mathEditorControllers[0]!.getExpression();
+              },
+              onRemoveDisplay: (_) {
+                if (cellCount > 1) {
+                  cellCount--;
+                  removedCells++;
+                }
+              },
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final backspaceFinder = find.text('\u232B').hitTestable().first;
+
+          await tester.tap(backspaceFinder);
+          await tester.pump();
+
+          expect(mathEditorControllers[0]!.getExpression(), isEmpty);
+          expect(removedCells, 0);
+
+          await tester.tap(backspaceFinder);
+          await tester.pump();
+
+          expect(removedCells, 1);
+        },
+      );
+
+      testWidgets(
+        'holding backspace does not delete cell after it becomes empty until a new press',
+        (tester) async {
+          int cellCount = 2;
+          int removedCells = 0;
+
+          const seed = '123456';
+          for (int i = 0; i < seed.length; i++) {
+            mathEditorControllers[0]!.insertCharacter(seed[i]);
+          }
+          mathEditorControllers[0]!.expr =
+              mathEditorControllers[0]!.getExpression();
+
+          await tester.pumpWidget(
+            buildTestWidget(
+              onUpdateMathEditor: () {
+                mathEditorControllers[0]!.expr =
+                    mathEditorControllers[0]!.getExpression();
+              },
+              onRemoveDisplay: (_) {
+                if (cellCount > 1) {
+                  cellCount--;
+                  removedCells++;
+                }
+              },
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final backspaceFinder = find.text('\u232B').hitTestable().first;
+
+          final gesture = await tester.startGesture(
+            tester.getCenter(backspaceFinder),
+          );
+          await tester.pump(const Duration(milliseconds: 1300));
+
+          expect(mathEditorControllers[0]!.getExpression(), isEmpty);
+          expect(removedCells, 0);
+
+          await tester.pump(const Duration(milliseconds: 500));
+          expect(removedCells, 0);
+
+          await gesture.up();
+          await tester.pump();
+
+          await tester.tap(backspaceFinder);
+          await tester.pump();
+
+          expect(removedCells, 1);
+        },
+      );
     });
 
     group('Physics during walkthrough', () {

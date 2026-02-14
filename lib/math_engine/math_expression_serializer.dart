@@ -229,6 +229,10 @@ class MathExpressionSerializer {
       'ln',
       'sqrt',
       'abs',
+      'arg',
+      're',
+      'im',
+      'sgn',
       'diff',
       'int',
       'perm',
@@ -243,7 +247,7 @@ class MathExpressionSerializer {
           index - func.length + 1,
           index + 1,
         );
-        if (potentialFunc == func) {
+        if (potentialFunc.toLowerCase() == func) {
           return true;
         }
       }
@@ -280,7 +284,7 @@ class MathExpressionSerializer {
       for (Match match in varRegex.allMatches(node.text)) {
         String potential = match.group(0)!;
         // Exclude common function names and imaginary unit
-        if (![
+        const excluded = {
           'sin',
           'cos',
           'tan',
@@ -288,12 +292,17 @@ class MathExpressionSerializer {
           'ln',
           'sqrt',
           'abs',
+          'arg',
+          're',
+          'im',
+          'sgn',
           'sum',
           'prod',
-          'P',
-          'C',
+          'p',
+          'c',
           'i', // imaginary unit
-        ].contains(potential)) {
+        };
+        if (!excluded.contains(potential.toLowerCase())) {
           variables.add(potential);
         }
       }

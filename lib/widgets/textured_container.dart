@@ -83,12 +83,20 @@ class _TexturedContainerState extends State<TexturedContainer> {
         softness: colors.textureSoftness,
       );
 
-      final mounted = image != null;
-      debugPrint(
-        '🖼️ Texture generated, mounted: $mounted, colorMatch: ${widget.baseColor.toARGB32() == colorValue}',
-      );
+      final hasImage = image != null;
+      assert(() {
+        debugPrint(
+          'Texture generated, mounted: $mounted, colorMatch: ${widget.baseColor.toARGB32() == colorValue}',
+        );
+        return true;
+      }());
 
-      if (mounted && widget.baseColor.toARGB32() == colorValue) {
+      if (!mounted) {
+        _isLoading = false;
+        return;
+      }
+
+      if (hasImage && widget.baseColor.toARGB32() == colorValue) {
         setState(() {
           _textureImage = image;
           _isLoading = false;
@@ -97,7 +105,10 @@ class _TexturedContainerState extends State<TexturedContainer> {
         _isLoading = false;
       }
     } catch (e) {
-      debugPrint('🖼️ Error generating texture: $e');
+      assert(() {
+        debugPrint('Error generating texture: $e');
+        return true;
+      }());
       _isLoading = false;
     }
   }

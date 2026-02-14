@@ -604,6 +604,7 @@ class MathEditorController extends ChangeNotifier {
     _rebuildComplexNodeMap(); // Add this line
 
     expression = nodes.isNotEmpty ? nodes : [LiteralNode()];
+    expr = MathExpressionSerializer.serialize(expression);
     _structureVersion++;
     // Position cursor at end of root expression
     int lastIndex = expression.length - 1;
@@ -2729,9 +2730,10 @@ class MathEditorController extends ChangeNotifier {
         );
         siblings.insert(newCurrentIndex, frac);
 
+        final bool numeratorIsEmpty = _isListEffectivelyEmpty(frac.numerator);
         cursor = EditorCursor(
           parentId: frac.id,
-          path: 'den',
+          path: numeratorIsEmpty ? 'num' : 'den',
           index: 0,
           subIndex: 0,
         );
@@ -2756,9 +2758,10 @@ class MathEditorController extends ChangeNotifier {
     if (actualIndex >= 0) {
       siblings.insert(actualIndex + 1, frac);
       siblings.insert(actualIndex + 2, tail);
+      final bool numeratorIsEmpty = _isListEffectivelyEmpty(frac.numerator);
       cursor = EditorCursor(
         parentId: frac.id,
-        path: 'den',
+        path: numeratorIsEmpty ? 'num' : 'den',
         index: 0,
         subIndex: 0,
       );
@@ -3855,6 +3858,40 @@ class MathEditorController extends ChangeNotifier {
       }
     } else {
       // From 'var' field
+      if (!_isListEffectivelyEmpty(integ.variable)) {
+        final int lastIndex = integ.variable.length - 1;
+        final MathNode lastNode = integ.variable[lastIndex];
+
+        if (lastNode is LiteralNode && lastNode.text.isNotEmpty) {
+          lastNode.text = lastNode.text.substring(0, lastNode.text.length - 1);
+          cursor = cursor.copyWith(
+            path: 'var',
+            index: lastIndex,
+            subIndex: lastNode.text.length,
+          );
+          _notifyStructureChanged();
+          return;
+        }
+
+        integ.variable.removeLast();
+        if (integ.variable.isEmpty || integ.variable.last is! LiteralNode) {
+          integ.variable.add(LiteralNode(text: ''));
+        }
+
+        final int newLastIndex = integ.variable.length - 1;
+        final MathNode newLastNode = integ.variable[newLastIndex];
+        final int newSubIndex =
+            newLastNode is LiteralNode ? newLastNode.text.length : 0;
+
+        cursor = cursor.copyWith(
+          path: 'var',
+          index: newLastIndex,
+          subIndex: newSubIndex,
+        );
+        _notifyStructureChanged();
+        return;
+      }
+
       _moveCursorToEndOfList(integ.body, integ.id, 'body');
       recalculateCursorRect();
       notifyListeners();
@@ -3935,7 +3972,7 @@ class MathEditorController extends ChangeNotifier {
       recalculateCursorRect();
       notifyListeners();
     } else if (prevNode is IntegralNode) {
-      _moveCursorToEndOfList(prevNode.body, prevNode.id, 'body');
+      _moveCursorToEndOfList(prevNode.variable, prevNode.id, 'var');
       recalculateCursorRect();
       notifyListeners();
     } else if (prevNode is ProductNode) {

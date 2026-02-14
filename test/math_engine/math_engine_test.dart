@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:math';
 import 'package:klator/math_engine/math_engine.dart';
 
 void main() {
@@ -143,6 +144,49 @@ void main() {
 
     test('sqrt(0) equals 0', () {
       expect(MathSolverNew.solve('sqrt(0)'), equals('0'));
+    });
+  });
+
+  group('MathSolverNew - Complex Functions', () {
+    test('abs of complex number', () {
+      expect(MathSolverNew.solve('abs(3+4i)'), equals('5'));
+    });
+
+    test('arg of positive real is 0', () {
+      final result = double.parse(MathSolverNew.solve('arg(5)')!);
+      expect(result, closeTo(0.0, 1e-10));
+    });
+
+    test('arg of negative real is pi', () {
+      final result = double.parse(MathSolverNew.solve('arg(-2)')!);
+      expect(result, closeTo(pi, 1e-6));
+    });
+
+    test('arg of complex number', () {
+      final result = double.parse(MathSolverNew.solve('arg(3+4i)')!);
+      expect(result, closeTo(atan2(4, 3), 1e-6));
+    });
+
+    test('Re of complex number', () {
+      expect(MathSolverNew.solve('Re(3+4i)'), equals('3'));
+    });
+
+    test('Im of complex number', () {
+      expect(MathSolverNew.solve('Im(3+4i)'), equals('4'));
+    });
+
+    test('Im of real number is 0', () {
+      expect(MathSolverNew.solve('Im(7)'), equals('0'));
+    });
+
+    test('sgn of real number', () {
+      expect(MathSolverNew.solve('sgn(3)'), equals('1'));
+      expect(MathSolverNew.solve('sgn(-3)'), equals('-1'));
+      expect(MathSolverNew.solve('sgn(0)'), equals('0'));
+    });
+
+    test('sgn of complex number', () {
+      expect(MathSolverNew.solve('sgn(3+4i)'), equals('0.6 + 0.8i'));
     });
   });
 

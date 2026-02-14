@@ -374,6 +374,32 @@ class MathResultDisplay extends StatelessWidget {
     }
 
     if (node is TrigNode) {
+      final bool isAbs = node.function.toLowerCase() == 'abs';
+
+      if (isAbs) {
+        return IntrinsicHeight(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _ScalableAbsBar(fontSize: fontSize, color: textColor),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: fontSize * 0.15,
+                  vertical: fontSize * 0.1,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: _renderNodeList(node.argument, fontSize),
+                ),
+              ),
+              _ScalableAbsBar(fontSize: fontSize, color: textColor),
+            ],
+          ),
+        );
+      }
+
       return Row(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1527,5 +1553,64 @@ class _ParenthesisPainter extends CustomPainter {
     return oldDelegate.isOpening != isOpening ||
         oldDelegate.color != color ||
         oldDelegate.strokeWidth != strokeWidth;
+  }
+}
+
+/// Scalable absolute value bar for read-only display
+class _ScalableAbsBar extends StatelessWidget {
+  final double fontSize;
+  final Color color;
+
+  const _ScalableAbsBar({
+    required this.fontSize,
+    this.color = Colors.white,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: fontSize * 1),
+      child: CustomPaint(
+        size: Size(fontSize * 0.12, double.infinity),
+        painter: _AbsBarPainter(
+          color: color,
+          strokeWidth: math.max(1.5, fontSize * 0.06),
+        ),
+      ),
+    );
+  }
+}
+
+class _AbsBarPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+
+  _AbsBarPainter({
+    required this.color,
+    required this.strokeWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..color = color
+          ..strokeWidth = strokeWidth
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+
+    final double padding = size.height * 0.05;
+    final double x = size.width / 2;
+
+    canvas.drawLine(
+      Offset(x, padding),
+      Offset(x, size.height - padding),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AbsBarPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
   }
 }

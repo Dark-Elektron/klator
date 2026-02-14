@@ -819,6 +819,39 @@ void main() {
       expect(nodes.isNotEmpty, true);
     });
 
+    test('toMathNode omits explicit multiply for c₀xy', () {
+      final prod = ProdExpr([
+        VarExpr('c₀'),
+        VarExpr('x'),
+        VarExpr('y'),
+      ]);
+      final nodes = prod.toMathNode();
+      final literalTexts = nodes.whereType<LiteralNode>().map((n) => n.text);
+
+      expect(literalTexts.contains('·'), isFalse);
+      expect(literalTexts.toList(), equals(['c₀', 'x', 'y']));
+    });
+
+    test('toMathNode omits explicit multiply for x²y', () {
+      final prod = ProdExpr([
+        PowExpr(VarExpr('x'), IntExpr.from(2)),
+        VarExpr('y'),
+      ]);
+      final nodes = prod.toMathNode();
+      final hasDot = nodes.whereType<LiteralNode>().any((n) => n.text == '·');
+      expect(hasDot, isFalse);
+    });
+
+    test('toMathNode keeps explicit multiply between variable and function', () {
+      final prod = ProdExpr([
+        VarExpr('x'),
+        TrigExpr(TrigFunc.sin, VarExpr('x')),
+      ]);
+      final nodes = prod.toMathNode();
+      final hasDot = nodes.whereType<LiteralNode>().any((n) => n.text == '·');
+      expect(hasDot, isTrue);
+    });
+
     test('copy', () {
       final original = ProdExpr([IntExpr.from(3), IntExpr.from(4)]);
       final copied = original.copy();
@@ -2021,6 +2054,42 @@ void main() {
       final expr = MathNodeToExpr.convert(nodes).simplify();
       expect(expr, isA<IntExpr>());
       expect((expr as IntExpr).value, BigInt.from(5));
+    });
+
+    test('convert arg node', () {
+      final nodes = [
+        TrigNode(function: 'arg', argument: [LiteralNode(text: '0')]),
+      ];
+      final expr = MathNodeToExpr.convert(nodes).simplify();
+      expect(expr, isA<IntExpr>());
+      expect((expr as IntExpr).value, BigInt.zero);
+    });
+
+    test('convert Re node', () {
+      final nodes = [
+        TrigNode(function: 'Re', argument: [LiteralNode(text: '5')]),
+      ];
+      final expr = MathNodeToExpr.convert(nodes).simplify();
+      expect(expr, isA<IntExpr>());
+      expect((expr as IntExpr).value, BigInt.from(5));
+    });
+
+    test('convert Im node', () {
+      final nodes = [
+        TrigNode(function: 'Im', argument: [LiteralNode(text: '5')]),
+      ];
+      final expr = MathNodeToExpr.convert(nodes).simplify();
+      expect(expr, isA<IntExpr>());
+      expect((expr as IntExpr).value, BigInt.zero);
+    });
+
+    test('convert sgn node', () {
+      final nodes = [
+        TrigNode(function: 'sgn', argument: [LiteralNode(text: '-3')]),
+      ];
+      final expr = MathNodeToExpr.convert(nodes).simplify();
+      expect(expr, isA<IntExpr>());
+      expect((expr as IntExpr).value, BigInt.from(-1));
     });
 
     test('convert addition', () {

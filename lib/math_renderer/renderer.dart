@@ -563,6 +563,19 @@ class MathRenderer extends StatelessWidget {
 
     if (node is TrigNode) {
       final bool argEmpty = _isContentEmpty(node.argument);
+      final argMetrics = _getListMetrics(node.argument, fontSize);
+      final double vPadding = fontSize * 0.1;
+      final double argContentHeight = argMetrics.$1;
+      final double argAreaHeight = math.max(
+        fontSize,
+        argContentHeight + vPadding * 2,
+      );
+      final double argRefFromTop =
+          vPadding + (argContentHeight - argMetrics.$2);
+      final double labelTop =
+          (argRefFromTop - fontSize / 2)
+              .clamp(0.0, math.max(0.0, argAreaHeight - fontSize))
+              .toDouble();
 
       Widget argWidget =
           argEmpty
@@ -603,12 +616,36 @@ class MathRenderer extends StatelessWidget {
                 ),
               );
 
-      // Calculate the content metrics for proper function name alignment
-      final argMetrics = _getListMetrics(node.argument, fontSize);
-      final double totalContentHeight =
-          argMetrics.$1 + fontSize * 0.2; // Include vertical padding
-      final double functionNameOffset =
-          totalContentHeight - fontSize - fontSize * 0.1;
+      if (node.function.toLowerCase() == 'abs') {
+        return _wrapComposite(
+          node: node,
+          index: index,
+          parentId: parentId,
+          path: path,
+          child: IntrinsicHeight(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ScalableAbsBar(fontSize: fontSize, color: Colors.white),
+                Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: fontSize * 0.15,
+                    vertical: vPadding,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [argWidget],
+                  ),
+                ),
+                ScalableAbsBar(fontSize: fontSize, color: Colors.white),
+              ],
+            ),
+          ),
+        );
+      }
 
       return _wrapComposite(
         node: node,
@@ -620,21 +657,19 @@ class MathRenderer extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Function name (sin, cos, etc.) - positioned at bottom
-              Padding(
-                padding: EdgeInsets.only(
-                  top: math.max(0, functionNameOffset),
-                  bottom: fontSize * 0.1,
-                ),
-                child: Text(
-                  node.function,
-                  style: MathTextStyle.getStyle(
-                    fontSize,
-                  ).copyWith(color: Colors.white),
-                  textScaler: textScaler,
+              Align(
+                alignment: Alignment.topLeft,
+                child: Transform.translate(
+                  offset: Offset(0, labelTop),
+                  child: Text(
+                    node.function,
+                    style: MathTextStyle.getStyle(
+                      fontSize,
+                    ).copyWith(color: Colors.white),
+                    textScaler: textScaler,
+                  ),
                 ),
               ),
-              // Parentheses with content
               Flexible(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -649,7 +684,7 @@ class MathRenderer extends StatelessWidget {
                     Padding(
                       padding: EdgeInsets.symmetric(
                         horizontal: fontSize * 0.15,
-                        vertical: fontSize * 0.1,
+                        vertical: vPadding,
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -832,6 +867,19 @@ class MathRenderer extends StatelessWidget {
 
     if (node is LogNode) {
       final double baseSize = fontSize * 0.8;
+      final argMetrics = _getListMetrics(node.argument, fontSize);
+      final double vPadding = fontSize * 0.1;
+      final double argContentHeight = argMetrics.$1;
+      final double argAreaHeight = math.max(
+        fontSize,
+        argContentHeight + vPadding * 2,
+      );
+      final double argRefFromTop =
+          vPadding + (argContentHeight - argMetrics.$2);
+      final double labelTop =
+          (argRefFromTop - fontSize / 2)
+              .clamp(0.0, math.max(0.0, argAreaHeight - fontSize))
+              .toDouble();
 
       final bool baseEmpty = !node.isNaturalLog && _isContentEmpty(node.base);
       final bool argEmpty = _isContentEmpty(node.argument);
@@ -919,12 +967,6 @@ class MathRenderer extends StatelessWidget {
                 ),
               );
 
-      // Calculate the content metrics for proper function name alignment
-      final argMetrics = _getListMetrics(node.argument, fontSize);
-      final double totalContentHeight = argMetrics.$1 + fontSize * 0.2;
-      final double functionNameOffset =
-          totalContentHeight - fontSize - fontSize * 0.1;
-
       return _wrapComposite(
         node: node,
         index: index,
@@ -935,30 +977,31 @@ class MathRenderer extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // "log" or "ln" text with optional subscript - positioned at bottom
-              Padding(
-                padding: EdgeInsets.only(
-                  top: math.max(0, functionNameOffset),
-                  bottom: fontSize * 0.1,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      node.isNaturalLog ? 'ln' : 'log',
-                      style: MathTextStyle.getStyle(
-                        fontSize,
-                      ).copyWith(color: Colors.white),
-                      textScaler: textScaler,
-                    ),
-                    // Subscript base for non-natural log
-                    if (!node.isNaturalLog && baseWidget != null)
-                      Padding(
-                        padding: EdgeInsets.only(left: 1, top: fontSize * 0.5),
-                        child: baseWidget,
+              Align(
+                alignment: Alignment.topLeft,
+                child: Transform.translate(
+                  offset: Offset(0, labelTop),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        node.isNaturalLog ? 'ln' : 'log',
+                        style: MathTextStyle.getStyle(
+                          fontSize,
+                        ).copyWith(color: Colors.white),
+                        textScaler: textScaler,
                       ),
-                  ],
+                      if (!node.isNaturalLog && baseWidget != null)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            left: 1,
+                            top: fontSize * 0.5,
+                          ),
+                          child: baseWidget,
+                        ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -966,35 +1009,37 @@ class MathRenderer extends StatelessWidget {
               if (node.isNaturalLog) SizedBox(width: fontSize * 0.05),
 
               // Parentheses with argument
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ScalableParenthesis(
-                    isOpening: true,
-                    fontSize: fontSize,
-                    color: Colors.white,
-                    textScaler: textScaler,
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: fontSize * 0.08,
-                      vertical: fontSize * 0.1,
+              Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ScalableParenthesis(
+                      isOpening: true,
+                      fontSize: fontSize,
+                      color: Colors.white,
+                      textScaler: textScaler,
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [argWidget],
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: fontSize * 0.08,
+                        vertical: vPadding,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [argWidget],
+                      ),
                     ),
-                  ),
-                  ScalableParenthesis(
-                    isOpening: false,
-                    fontSize: fontSize,
-                    color: Colors.white,
-                    textScaler: textScaler,
-                  ),
-                ],
+                    ScalableParenthesis(
+                      isOpening: false,
+                      fontSize: fontSize,
+                      color: Colors.white,
+                      textScaler: textScaler,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -2514,9 +2559,11 @@ class MathRenderer extends StatelessWidget {
     if (node is TrigNode) {
       final argMetrics = _getListMetrics(node.argument, fontSize);
       final double vPadding = fontSize * 0.1;
-      final height = math.max(fontSize, argMetrics.$1 + vPadding * 2);
+      final double argAreaHeight = argMetrics.$1 + vPadding * 2;
+      final double height = math.max(fontSize, argAreaHeight);
+      final double extraBottom = height - argAreaHeight;
       // Reference follows argument's reference
-      return (height, vPadding + argMetrics.$2);
+      return (height, extraBottom + vPadding + argMetrics.$2);
     }
 
     if (node is RootNode) {
@@ -2536,25 +2583,21 @@ class MathRenderer extends StatelessWidget {
     if (node is LogNode) {
       final argMetrics = _getListMetrics(node.argument, fontSize);
       final double vPadding = fontSize * 0.1;
-
-      // Argument area height
       final double argAreaHeight = argMetrics.$1 + vPadding * 2;
+      final double parenAreaHeight = math.max(fontSize, argAreaHeight);
 
-      // For non-natural log, subscript extends down
-      double subscriptExtent = 0;
+      double labelHeight = fontSize;
       if (!node.isNaturalLog) {
         final baseSize = fontSize * 0.8;
         final baseMetrics = _getListMetrics(node.base, baseSize);
-        subscriptExtent =
-            fontSize * 0.5 +
-            math.max(baseMetrics.$1, baseSize * 0.7) -
-            fontSize;
-        subscriptExtent = math.max(0, subscriptExtent);
+        final double baseHeight = math.max(baseMetrics.$1, baseSize * 0.7);
+        labelHeight = math.max(fontSize, fontSize * 0.5 + baseHeight);
       }
 
-      final height = math.max(fontSize, argAreaHeight) + subscriptExtent;
+      final double height = math.max(parenAreaHeight, labelHeight);
+      final double extraBottom = height - argAreaHeight;
       // Reference follows argument's reference (within the arg area)
-      return (height, subscriptExtent + vPadding + argMetrics.$2);
+      return (height, extraBottom + vPadding + argMetrics.$2);
     }
 
     if (node is PermutationNode) {
@@ -2856,6 +2899,7 @@ class _UnitVectorWidget extends StatelessWidget {
 class _LiteralWidgetState extends State<LiteralWidget> {
   int _lastReportedVersion = -1;
   final GlobalKey _textKey = GlobalKey();
+  bool _layoutRetryScheduled = false;
 
   @override
   void initState() {
@@ -2876,14 +2920,19 @@ class _LiteralWidgetState extends State<LiteralWidget> {
   void _reportLayout() {
     if (!mounted) return;
     if (_lastReportedVersion == widget.structureVersion) return;
-    _lastReportedVersion = widget.structureVersion;
 
     final RenderBox? box = context.findRenderObject() as RenderBox?;
-    if (box == null || !box.attached) return;
+    if (box == null || !box.attached) {
+      _scheduleLayoutRetry();
+      return;
+    }
 
     final RenderBox? rootBox =
         widget.rootKey.currentContext?.findRenderObject() as RenderBox?;
-    if (rootBox == null) return;
+    if (rootBox == null || !rootBox.attached) {
+      _scheduleLayoutRetry();
+      return;
+    }
 
     final globalPos = box.localToGlobal(Offset.zero);
     final relativePos = rootBox.globalToLocal(globalPos);
@@ -2907,6 +2956,20 @@ class _LiteralWidgetState extends State<LiteralWidget> {
         renderParagraph: renderParagraph,
       ),
     );
+
+    _lastReportedVersion = widget.structureVersion;
+  }
+
+  void _scheduleLayoutRetry() {
+    if (_layoutRetryScheduled) return;
+    _layoutRetryScheduled = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _layoutRetryScheduled = false;
+      if (!mounted) return;
+      if (_lastReportedVersion == widget.structureVersion) return;
+      _reportLayout();
+    });
   }
 
   @override
@@ -3010,6 +3073,8 @@ class _ComplexNodeWrapper extends StatefulWidget {
 }
 
 class _ComplexNodeWrapperState extends State<_ComplexNodeWrapper> {
+  bool _registerRetryScheduled = false;
+
   @override
   void initState() {
     super.initState();
@@ -3029,11 +3094,17 @@ class _ComplexNodeWrapperState extends State<_ComplexNodeWrapper> {
     if (!mounted) return;
 
     final RenderBox? box = context.findRenderObject() as RenderBox?;
-    if (box == null || !box.attached) return;
+    if (box == null || !box.attached) {
+      _scheduleRegisterRetry();
+      return;
+    }
 
     final RenderBox? rootBox =
         widget.rootKey.currentContext?.findRenderObject() as RenderBox?;
-    if (rootBox == null) return;
+    if (rootBox == null || !rootBox.attached) {
+      _scheduleRegisterRetry();
+      return;
+    }
 
     final globalPos = box.localToGlobal(Offset.zero);
     final relativePos = rootBox.globalToLocal(globalPos);
@@ -3048,6 +3119,17 @@ class _ComplexNodeWrapperState extends State<_ComplexNodeWrapper> {
         rect: rect,
       ),
     );
+  }
+
+  void _scheduleRegisterRetry() {
+    if (_registerRetryScheduled) return;
+    _registerRetryScheduled = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _registerRetryScheduled = false;
+      if (!mounted) return;
+      _register();
+    });
   }
 
   @override
@@ -3143,6 +3225,64 @@ class ParenthesisPainter extends CustomPainter {
     return oldDelegate.isOpening != isOpening ||
         oldDelegate.color != color ||
         oldDelegate.strokeWidth != strokeWidth;
+  }
+}
+
+/// A scalable absolute value bar that grows with content height.
+class ScalableAbsBar extends StatelessWidget {
+  final double fontSize;
+  final Color color;
+
+  const ScalableAbsBar({
+    super.key,
+    required this.fontSize,
+    this.color = Colors.white,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: fontSize * 1),
+      child: CustomPaint(
+        size: Size(fontSize * 0.12, double.infinity),
+        painter: AbsBarPainter(
+          color: color,
+          strokeWidth: math.max(1.5, fontSize * 0.06),
+        ),
+      ),
+    );
+  }
+}
+
+/// Custom painter for absolute value bars.
+class AbsBarPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+
+  AbsBarPainter({required this.color, required this.strokeWidth});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint =
+        Paint()
+          ..color = color
+          ..strokeWidth = strokeWidth
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+
+    final double padding = size.height * 0.05;
+    final double x = size.width / 2;
+
+    canvas.drawLine(
+      Offset(x, padding),
+      Offset(x, size.height - padding),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant AbsBarPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
   }
 }
 

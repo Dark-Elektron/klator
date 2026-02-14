@@ -139,6 +139,52 @@ void main() {
       ];
       expect(MathExpressionSerializer.serialize(expression), equals('tan(45)'));
     });
+
+    test('serializes arg function', () {
+      final expression = [
+        TrigNode(
+          function: 'arg',
+          argument: [LiteralNode(text: '3+4i')],
+        ),
+      ];
+      expect(
+        MathExpressionSerializer.serialize(expression),
+        equals('arg(3+4*i)'),
+      );
+    });
+
+    test('serializes Re/Im/sgn functions', () {
+      final reExpr = [
+        TrigNode(
+          function: 'Re',
+          argument: [LiteralNode(text: '3+4i')],
+        ),
+      ];
+      final imExpr = [
+        TrigNode(
+          function: 'Im',
+          argument: [LiteralNode(text: '3+4i')],
+        ),
+      ];
+      final sgnExpr = [
+        TrigNode(
+          function: 'sgn',
+          argument: [LiteralNode(text: '3+4i')],
+        ),
+      ];
+      expect(
+        MathExpressionSerializer.serialize(reExpr),
+        equals('Re(3+4*i)'),
+      );
+      expect(
+        MathExpressionSerializer.serialize(imExpr),
+        equals('Im(3+4*i)'),
+      );
+      expect(
+        MathExpressionSerializer.serialize(sgnExpr),
+        equals('sgn(3+4*i)'),
+      );
+    });
   });
 
   group('MathExpressionSerializer - Root Serialization', () {
