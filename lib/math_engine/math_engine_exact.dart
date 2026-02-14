@@ -1711,7 +1711,10 @@ class ProdExpr extends Expr {
     for (int i = 0; i < factors.length; i++) {
       if (i > 0) {
         // Add multiplication sign between factors, except for implied products.
-        bool implicit = _isImplicitMultiplicationPair(factors[i - 1], factors[i]);
+        bool implicit = _isImplicitMultiplicationPair(
+          factors[i - 1],
+          factors[i],
+        );
         if (!implicit) {
           nodes.add(LiteralNode(text: '·'));
         }
@@ -4457,13 +4460,14 @@ class MathNodeToExpr {
               ? 'x'
               : MathNodeToExpr._extractLiteralText(node.variable).trim();
 
+      final Expr body = convert(
+        node.body,
+        ansExpressions: ansExpressions,
+        varBindings: varBindings,
+      );
+
       // If 'at' is empty, it's a symbolic derivative
       if (MathNodeToExpr._extractLiteralText(node.at).trim().isEmpty) {
-        Expr body = convert(
-          node.body,
-          ansExpressions: ansExpressions,
-          varBindings: varBindings,
-        );
         return [_Token.fromExpr(DerivativeExpr(body, varName))];
       }
 
@@ -4473,17 +4477,26 @@ class MathNodeToExpr {
         varBindings: varBindings,
       );
 
+      // Prefer symbolic differentiation first so expressions like d/dx(x^2y) at x=9
+      // become 18y instead of falling back to unresolved symbolic derivatives.
+      final Expr symbolicDerivative = DerivativeExpr(body, varName).simplify();
+      if (symbolicDerivative is! DerivativeExpr) {
+        final Expr substituted = _substituteExprVariable(
+          symbolicDerivative,
+          varName,
+          atExpr,
+          ansExpressions: ansExpressions,
+          varBindings: varBindings,
+        );
+        return [_Token.fromExpr(substituted)];
+      }
+
       double atVal;
       try {
         atVal = atExpr.toDouble();
       } catch (e) {
         // Fallback: if 'at' is symbolic (contains variables), return a DerivativeExpr
         // so it can be handled by SymbolicCalculus if possible.
-        Expr body = convert(
-          node.body,
-          ansExpressions: ansExpressions,
-          varBindings: varBindings,
-        );
         return [_Token.fromExpr(DerivativeExpr(body, varName))];
       }
 
@@ -4514,11 +4527,6 @@ class MathNodeToExpr {
             ).toDouble();
       } catch (e) {
         // Fallback to symbolic if numerical fails
-        Expr body = convert(
-          node.body,
-          ansExpressions: ansExpressions,
-          varBindings: varBindings,
-        );
         return [_Token.fromExpr(DerivativeExpr(body, varName))];
       }
 
@@ -4698,6 +4706,23 @@ class MathNodeToExpr {
 
   static Expr _doubleToExpr(double value) {
     return _TokenParser(const <_Token>[])._doubleToFraction(value);
+  }
+
+  static Expr _substituteExprVariable(
+    Expr expr,
+    String variable,
+    Expr value, {
+    Map<int, Expr>? ansExpressions,
+    Map<String, Expr>? varBindings,
+  }) {
+    return convert(
+      expr.toMathNode(),
+      ansExpressions: ansExpressions,
+      varBindings: <String, Expr>{
+        if (varBindings != null) ...varBindings,
+        variable: value,
+      },
+    ).simplify();
   }
 
   /// Tokenize a literal string into tokens

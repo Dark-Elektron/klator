@@ -829,6 +829,122 @@ void main() {
       },
     );
 
+    test(
+      'evaluated derivative substitutes target variable while preserving others',
+      () {
+        final nodes = [
+          DerivativeNode(
+            variable: [LiteralNode(text: 'x')],
+            at: [LiteralNode(text: '9')],
+            body: [LiteralNode(text: 'x^2y')],
+          ),
+        ];
+
+        final result = ExactMathEngine.evaluate(nodes);
+        expect(result.expr, isNotNull);
+
+        final Expr expr = result.expr!.simplify();
+        expect(_hasVariable(expr, 'x'), isFalse);
+        expect(_hasVariable(expr, 'y'), isTrue);
+        expect(_evaluateExprWithBindings(expr, {'y': 4}), equals(72.0));
+      },
+    );
+
+    test(
+      'double mixed partial derivative handles cross-variable evaluation',
+      () {
+        final nodes = [
+          DerivativeNode(
+            variable: [LiteralNode(text: 'x')],
+            at: [LiteralNode(text: '')],
+            body: [
+              DerivativeNode(
+                variable: [LiteralNode(text: 'y')],
+                at: [LiteralNode(text: '2')],
+                body: [LiteralNode(text: 'x^2y^3z^4')],
+              ),
+            ],
+          ),
+        ];
+
+        final result = ExactMathEngine.evaluate(nodes);
+        expect(result.expr, isNotNull);
+
+        final Expr expr = result.expr!.simplify();
+        expect(_hasVariable(expr, 'y'), isFalse);
+        expect(_hasVariable(expr, 'x'), isTrue);
+        expect(_hasVariable(expr, 'z'), isTrue);
+        expect(_evaluateExprWithBindings(expr, {'x': 3, 'z': 2}), equals(1152));
+      },
+    );
+
+    test(
+      'triple mixed partial derivative produces expected symbolic result',
+      () {
+        final nodes = [
+          DerivativeNode(
+            variable: [LiteralNode(text: 'x')],
+            at: [LiteralNode(text: '')],
+            body: [
+              DerivativeNode(
+                variable: [LiteralNode(text: 'y')],
+                at: [LiteralNode(text: '')],
+                body: [
+                  DerivativeNode(
+                    variable: [LiteralNode(text: 'z')],
+                    at: [LiteralNode(text: '')],
+                    body: [LiteralNode(text: 'x^2y^3z^4')],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ];
+
+        final result = ExactMathEngine.evaluate(nodes);
+        expect(result.expr, isNotNull);
+
+        final Expr expr = result.expr!.simplify();
+        expect(_evaluateExprWithBindings(expr, {'x': 1, 'y': 1, 'z': 1}), 24.0);
+        expect(
+          _evaluateExprWithBindings(expr, {'x': 2, 'y': 3, 'z': 4}),
+          27648.0,
+        );
+      },
+    );
+
+    test('triple mixed partial derivative respects all evaluation points', () {
+      final nodes = [
+        DerivativeNode(
+          variable: [LiteralNode(text: 'x')],
+          at: [LiteralNode(text: '4')],
+          body: [
+            DerivativeNode(
+              variable: [LiteralNode(text: 'y')],
+              at: [LiteralNode(text: '3')],
+              body: [
+                DerivativeNode(
+                  variable: [LiteralNode(text: 'z')],
+                  at: [LiteralNode(text: '2')],
+                  body: [LiteralNode(text: 'x^2y^3z^4')],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ];
+
+      final result = ExactMathEngine.evaluate(nodes);
+      final double value =
+          result.numerical ?? result.expr!.simplify().toDouble();
+      expect(value, equals(6912.0));
+      if (result.expr != null) {
+        expect(_hasVariable(result.expr!.simplify(), 'x'), isFalse);
+        expect(_hasVariable(result.expr!.simplify(), 'y'), isFalse);
+        expect(_hasVariable(result.expr!.simplify(), 'z'), isFalse);
+      }
+    });
+
     test('summation with multiple variables scales each symbolic term', () {
       final nodes = [
         SummationNode(
