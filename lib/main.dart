@@ -114,8 +114,14 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  static const Duration _cellCreateTransitionDuration = Duration(
+    milliseconds: 300,
+  );
+  static const Duration _cellDeleteTransitionDuration = Duration(
+    milliseconds: 250,
+  );
   int count = 0;
-  Map<int, GlobalKey<MathEditorInlineState>> mathEditorKeys = {}; // ADD THIS
+  Map<int, GlobalKey<MathEditorInlineState>> mathEditorKeys = {};
   Map<int, TextEditingController> textDisplayControllers = {};
   Map<int, MathEditorController> mathEditorControllers = {};
   Map<int, FocusNode> focusNodes = {};
@@ -139,6 +145,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   List<String> answers = [];
   final bool _isKeypadVisible = true;
   final Map<int, bool> _plotExpanded = {};
+  final Map<int, bool> _cellVisibilityByToken = {};
+  final Set<int> _cellsPendingEntry = <int>{};
+  final Set<int> _cellsPendingRemoval = <int>{};
 
   SettingsProvider? _settingsProvider;
   bool _listenerAdded = false;
@@ -256,6 +265,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return null;
   }
 
+  int _cellToken(MathEditorController controller) {
+    return identityHashCode(controller);
+  }
+
+  void _cancelCellAnimationState() {
+    _cellVisibilityByToken.clear();
+    _cellsPendingEntry.clear();
+    _cellsPendingRemoval.clear();
+  }
+
   void _bindControllerCallbacks(MathEditorController controller) {
     controller.onResultChanged = () {
       final index = _findControllerIndex(controller);
@@ -272,10 +291,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _createControllers(int index) {
+  void _createControllers(int index, {bool animateEntry = false}) {
     final controller = MathEditorController();
     mathEditorControllers[index] = controller;
     _bindControllerCallbacks(controller);
+    final int token = _cellToken(controller);
+    _cellVisibilityByToken[token] = true;
+    if (animateEntry) {
+      _cellsPendingEntry.add(token);
+    } else {
+      _cellsPendingEntry.remove(token);
+    }
 
     textDisplayControllers[index] = TextEditingController();
     focusNodes[index] = FocusNode();
@@ -420,7 +446,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       padding: const EdgeInsets.all(10),
                       child: AnimatedOpacity(
                         curve: Curves.easeIn,
-                        duration: const Duration(milliseconds: 500),
+                        duration: const Duration(milliseconds: 200),
                         opacity: isVisible ? 1.0 : 0.0,
                         child: LayoutBuilder(
                           builder: (context, constraints) {
@@ -478,6 +504,99 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       },
     );
   }
+
+Widget _buildAnimatedCellList(AppColors colors) {
+  final List<int> keys = mathEditorControllers.keys.toList()..sort();
+  final Map<int, int> tokenToBuilderIndex = <int, int>{};
+  for (int i = 0; i < keys.length; i++) {
+    final int reversedIndex = keys.length - 1 - i;
+    final int cellIndex = keys[reversedIndex];
+    final controller = mathEditorControllers[cellIndex];
+    if (controller != null) {
+      tokenToBuilderIndex[_cellToken(controller)] = i;
+    }
+  }
+
+  return ListView.builder(
+    key: ValueKey('cell_list_$_globalClearId'),
+    physics: const ClampingScrollPhysics(),
+    reverse: true,
+    padding: EdgeInsets.zero,
+    itemCount: keys.length,
+    findChildIndexCallback: (Key key) {
+      if (key is ValueKey<int>) {
+        return tokenToBuilderIndex[key.value];
+      }
+      return null;
+    },
+    itemBuilder: (context, index) {
+      final int reversedIndex = keys.length - 1 - index;
+      final int cellIndex = keys[reversedIndex];
+      final controller = mathEditorControllers[cellIndex];
+      if (controller == null) return const SizedBox.shrink();
+
+      final int token = _cellToken(controller);
+      final bool isVisible = _cellVisibilityByToken[token] ?? true;
+      final bool isPendingEntry = _cellsPendingEntry.contains(token);
+      final bool isPendingRemoval = _cellsPendingRemoval.contains(token);
+
+      final Widget cellBody = Padding(
+        padding: const EdgeInsets.only(top: 5),
+        child: _buildExpressionDisplay(cellIndex, colors),
+      );
+
+      // DELETION ANIMATION
+      if (isPendingRemoval) {
+        return _AnimatedCellWrapper(
+          key: ValueKey<int>(token),
+          token: token,
+          isEntry: false,
+          isVisible: isVisible,
+          duration: _cellDeleteTransitionDuration,
+          onAnimationComplete: () {
+            // Remove the cell after animation completes
+            if (mounted) {
+              final currentIndex = _findControllerIndex(controller);
+              if (currentIndex != null) {
+                _removeDisplayNow(currentIndex, token);
+              } else {
+                // Controller already removed, just clean up state
+                setState(() {
+                  _cellsPendingRemoval.remove(token);
+                  _cellsPendingEntry.remove(token);
+                  _cellVisibilityByToken.remove(token);
+                });
+              }
+            }
+          },
+          child: cellBody,
+        );
+      }
+
+      // CREATION ANIMATION
+      if (isPendingEntry) {
+        return _AnimatedCellWrapper(
+          key: ValueKey<int>(token),
+          token: token,
+          isEntry: true,
+          isVisible: true,
+          duration: _cellCreateTransitionDuration,
+          onAnimationComplete: () {
+            if (mounted) {
+              setState(() {
+                _cellsPendingEntry.remove(token);
+              });
+            }
+          },
+          child: cellBody,
+        );
+      }
+
+      // STATIC CELL
+      return KeyedSubtree(key: ValueKey<int>(token), child: cellBody);
+    },
+  );
+}
 
   double _calculateDecimalResultHeight(int index) {
     final resController = textDisplayControllers[index];
@@ -564,6 +683,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     _deleteTimer?.cancel();
+    _cancelCellAnimationState();
     _computeService.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _saveCells();
@@ -708,6 +828,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _onSettingsChanged() {
     // Clear texture cache when theme changes
     TextureGenerator.clearCache();
+    unawaited(_prewarmCellTexture());
 
     updateMathEditor();
 
@@ -717,6 +838,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     // Force rebuild to reload textures
     setState(() {});
+  }
+
+  Future<void> _prewarmCellTexture() async {
+    if (!mounted) return;
+
+    final colors = AppColors.of(context, listen: false);
+    final cached = TextureGenerator.peekCachedTexture(
+      colors.containerBackground,
+    );
+    if (cached != null) return;
+
+    await TextureGenerator.getTexture(
+      colors.containerBackground,
+      const Size(400, 300),
+      intensity: colors.textureIntensity,
+      scale: colors.textureScale,
+      softness: colors.textureSoftness,
+    );
   }
 
   /// Cascade computation to cells that depend on the changed cell.
@@ -805,34 +944,50 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _addDisplay({int? insertAt}) {
-    _computeService.cancelAll();
+void _addDisplay({int? insertAt}) async {
+  _computeService.cancelAll();
+  
+  // Get colors first
+  final colors = AppColors.of(context, listen: false);
+  
+  // Ensure texture is FULLY loaded before creating cell
+  // This is the key - we wait for the actual texture, not just start loading
+  // ignore: unused_local_variable
+  final texture = await TextureGenerator.getTexture(
+    colors.containerBackground,
+    const Size(400, 300),
+    intensity: colors.textureIntensity,
+    scale: colors.textureScale,
+    softness: colors.textureSoftness,
+  );
+  
+  if (!mounted) return;
+  
+  // Texture is now guaranteed to be in cache
+  
+  int insertIndex = insertAt ?? (activeIndex + 1);
+  insertIndex = insertIndex.clamp(0, count);
 
-    // Default: insert after the active cell
-    int insertIndex = insertAt ?? (activeIndex + 1);
+  if (insertIndex < count) {
+    _shiftControllersUp(insertIndex);
+  }
 
-    // Clamp to valid range
-    insertIndex = insertIndex.clamp(0, count);
+  _createControllers(insertIndex, animateEntry: true);
 
-    if (insertIndex < count) {
-      // Need to shift existing controllers to make room
-      _shiftControllersUp(insertIndex);
-    }
+  setState(() {
+    count += 1;
+    activeIndex = insertIndex;
+  });
 
-    _createControllers(insertIndex);
-
-    setState(() {
-      count += 1;
-      activeIndex = insertIndex;
-    });
-
-    // Recalculate results for cells after the inserted one (ans references may have shifted)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future<void>.delayed(_cellCreateTransitionDuration, () {
+      if (!mounted) return;
       for (int i = insertIndex + 1; i < count; i++) {
         _requestComputation(i);
       }
     });
-  }
+  });
+}
 
   void _shiftControllersUp(int fromIndex) {
     // NEW: Update ANS indices in all existing controllers
@@ -884,8 +1039,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _plotExpanded.remove(fromIndex);
   }
 
-  void _removeDisplay(int indexToRemove) {
-    if (count <= 1) return;
+  void _removeDisplayNow(int indexToRemove, int token) {
+    if (count <= 1) {
+      _cellsPendingRemoval.remove(token);
+      _cellsPendingEntry.remove(token);
+      _cellVisibilityByToken.remove(token);
+      return;
+    }
     _computeService.cancelAll();
 
     // NEW: Update ANS indices in all remaining controllers
@@ -928,12 +1088,35 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     setState(() {
       count -= 1;
       activeIndex = newActiveIndex;
+      _cellsPendingRemoval.remove(token);
+      _cellsPendingEntry.remove(token);
+      _cellVisibilityByToken.remove(token);
     });
   }
+
+void _removeDisplay(int indexToRemove) {
+  if (count <= 1) return;
+  final controller = mathEditorControllers[indexToRemove];
+  if (controller == null) return;
+
+  final int token = _cellToken(controller);
+  if (_cellsPendingRemoval.contains(token)) return;
+
+  _computeService.cancelAll();
+  
+  setState(() {
+    _cellsPendingRemoval.add(token);
+    _cellVisibilityByToken[token] = false;
+  });
+  
+  // Note: The actual removal now happens via onAnimationComplete callback
+  // in _buildAnimatedCellList, not via a timer
+}
 
   void _clearAllDisplays() {
     _computeService.cancelAll();
     _saveAppStateForUndo();
+    _cancelCellAnimationState();
 
     for (var controller in mathEditorControllers.values) {
       controller.dispose();
@@ -1037,6 +1220,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   void _restoreAppState(AppState state) {
     _computeService.cancelAll();
+    _cancelCellAnimationState();
 
     for (var controller in mathEditorControllers.values) {
       controller.dispose();
@@ -1202,33 +1386,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   Expanded(
                     child:
                         _isKeypadVisible
-                            ? ListView.builder(
-                              physics: const ClampingScrollPhysics(),
-                              reverse: true,
-                              padding: EdgeInsets.zero,
-                              itemCount: count,
-                              itemBuilder: (context, index) {
-                                List<int> keys =
-                                    mathEditorControllers.keys.toList()..sort();
-                                int reversedIndex = keys.length - 1 - index;
-
-                                if (reversedIndex >= 0 &&
-                                    reversedIndex < keys.length) {
-                                  final cellIndex = keys[reversedIndex];
-                                  return Padding(
-                                    key: ValueKey(
-                                      'cell_${cellIndex}_$_globalClearId',
-                                    ),
-                                    padding: EdgeInsets.only(top: 5),
-                                    child: _buildExpressionDisplay(
-                                      cellIndex,
-                                      colors,
-                                    ),
-                                  );
-                                }
-                                return SizedBox.shrink();
-                              },
-                            )
+                            ? _buildAnimatedCellList(colors)
                             : _buildActiveCellFullscreen(colors),
                   ),
                   AnimatedSize(
@@ -1437,6 +1595,147 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 }
 
+/// Handles smooth entry and exit animations for cells
+class _AnimatedCellWrapper extends StatefulWidget {
+  final int token;
+  final bool isEntry;
+  final bool isVisible;
+  final Duration duration;
+  final Widget child;
+  final VoidCallback? onAnimationComplete;
+
+  const _AnimatedCellWrapper({
+    super.key,
+    required this.token,
+    required this.isEntry,
+    required this.isVisible,
+    required this.duration,
+    required this.child,
+    this.onAnimationComplete,
+  });
+
+  @override
+  State<_AnimatedCellWrapper> createState() => _AnimatedCellWrapperState();
+}
+
+class _AnimatedCellWrapperState extends State<_AnimatedCellWrapper>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _opacityAnimation;
+  late Animation<double> _sizeAnimation;
+  bool _animationCompleted = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      duration: widget.duration,
+      vsync: this,
+    );
+
+    // Listen for animation completion
+    _controller.addStatusListener(_onAnimationStatusChanged);
+
+    if (widget.isEntry) {
+      // Entry: animate from 0 to 1
+      _opacityAnimation = CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
+      );
+      _sizeAnimation = CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      );
+
+      // Start entry animation after frame
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _controller.forward();
+        }
+      });
+    } else {
+      // Exit: start fully visible, then animate out
+      _controller.value = 1.0;
+      
+      _opacityAnimation = CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.3, 1.0, curve: Curves.easeIn),
+      );
+      _sizeAnimation = CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeInCubic,
+      );
+
+      // Start exit animation immediately if marked for removal
+      if (!widget.isVisible) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _controller.reverse();
+          }
+        });
+      }
+    }
+  }
+
+  void _onAnimationStatusChanged(AnimationStatus status) {
+    if (_animationCompleted) return;
+
+    if (widget.isEntry && status == AnimationStatus.completed) {
+      _animationCompleted = true;
+      widget.onAnimationComplete?.call();
+    } else if (!widget.isEntry && status == AnimationStatus.dismissed) {
+      _animationCompleted = true;
+      widget.onAnimationComplete?.call();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedCellWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Handle visibility change for exit animation (in case it wasn't started in initState)
+    if (!widget.isEntry && oldWidget.isVisible && !widget.isVisible) {
+      _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeStatusListener(_onAnimationStatusChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final double sizeValue = _sizeAnimation.value;
+        final double opacityValue = _opacityAnimation.value;
+
+        // Fully collapsed - return empty
+        if (sizeValue <= 0.001) {
+          return const SizedBox.shrink();
+        }
+
+        return Opacity(
+          opacity: opacityValue.clamp(0.0, 1.0),
+          child: ClipRect(
+            child: Align(
+              alignment: Alignment.topCenter,
+              heightFactor: sizeValue.clamp(0.0, 1.0),
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
 bool _nodesEffectivelyEmpty(List<MathNode>? nodes) {
   if (nodes == null || nodes.isEmpty) return true;
   if (nodes.length == 1 && nodes.first is LiteralNode) {
@@ -1554,8 +1853,9 @@ class _ResultPageViewWidget extends StatefulWidget {
 class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
   late PageController _pageController;
   final ValueNotifier<int> _fallbackVersionNotifier = ValueNotifier<int>(0);
-  final ValueNotifier<double> _fallbackProgressNotifier =
-      ValueNotifier<double>(0.0);
+  final ValueNotifier<double> _fallbackProgressNotifier = ValueNotifier<double>(
+    0.0,
+  );
   int _currentPage = 0;
   double _lastDecimalHeight = 70.0;
   double _lastExactHeight = 70.0;

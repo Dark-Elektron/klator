@@ -29,20 +29,37 @@ class TexturedContainer extends StatefulWidget {
   State<TexturedContainer> createState() => _TexturedContainerState();
 }
 
-class _TexturedContainerState extends State<TexturedContainer> {
+class _TexturedContainerState extends State<TexturedContainer>
+    with SingleTickerProviderStateMixin {
   ui.Image? _textureImage;
   bool _isLoading = false;
   int _loadedColorValue = 0;
+  
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+  bool _hasAnimatedIn = false;
 
   @override
   void initState() {
     super.initState();
-    // Initial load happens in didChangeDependencies
+    
+    // Fade controller for smooth texture appearance
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+    
+    _primeTextureFromCache(widget.baseColor);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _primeTextureFromCache(widget.baseColor);
     _loadTexture();
   }
 
@@ -50,10 +67,26 @@ class _TexturedContainerState extends State<TexturedContainer> {
   void didUpdateWidget(TexturedContainer oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Always reload if color changed
     if (oldWidget.baseColor.toARGB32() != widget.baseColor.toARGB32()) {
-      _textureImage = null; // Clear old image immediately
+      _textureImage = null;
+      _hasAnimatedIn = false;
+      _fadeController.value = 0.0;
+      _primeTextureFromCache(widget.baseColor);
       _loadTexture();
+    }
+  }
+
+  void _primeTextureFromCache(Color color) {
+    final cached = TextureGenerator.peekCachedTexture(color);
+    if (cached == null) return;
+
+    _textureImage = cached;
+    _loadedColorValue = color.toARGB32();
+    
+    // If we got it from cache, show immediately
+    if (!_hasAnimatedIn) {
+      _fadeController.value = 1.0;
+      _hasAnimatedIn = true;
     }
   }
 
@@ -61,9 +94,12 @@ class _TexturedContainerState extends State<TexturedContainer> {
     final colorToLoad = widget.baseColor;
     final colorValue = colorToLoad.toARGB32();
 
-    // debugPrint('🖼️ _loadTexture called for color: ${colorValue.toRadixString(16)}, isLoading: $_isLoading');
+    if (!_isLoading &&
+        _textureImage != null &&
+        _loadedColorValue == colorValue) {
+      return;
+    }
 
-    // If already loading this exact color, skip
     if (_isLoading && _loadedColorValue == colorValue) {
       return;
     }
@@ -84,12 +120,6 @@ class _TexturedContainerState extends State<TexturedContainer> {
       );
 
       final hasImage = image != null;
-      assert(() {
-        debugPrint(
-          'Texture generated, mounted: $mounted, colorMatch: ${widget.baseColor.toARGB32() == colorValue}',
-        );
-        return true;
-      }());
 
       if (!mounted) {
         _isLoading = false;
@@ -97,10 +127,26 @@ class _TexturedContainerState extends State<TexturedContainer> {
       }
 
       if (hasImage && widget.baseColor.toARGB32() == colorValue) {
+        if (identical(_textureImage, image)) {
+          _isLoading = false;
+          // Still ensure fade is complete
+          if (!_hasAnimatedIn) {
+            _fadeController.forward();
+            _hasAnimatedIn = true;
+          }
+          return;
+        }
+        
         setState(() {
           _textureImage = image;
           _isLoading = false;
         });
+        
+        // Animate in the texture smoothly
+        if (!_hasAnimatedIn) {
+          _fadeController.forward();
+          _hasAnimatedIn = true;
+        }
       } else {
         _isLoading = false;
       }
@@ -114,33 +160,47 @@ class _TexturedContainerState extends State<TexturedContainer> {
   }
 
   @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     BoxDecoration baseDecoration = widget.decoration ?? const BoxDecoration();
 
-    return Container(
-      width: widget.width,
-      height: widget.height,
-      padding: widget.padding,
-      margin: widget.margin,
-      decoration: baseDecoration.copyWith(color: widget.baseColor),
-      child: ClipRect(
-        child: Stack(
-          fit: StackFit.passthrough,
-          children: [
-            // Texture layer
-            if (_textureImage != null)
-              Positioned.fill(
-                child: RawImage(
-                  image: _textureImage,
-                  fit: BoxFit.cover,
-                  filterQuality: FilterQuality.medium,
-                ),
-              ),
-            // Content
-            widget.child,
-          ],
-        ),
-      ),
+    return AnimatedBuilder(
+      animation: _fadeAnimation,
+      builder: (context, child) {
+        return Container(
+          width: widget.width,
+          height: widget.height,
+          padding: widget.padding,
+          margin: widget.margin,
+          decoration: baseDecoration.copyWith(color: widget.baseColor),
+          child: ClipRect(
+            child: Stack(
+              fit: StackFit.passthrough,
+              children: [
+                // Texture layer with fade
+                if (_textureImage != null)
+                  Positioned.fill(
+                    child: Opacity(
+                      opacity: _fadeAnimation.value,
+                      child: RawImage(
+                        image: _textureImage,
+                        fit: BoxFit.cover,
+                        filterQuality: FilterQuality.medium,
+                      ),
+                    ),
+                  ),
+                // Content
+                widget.child,
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

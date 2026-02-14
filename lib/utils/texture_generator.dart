@@ -10,6 +10,10 @@ class TextureGenerator {
   static final Map<int, ui.Image?> _cache = {};
   static final Map<int, Completer<ui.Image?>> _pendingRequests = {};
 
+  static ui.Image? peekCachedTexture(Color baseColor) {
+    return _cache[baseColor.toARGB32()];
+  }
+
   /// Get or generate a texture for the given color
   static Future<ui.Image?> getTexture(
     Color baseColor,
