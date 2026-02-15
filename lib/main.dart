@@ -505,98 +505,98 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-Widget _buildAnimatedCellList(AppColors colors) {
-  final List<int> keys = mathEditorControllers.keys.toList()..sort();
-  final Map<int, int> tokenToBuilderIndex = <int, int>{};
-  for (int i = 0; i < keys.length; i++) {
-    final int reversedIndex = keys.length - 1 - i;
-    final int cellIndex = keys[reversedIndex];
-    final controller = mathEditorControllers[cellIndex];
-    if (controller != null) {
-      tokenToBuilderIndex[_cellToken(controller)] = i;
-    }
-  }
-
-  return ListView.builder(
-    key: ValueKey('cell_list_$_globalClearId'),
-    physics: const ClampingScrollPhysics(),
-    reverse: true,
-    padding: EdgeInsets.zero,
-    itemCount: keys.length,
-    findChildIndexCallback: (Key key) {
-      if (key is ValueKey<int>) {
-        return tokenToBuilderIndex[key.value];
-      }
-      return null;
-    },
-    itemBuilder: (context, index) {
-      final int reversedIndex = keys.length - 1 - index;
+  Widget _buildAnimatedCellList(AppColors colors) {
+    final List<int> keys = mathEditorControllers.keys.toList()..sort();
+    final Map<int, int> tokenToBuilderIndex = <int, int>{};
+    for (int i = 0; i < keys.length; i++) {
+      final int reversedIndex = keys.length - 1 - i;
       final int cellIndex = keys[reversedIndex];
       final controller = mathEditorControllers[cellIndex];
-      if (controller == null) return const SizedBox.shrink();
+      if (controller != null) {
+        tokenToBuilderIndex[_cellToken(controller)] = i;
+      }
+    }
 
-      final int token = _cellToken(controller);
-      final bool isVisible = _cellVisibilityByToken[token] ?? true;
-      final bool isPendingEntry = _cellsPendingEntry.contains(token);
-      final bool isPendingRemoval = _cellsPendingRemoval.contains(token);
+    return ListView.builder(
+      key: ValueKey('cell_list_$_globalClearId'),
+      physics: const ClampingScrollPhysics(),
+      reverse: true,
+      padding: EdgeInsets.zero,
+      itemCount: keys.length,
+      findChildIndexCallback: (Key key) {
+        if (key is ValueKey<int>) {
+          return tokenToBuilderIndex[key.value];
+        }
+        return null;
+      },
+      itemBuilder: (context, index) {
+        final int reversedIndex = keys.length - 1 - index;
+        final int cellIndex = keys[reversedIndex];
+        final controller = mathEditorControllers[cellIndex];
+        if (controller == null) return const SizedBox.shrink();
 
-      final Widget cellBody = Padding(
-        padding: const EdgeInsets.only(top: 5),
-        child: _buildExpressionDisplay(cellIndex, colors),
-      );
+        final int token = _cellToken(controller);
+        final bool isVisible = _cellVisibilityByToken[token] ?? true;
+        final bool isPendingEntry = _cellsPendingEntry.contains(token);
+        final bool isPendingRemoval = _cellsPendingRemoval.contains(token);
 
-      // DELETION ANIMATION
-      if (isPendingRemoval) {
-        return _AnimatedCellWrapper(
-          key: ValueKey<int>(token),
-          token: token,
-          isEntry: false,
-          isVisible: isVisible,
-          duration: _cellDeleteTransitionDuration,
-          onAnimationComplete: () {
-            // Remove the cell after animation completes
-            if (mounted) {
-              final currentIndex = _findControllerIndex(controller);
-              if (currentIndex != null) {
-                _removeDisplayNow(currentIndex, token);
-              } else {
-                // Controller already removed, just clean up state
+        final Widget cellBody = Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: _buildExpressionDisplay(cellIndex, colors),
+        );
+
+        // DELETION ANIMATION
+        if (isPendingRemoval) {
+          return _AnimatedCellWrapper(
+            key: ValueKey<int>(token),
+            token: token,
+            isEntry: false,
+            isVisible: isVisible,
+            duration: _cellDeleteTransitionDuration,
+            onAnimationComplete: () {
+              // Remove the cell after animation completes
+              if (mounted) {
+                final currentIndex = _findControllerIndex(controller);
+                if (currentIndex != null) {
+                  _removeDisplayNow(currentIndex, token);
+                } else {
+                  // Controller already removed, just clean up state
+                  setState(() {
+                    _cellsPendingRemoval.remove(token);
+                    _cellsPendingEntry.remove(token);
+                    _cellVisibilityByToken.remove(token);
+                  });
+                }
+              }
+            },
+            child: cellBody,
+          );
+        }
+
+        // CREATION ANIMATION
+        if (isPendingEntry) {
+          return _AnimatedCellWrapper(
+            key: ValueKey<int>(token),
+            token: token,
+            isEntry: true,
+            isVisible: true,
+            duration: _cellCreateTransitionDuration,
+            onAnimationComplete: () {
+              if (mounted) {
                 setState(() {
-                  _cellsPendingRemoval.remove(token);
                   _cellsPendingEntry.remove(token);
-                  _cellVisibilityByToken.remove(token);
                 });
               }
-            }
-          },
-          child: cellBody,
-        );
-      }
+            },
+            child: cellBody,
+          );
+        }
 
-      // CREATION ANIMATION
-      if (isPendingEntry) {
-        return _AnimatedCellWrapper(
-          key: ValueKey<int>(token),
-          token: token,
-          isEntry: true,
-          isVisible: true,
-          duration: _cellCreateTransitionDuration,
-          onAnimationComplete: () {
-            if (mounted) {
-              setState(() {
-                _cellsPendingEntry.remove(token);
-              });
-            }
-          },
-          child: cellBody,
-        );
-      }
-
-      // STATIC CELL
-      return KeyedSubtree(key: ValueKey<int>(token), child: cellBody);
-    },
-  );
-}
+        // STATIC CELL
+        return KeyedSubtree(key: ValueKey<int>(token), child: cellBody);
+      },
+    );
+  }
 
   double _calculateDecimalResultHeight(int index) {
     final resController = textDisplayControllers[index];
@@ -944,50 +944,50 @@ Widget _buildAnimatedCellList(AppColors colors) {
     });
   }
 
-void _addDisplay({int? insertAt}) async {
-  _computeService.cancelAll();
-  
-  // Get colors first
-  final colors = AppColors.of(context, listen: false);
-  
-  // Ensure texture is FULLY loaded before creating cell
-  // This is the key - we wait for the actual texture, not just start loading
-  // ignore: unused_local_variable
-  final texture = await TextureGenerator.getTexture(
-    colors.containerBackground,
-    const Size(400, 300),
-    intensity: colors.textureIntensity,
-    scale: colors.textureScale,
-    softness: colors.textureSoftness,
-  );
-  
-  if (!mounted) return;
-  
-  // Texture is now guaranteed to be in cache
-  
-  int insertIndex = insertAt ?? (activeIndex + 1);
-  insertIndex = insertIndex.clamp(0, count);
+  void _addDisplay({int? insertAt}) async {
+    _computeService.cancelAll();
 
-  if (insertIndex < count) {
-    _shiftControllersUp(insertIndex);
-  }
+    // Get colors first
+    final colors = AppColors.of(context, listen: false);
 
-  _createControllers(insertIndex, animateEntry: true);
+    // Ensure texture is FULLY loaded before creating cell
+    // This is the key - we wait for the actual texture, not just start loading
+    // ignore: unused_local_variable
+    final texture = await TextureGenerator.getTexture(
+      colors.containerBackground,
+      const Size(400, 300),
+      intensity: colors.textureIntensity,
+      scale: colors.textureScale,
+      softness: colors.textureSoftness,
+    );
 
-  setState(() {
-    count += 1;
-    activeIndex = insertIndex;
-  });
+    if (!mounted) return;
 
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    Future<void>.delayed(_cellCreateTransitionDuration, () {
-      if (!mounted) return;
-      for (int i = insertIndex + 1; i < count; i++) {
-        _requestComputation(i);
-      }
+    // Texture is now guaranteed to be in cache
+
+    int insertIndex = insertAt ?? (activeIndex + 1);
+    insertIndex = insertIndex.clamp(0, count);
+
+    if (insertIndex < count) {
+      _shiftControllersUp(insertIndex);
+    }
+
+    _createControllers(insertIndex, animateEntry: true);
+
+    setState(() {
+      count += 1;
+      activeIndex = insertIndex;
     });
-  });
-}
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(_cellCreateTransitionDuration, () {
+        if (!mounted) return;
+        for (int i = insertIndex + 1; i < count; i++) {
+          _requestComputation(i);
+        }
+      });
+    });
+  }
 
   void _shiftControllersUp(int fromIndex) {
     // NEW: Update ANS indices in all existing controllers
@@ -1094,24 +1094,24 @@ void _addDisplay({int? insertAt}) async {
     });
   }
 
-void _removeDisplay(int indexToRemove) {
-  if (count <= 1) return;
-  final controller = mathEditorControllers[indexToRemove];
-  if (controller == null) return;
+  void _removeDisplay(int indexToRemove) {
+    if (count <= 1) return;
+    final controller = mathEditorControllers[indexToRemove];
+    if (controller == null) return;
 
-  final int token = _cellToken(controller);
-  if (_cellsPendingRemoval.contains(token)) return;
+    final int token = _cellToken(controller);
+    if (_cellsPendingRemoval.contains(token)) return;
 
-  _computeService.cancelAll();
-  
-  setState(() {
-    _cellsPendingRemoval.add(token);
-    _cellVisibilityByToken[token] = false;
-  });
-  
-  // Note: The actual removal now happens via onAnimationComplete callback
-  // in _buildAnimatedCellList, not via a timer
-}
+    _computeService.cancelAll();
+
+    setState(() {
+      _cellsPendingRemoval.add(token);
+      _cellVisibilityByToken[token] = false;
+    });
+
+    // Note: The actual removal now happens via onAnimationComplete callback
+    // in _buildAnimatedCellList, not via a timer
+  }
 
   void _clearAllDisplays() {
     _computeService.cancelAll();
@@ -1629,10 +1629,7 @@ class _AnimatedCellWrapperState extends State<_AnimatedCellWrapper>
   void initState() {
     super.initState();
 
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    );
+    _controller = AnimationController(duration: widget.duration, vsync: this);
 
     // Listen for animation completion
     _controller.addStatusListener(_onAnimationStatusChanged);
@@ -1657,7 +1654,7 @@ class _AnimatedCellWrapperState extends State<_AnimatedCellWrapper>
     } else {
       // Exit: start fully visible, then animate out
       _controller.value = 1.0;
-      
+
       _opacityAnimation = CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.3, 1.0, curve: Curves.easeIn),

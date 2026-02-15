@@ -1342,12 +1342,7 @@ class MathEditorController extends ChangeNotifier {
     }
 
     // Create the parenthesis node with selected content
-    if (selectedNodes.isNotEmpty && selectedNodes.first is! LiteralNode) {
-      selectedNodes.insert(0, LiteralNode(text: ""));
-    }
-    if (selectedNodes.isNotEmpty && selectedNodes.last is! LiteralNode) {
-      selectedNodes.add(LiteralNode(text: ""));
-    }
+    _ensureLiteralEdges(selectedNodes);
 
     final paren = ParenthesisNode(content: selectedNodes);
 
@@ -1898,6 +1893,8 @@ class MathEditorController extends ChangeNotifier {
       parentList.removeAt(j);
     }
 
+    _ensureLiteralEdges(numeratorNodes);
+
     final frac = FractionNode(
       num: numeratorNodes,
       den: [LiteralNode(text: "")],
@@ -1965,6 +1962,8 @@ class MathEditorController extends ChangeNotifier {
       parentList.removeAt(j);
     }
 
+    _ensureLiteralEdges(numeratorNodes);
+
     final frac = FractionNode(
       num: numeratorNodes,
       den: [LiteralNode(text: "")],
@@ -2031,6 +2030,8 @@ class MathEditorController extends ChangeNotifier {
     for (int j = combIndex; j >= removeStartIndex; j--) {
       parentList.removeAt(j);
     }
+
+    _ensureLiteralEdges(numeratorNodes);
 
     final frac = FractionNode(
       num: numeratorNodes,
@@ -2131,6 +2132,7 @@ class MathEditorController extends ChangeNotifier {
         }
         int newCurrentIndex = removeStart;
         current.text = text.substring(cursorClick);
+        _ensureLiteralEdges(chainResult.nodes);
         final exp = ExponentNode(
           base: chainResult.nodes,
           power: [LiteralNode(text: "")],
@@ -2225,6 +2227,9 @@ class MathEditorController extends ChangeNotifier {
     for (int j = ansIndex; j >= removeStartIndex; j--) {
       parentList.removeAt(j);
     }
+
+    _ensureLiteralEdges(numeratorNodes);
+
     // ========== END NEW ==========
 
     // Create fraction with collected nodes as numerator
@@ -2295,6 +2300,8 @@ class MathEditorController extends ChangeNotifier {
       parentList.removeAt(j);
     }
 
+    _ensureLiteralEdges(numeratorNodes);
+
     final frac = FractionNode(
       num: numeratorNodes,
       den: [LiteralNode(text: "")],
@@ -2359,6 +2366,8 @@ class MathEditorController extends ChangeNotifier {
     for (int j = expIndex; j >= removeStartIndex; j--) {
       parentList.removeAt(j);
     }
+
+    _ensureLiteralEdges(numeratorNodes);
 
     final frac = FractionNode(
       num: numeratorNodes,
@@ -2425,6 +2434,8 @@ class MathEditorController extends ChangeNotifier {
       parentList.removeAt(j);
     }
 
+    _ensureLiteralEdges(numeratorNodes);
+
     final frac = FractionNode(
       num: numeratorNodes,
       den: [LiteralNode(text: "")],
@@ -2489,6 +2500,8 @@ class MathEditorController extends ChangeNotifier {
     for (int j = rootIndex; j >= removeStartIndex; j--) {
       parentList.removeAt(j);
     }
+
+    _ensureLiteralEdges(numeratorNodes);
 
     final frac = FractionNode(
       num: numeratorNodes,
@@ -2557,6 +2570,9 @@ class MathEditorController extends ChangeNotifier {
     for (int j = ansIndex; j >= removeStartIndex; j--) {
       parentList.removeAt(j);
     }
+
+    _ensureLiteralEdges(baseNodes);
+
     // ========== END NEW ==========
 
     final exp = ExponentNode(
@@ -2723,6 +2739,8 @@ class MathEditorController extends ChangeNotifier {
             LiteralNode(text: MathTextStyle.multiplySign + actualOperand),
           );
         }
+
+        _ensureLiteralEdges(allNumeratorNodes);
 
         final frac = FractionNode(
           num: allNumeratorNodes,
@@ -4023,6 +4041,19 @@ class MathEditorController extends ChangeNotifier {
       if (node is! LiteralNode) return false;
     }
     return true;
+  }
+
+  void _ensureLiteralEdges(List<MathNode> nodes) {
+    if (nodes.isEmpty) {
+      nodes.add(LiteralNode(text: ""));
+      return;
+    }
+    if (nodes.first is! LiteralNode) {
+      nodes.insert(0, LiteralNode(text: ""));
+    }
+    if (nodes.last is! LiteralNode) {
+      nodes.add(LiteralNode(text: ""));
+    }
   }
 
   void _moveCursorToEndOfList(

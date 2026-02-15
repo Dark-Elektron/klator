@@ -2605,7 +2605,24 @@ class TrigExpr extends Expr {
         Expr? sinVal = _sinExact(num, den);
         Expr? cosVal = _cosExact(num, den);
         if (sinVal != null && cosVal != null && !cosVal.isZero) {
-          return DivExpr(sinVal, cosVal).simplify();
+          final Expr simplifiedSin = sinVal.simplify();
+          final Expr simplifiedCos = cosVal.simplify();
+
+          // Keep exact ±1 for common-angle tangent values where sin/cos share
+          // the same magnitude but differ in sign (e.g. tan(3π/4) = -1).
+          if (simplifiedSin.structurallyEquals(simplifiedCos)) {
+            return IntExpr.one;
+          }
+          if (simplifiedSin.structurallyEquals(
+                simplifiedCos.negate().simplify(),
+              ) ||
+              simplifiedCos.structurallyEquals(
+                simplifiedSin.negate().simplify(),
+              )) {
+            return IntExpr.negOne;
+          }
+
+          return DivExpr(simplifiedSin, simplifiedCos).simplify();
         }
         return null;
       default:
@@ -4753,6 +4770,20 @@ class MathNodeToExpr {
         continue;
       }
 
+      // Degree suffix: x° -> x * (π/180)
+      if (char == '\u00B0' || char == '\u00BA') {
+        if (tokens.isNotEmpty && _canApplyPostfixUnit(tokens.last)) {
+          tokens.add(_Token(_TokenType.operator, '*'));
+          tokens.add(
+            _Token.fromExpr(
+              DivExpr(ConstExpr.pi, IntExpr.from(180)).simplify(),
+            ),
+          );
+        }
+        i++;
+        continue;
+      }
+
       // Operators
       if (char == '+' ||
           char == '-' ||
@@ -4836,6 +4867,13 @@ class MathNodeToExpr {
           continue;
         }
 
+        // Radian suffix is a no-op in default radian mode: xrad == x
+        if (word.toLowerCase() == 'rad' &&
+            tokens.isNotEmpty &&
+            _canApplyPostfixUnit(tokens.last)) {
+          continue;
+        }
+
         // Check for constants
         if (word == 'pi' || word == 'PI') {
           tokens.add(_Token.fromExpr(ConstExpr.pi));
@@ -4909,6 +4947,12 @@ class MathNodeToExpr {
     }
 
     return tokens;
+  }
+
+  static bool _canApplyPostfixUnit(_Token token) {
+    return token.type == _TokenType.number ||
+        token.type == _TokenType.expr ||
+        token.type == _TokenType.rparen;
   }
 
   static bool _isDigit(String char) {

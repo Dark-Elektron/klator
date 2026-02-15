@@ -37,7 +37,10 @@ class MathEditorInlineState extends State<MathEditorInline>
     _cursorBlinkController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 530),
-    )..repeat(reverse: true);
+    );
+    if (widget.showCursor) {
+      _cursorBlinkController.repeat(reverse: true);
+    }
 
     widget.controller.setContainerKey(_containerKey);
     widget.controller.onSelectionCleared = _onSelectionCleared;
@@ -76,6 +79,15 @@ class MathEditorInlineState extends State<MathEditorInline>
       oldWidget.controller.onSelectionCleared = null;
       widget.controller.onSelectionCleared = _onSelectionCleared;
       widget.controller.setContainerKey(_containerKey);
+    }
+    if (oldWidget.showCursor != widget.showCursor) {
+      if (widget.showCursor) {
+        if (!_cursorBlinkController.isAnimating) {
+          _cursorBlinkController.repeat(reverse: true);
+        }
+      } else {
+        _cursorBlinkController.stop();
+      }
     }
   }
 
