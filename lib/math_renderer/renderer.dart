@@ -236,13 +236,6 @@ class MathRenderer extends StatelessWidget {
         textScaler: textScaler,
       );
     }
-    if (node is UnitVectorNode) {
-      return _UnitVectorWidget(
-        axis: node.axis,
-        fontSize: fontSize,
-        color: Colors.white,
-      );
-    }
 
     if (node is FractionNode) {
       final bool numEmpty = _isContentEmpty(node.numerator);
@@ -2861,39 +2854,6 @@ class LiteralWidget extends StatefulWidget {
 
   @override
   State<LiteralWidget> createState() => _LiteralWidgetState();
-}
-
-class _UnitVectorWidget extends StatelessWidget {
-  final String axis;
-  final double fontSize;
-  final Color color;
-
-  const _UnitVectorWidget({
-    required this.axis,
-    required this.fontSize,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final baseStyle = MathTextStyle.getStyle(fontSize).copyWith(color: color);
-    final hatStyle = baseStyle;
-
-    return SizedBox(
-      height: fontSize,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.centerLeft,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [Text('$axis\u0302', style: hatStyle)],
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _LiteralWidgetState extends State<LiteralWidget> {

@@ -320,10 +320,7 @@ void main() {
       expect(state.expression[0], isA<DerivativeNode>());
       final copy = state.expression[0] as DerivativeNode;
       expect(copy.id, isNot(derivative.id));
-      expect(
-        identical(copy.body.first, derivative.body.first),
-        isFalse,
-      );
+      expect(identical(copy.body.first, derivative.body.first), isFalse);
     });
 
     test('captures and clones IntegralNode', () {
@@ -337,10 +334,7 @@ void main() {
       expect(state.expression[0], isA<IntegralNode>());
       final copy = state.expression[0] as IntegralNode;
       expect(copy.id, isNot(integral.id));
-      expect(
-        identical(copy.body.first, integral.body.first),
-        isFalse,
-      );
+      expect(identical(copy.body.first, integral.body.first), isFalse);
     });
   });
 

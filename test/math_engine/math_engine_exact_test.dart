@@ -554,24 +554,17 @@ void main() {
       expect(sum, isA<ProdExpr>());
       final prod = sum as ProdExpr;
       expect(
-        prod.factors.any(
-          (factor) => factor is VarExpr && factor.name == 'x',
-        ),
+        prod.factors.any((factor) => factor is VarExpr && factor.name == 'x'),
         isTrue,
       );
-      final sumFactor =
-          prod.factors.firstWhere((f) => f is SumExpr) as SumExpr;
+      final sumFactor = prod.factors.firstWhere((f) => f is SumExpr) as SumExpr;
       expect(sumFactor.terms.length, equals(2));
       expect(
-        sumFactor.terms.any(
-          (term) => term is VarExpr && term.name == 'y',
-        ),
+        sumFactor.terms.any((term) => term is VarExpr && term.name == 'y'),
         isTrue,
       );
       expect(
-        sumFactor.terms.any(
-          (term) => term is VarExpr && term.name == 'z',
-        ),
+        sumFactor.terms.any((term) => term is VarExpr && term.name == 'z'),
         isTrue,
       );
     });
@@ -579,28 +572,20 @@ void main() {
     test('factor common variable powers', () {
       final sum =
           SumExpr([
-            ProdExpr([
-              PowExpr(VarExpr('x'), IntExpr.from(2)),
-              VarExpr('y'),
-            ]),
+            ProdExpr([PowExpr(VarExpr('x'), IntExpr.from(2)), VarExpr('y')]),
             ProdExpr([VarExpr('x'), VarExpr('y')]),
           ]).simplify();
       expect(sum, isA<ProdExpr>());
       final prod = sum as ProdExpr;
       expect(
-        prod.factors.any(
-          (factor) => factor is VarExpr && factor.name == 'x',
-        ),
+        prod.factors.any((factor) => factor is VarExpr && factor.name == 'x'),
         isTrue,
       );
       expect(
-        prod.factors.any(
-          (factor) => factor is VarExpr && factor.name == 'y',
-        ),
+        prod.factors.any((factor) => factor is VarExpr && factor.name == 'y'),
         isTrue,
       );
-      final sumFactor =
-          prod.factors.firstWhere((f) => f is SumExpr) as SumExpr;
+      final sumFactor = prod.factors.firstWhere((f) => f is SumExpr) as SumExpr;
       expect(sumFactor.terms.length, equals(2));
     });
 
@@ -820,11 +805,7 @@ void main() {
     });
 
     test('toMathNode omits explicit multiply for c₀xy', () {
-      final prod = ProdExpr([
-        VarExpr('c₀'),
-        VarExpr('x'),
-        VarExpr('y'),
-      ]);
+      final prod = ProdExpr([VarExpr('c₀'), VarExpr('x'), VarExpr('y')]);
       final nodes = prod.toMathNode();
       final literalTexts = nodes.whereType<LiteralNode>().map((n) => n.text);
 
@@ -842,15 +823,18 @@ void main() {
       expect(hasDot, isFalse);
     });
 
-    test('toMathNode keeps explicit multiply between variable and function', () {
-      final prod = ProdExpr([
-        VarExpr('x'),
-        TrigExpr(TrigFunc.sin, VarExpr('x')),
-      ]);
-      final nodes = prod.toMathNode();
-      final hasDot = nodes.whereType<LiteralNode>().any((n) => n.text == '·');
-      expect(hasDot, isTrue);
-    });
+    test(
+      'toMathNode keeps explicit multiply between variable and function',
+      () {
+        final prod = ProdExpr([
+          VarExpr('x'),
+          TrigExpr(TrigFunc.sin, VarExpr('x')),
+        ]);
+        final nodes = prod.toMathNode();
+        final hasDot = nodes.whereType<LiteralNode>().any((n) => n.text == '·');
+        expect(hasDot, isTrue);
+      },
+    );
 
     test('copy', () {
       final original = ProdExpr([IntExpr.from(3), IntExpr.from(4)]);
@@ -2619,23 +2603,26 @@ void main() {
       expect(normalized.contains('x^2'), isFalse);
     });
 
-    test('quadratic simplifies discriminant and uses coefficient before root', () {
-      final nodes = [LiteralNode(text: 'x^2+2/3x=1')];
-      final result = ExactMathEngine.evaluate(nodes);
-      expect(result.expr, isNotNull);
-      expect(result.expr, isA<SumExpr>());
-      final sum = result.expr as SumExpr;
-      final prodTerms = sum.terms.whereType<ProdExpr>().toList();
-      expect(prodTerms, isNotEmpty);
-      final rootProd = prodTerms.firstWhere(
-        (prod) => prod.factors.any((f) => f is RootExpr),
-      );
-      final root =
-          rootProd.factors.firstWhere((f) => f is RootExpr) as RootExpr;
-      expect(root.radicand, isA<IntExpr>());
-      expect((root.radicand as IntExpr).value, BigInt.from(10));
-      expect(rootProd.factors.any((f) => f is FracExpr), isTrue);
-    });
+    test(
+      'quadratic simplifies discriminant and uses coefficient before root',
+      () {
+        final nodes = [LiteralNode(text: 'x^2+2/3x=1')];
+        final result = ExactMathEngine.evaluate(nodes);
+        expect(result.expr, isNotNull);
+        expect(result.expr, isA<SumExpr>());
+        final sum = result.expr as SumExpr;
+        final prodTerms = sum.terms.whereType<ProdExpr>().toList();
+        expect(prodTerms, isNotEmpty);
+        final rootProd = prodTerms.firstWhere(
+          (prod) => prod.factors.any((f) => f is RootExpr),
+        );
+        final root =
+            rootProd.factors.firstWhere((f) => f is RootExpr) as RootExpr;
+        expect(root.radicand, isA<IntExpr>());
+        expect((root.radicand as IntExpr).value, BigInt.from(10));
+        expect(rootProd.factors.any((f) => f is FracExpr), isTrue);
+      },
+    );
 
     test('solves linear system with fractional coefficients', () {
       final nodes = [

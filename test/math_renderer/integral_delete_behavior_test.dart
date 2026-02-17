@@ -65,31 +65,28 @@ void main() {
       },
     );
 
-    test(
-      'backspace from after integral enters variable before body',
-      () {
-        final controller = MathEditorController();
-        final integral = IntegralNode(
-          variable: [LiteralNode(text: 'x')],
-          lower: [LiteralNode(text: '')],
-          upper: [LiteralNode(text: '')],
-          body: [LiteralNode(text: 'x^2')],
-        );
+    test('backspace from after integral enters variable before body', () {
+      final controller = MathEditorController();
+      final integral = IntegralNode(
+        variable: [LiteralNode(text: 'x')],
+        lower: [LiteralNode(text: '')],
+        upper: [LiteralNode(text: '')],
+        body: [LiteralNode(text: 'x^2')],
+      );
 
-        controller.expression = [integral, LiteralNode(text: '')];
-        controller.cursor = const EditorCursor(
-          parentId: null,
-          path: null,
-          index: 1,
-          subIndex: 0,
-        );
+      controller.expression = [integral, LiteralNode(text: '')];
+      controller.cursor = const EditorCursor(
+        parentId: null,
+        path: null,
+        index: 1,
+        subIndex: 0,
+      );
 
-        controller.deleteChar();
+      controller.deleteChar();
 
-        expect(controller.cursor.parentId, equals(integral.id));
-        expect(controller.cursor.path, equals('var'));
-        expect(controller.cursor.subIndex, equals(1));
-      },
-    );
+      expect(controller.cursor.parentId, equals(integral.id));
+      expect(controller.cursor.path, equals('var'));
+      expect(controller.cursor.subIndex, equals(1));
+    });
   });
 }

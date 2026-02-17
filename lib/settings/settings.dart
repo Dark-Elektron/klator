@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'settings_provider.dart';
 import 'package:provider/provider.dart';
+
 import '../utils/app_colors.dart';
+import 'settings_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback? onShowTutorial;
+
   const SettingsScreen({super.key, this.onShowTutorial});
 
   @override
@@ -12,14 +14,16 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  static const double _sliderControlWidth = 160;
+  static const double _toggleControlWidth = 120;
+
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
     final colors = AppColors.of(context);
 
-    // Theme-aware colors for sliders and switches
     final activeColor = colors.accent;
-    final activeTrackColor = colors.accent.withValues(alpha: 0.5);
+    final activeTrackColor = colors.accent.withOpacity(0.5);
     final sliderActiveColor = colors.accent;
 
     return Scaffold(
@@ -32,171 +36,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: Column(
         children: [
-          // Main settings in scrollable area
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16.0),
               children: [
-                ListTile(
-                  title: Text(
-                    'Precision: ${settings.precision.toInt()} decimal places',
-                    style: TextStyle(color: colors.textPrimary),
-                  ),
-                  subtitle: Slider(
-                    activeColor: sliderActiveColor,
-                    value: settings.precision,
-                    min: 0,
-                    max: 16,
-                    divisions: 16,
-                    label: settings.precision.toInt().toString(),
-                    onChanged: (value) {
-                      settings.setPrecision(value);
-                    },
-                  ),
+                _buildSectionCard(
+                  colors: colors,
+                  title: 'CALCULATION',
+                  children: [
+                    _buildPrecisionControl(
+                      settings: settings,
+                      colors: colors,
+                      sliderActiveColor: sliderActiveColor,
+                    ),
+                    const SizedBox(height: 10),
+                    Divider(color: colors.divider.withOpacity(0.5)),
+                    const SizedBox(height: 10),
+                    _buildNumberFormatControl(
+                      settings: settings,
+                      colors: colors,
+                    ),
+                  ],
                 ),
-
-                // Number Format dropdown
-                ListTile(
-                  title: Text(
-                    'Number Format',
-                    style: TextStyle(color: colors.textPrimary),
-                  ),
-                  subtitle: Text(
-                    _getNumberFormatDescription(settings.numberFormat),
-                    style: TextStyle(color: colors.textSecondary),
-                  ),
-                  trailing: DropdownButton<NumberFormat>(
-                    value: settings.numberFormat,
-                    dropdownColor: colors.containerBackground,
-                    style: TextStyle(color: colors.textPrimary),
-                    underline: const SizedBox(),
-                    onChanged: (NumberFormat? newValue) {
-                      if (newValue != null) {
-                        settings.setNumberFormat(newValue);
-                      }
-                    },
-                    items:
-                        NumberFormat.values.map((NumberFormat format) {
-                          return DropdownMenuItem<NumberFormat>(
-                            value: format,
-                            child: Text(
-                              _getNumberFormatLabel(format),
-                              style: TextStyle(color: colors.textPrimary),
-                            ),
-                          );
-                        }).toList(),
-                  ),
-                ),
-
-                ListTile(
-                  title: Text(
-                    'Theme',
-                    style: TextStyle(color: colors.textPrimary),
-                  ),
-                  trailing: DropdownButton<ThemeType>(
-                    value: settings.themeType,
-                    dropdownColor: colors.containerBackground,
-                    style: TextStyle(color: colors.textPrimary),
-                    underline: const SizedBox(),
-                    onChanged: (ThemeType? newValue) {
-                      if (newValue != null) {
-                        settings.setThemeType(newValue);
-                      }
-                    },
-                    items:
-                        ThemeType.values.map((ThemeType theme) {
-                          return DropdownMenuItem<ThemeType>(
-                            value: theme,
-                            child: Text(
-                              _getThemeLabel(theme),
-                              style: TextStyle(color: colors.textPrimary),
-                            ),
-                          );
-                        }).toList(),
-                  ),
-                ),
-                SwitchListTile(
-                  title: Text(
-                    'Haptic Feedback',
-                    style: TextStyle(color: colors.textPrimary),
-                  ),
-                  activeThumbColor: activeColor,
-                  activeTrackColor: activeTrackColor,
-                  value: settings.hapticFeedback,
-                  onChanged: settings.toggleHapticFeedback,
-                ),
-                ListTile(
-                  title: Text(
-                    'Multiplication Sign',
-                    style: TextStyle(color: colors.textPrimary),
-                  ),
-                  trailing: RadioGroup<String>(
-                    groupValue: settings.multiplicationSign,
-                    onChanged: (val) {
-                      if (val != null) settings.setMultiplicationSign(val);
-                    },
-                    child: Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        _buildMultiplyOption(
-                          settings,
-                          '×',
-                          '×',
-                          sliderActiveColor,
-                          colors.textPrimary,
+                _buildSectionCard(
+                  colors: colors,
+                  title: 'BUTTON PREFERENCES',
+                  children: [
+                    _buildInlineSegmentedControl<String>(
+                      colors: colors,
+                      label: 'Multiplication Sign',
+                      value: settings.multiplicationSign,
+                      options: const [
+                        _SegmentOption<String>(
+                          value: '\u00D7',
+                          label: '\u00D7',
+                          fontSize: 18,
                         ),
-                        const SizedBox(width: 12),
-                        _buildMultiplyOption(
-                          settings,
-                          '·',
-                          '·',
-                          sliderActiveColor,
-                          colors.textPrimary,
+                        _SegmentOption<String>(
+                          value: '\u00B7',
+                          label: '\u00B7',
+                          fontSize: 18,
                         ),
                       ],
+                      onChanged: (value) => settings.setMultiplicationSign(value),
                     ),
-                  ),
-                ),
-
-                ListTile(
-                  title: Text(
-                    'E / % Button',
-                    style: TextStyle(color: colors.textPrimary),
-                  ),
-                  trailing: RadioGroup<bool>(
-                    groupValue: settings.useScientificNotationButton,
-                    onChanged: (val) {
-                      if (val != null) {
-                        settings.setUseScientificNotationButton(val);
-                      }
-                    },
-                    child: Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        _buildNotationOption(
-                          settings,
-                          false,
-                          '%',
-                          sliderActiveColor,
-                          colors.textPrimary,
-                        ),
-                        const SizedBox(width: 12),
-                        _buildNotationOption(
-                          settings,
-                          true,
-                          '\u1D07',
-                          sliderActiveColor,
-                          colors.textPrimary,
-                        ),
+                    const SizedBox(height: 16),
+                    _buildInlineSegmentedControl<bool>(
+                      colors: colors,
+                      label: 'Key Function',
+                      value: settings.useScientificNotationButton,
+                      options: const [
+                        _SegmentOption<bool>(value: false, label: '%'),
+                        _SegmentOption<bool>(value: true, label: 'E'),
                       ],
+                      onChanged: (value) =>
+                          settings.setUseScientificNotationButton(value),
                     ),
-                  ),
+                  ],
+                ),
+                _buildSectionCard(
+                  colors: colors,
+                  title: 'APPEARANCE',
+                  children: [
+                    _buildThemeControl(settings: settings, colors: colors),
+                  ],
+                ),
+                _buildSectionCard(
+                  colors: colors,
+                  title: 'INTERACTION',
+                  children: [
+                    _buildHapticControl(
+                      settings: settings,
+                      colors: colors,
+                      activeColor: activeColor,
+                      activeTrackColor: activeTrackColor,
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-
-          // Tutorial button at bottom
           const Divider(height: 1),
           SafeArea(
             top: false,
@@ -237,7 +156,435 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // Helper to get display label for number format
+  /// Computes an appropriate opaque card color for the settings tiles
+  Color _getCardColor(AppColors colors) {
+    final bg = colors.displayBackground;
+
+    // Check if displayBackground is semi-transparent or fully black
+    final needsAdjustment = bg.opacity < 1.0 || 
+        (bg.red == 0 && bg.green == 0 && bg.blue == 0);
+
+    if (needsAdjustment) {
+      // Determine if we're in a dark or light themed context
+      final isDark = ThemeData.estimateBrightnessForColor(colors.containerBackground) == 
+          Brightness.dark;
+
+      if (isDark) {
+        // For dark themes, create a raised surface color
+        // Blend displayBackground with a lighter base
+        if (bg.opacity < 1.0) {
+          return Color.alphaBlend(bg, const Color(0xFF2D2D2D));
+        }
+        // For pure black, lighten slightly
+        return HSLColor.fromColor(colors.containerBackground)
+            .withLightness(
+              (HSLColor.fromColor(colors.containerBackground).lightness + 0.05)
+                  .clamp(0.0, 1.0),
+            )
+            .toColor();
+      } else {
+        // For light themes with transparency, blend with off-white
+        return Color.alphaBlend(bg, const Color(0xFFF5F5F5));
+      }
+    }
+
+    return bg;
+  }
+
+Widget _buildSectionCard({
+  required AppColors colors,
+  required String title,
+  required List<Widget> children,
+}) {
+  final isDark =
+      ThemeData.estimateBrightnessForColor(colors.displayBackground) ==
+          Brightness.dark;
+
+  final cardColor = _getCardColor(colors);
+
+  final shadows = <BoxShadow>[
+    BoxShadow(
+      color: Colors.black.withOpacity(isDark ? 0.5 : 0.12),
+      blurRadius: 16,
+      offset: const Offset(0, 6),
+      spreadRadius: -2,
+    ),
+    BoxShadow(
+      color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
+      blurRadius: 24,
+      offset: const Offset(0, 12),
+      spreadRadius: -4,
+    ),
+  ];
+
+  return RepaintBoundary(
+    child: Container(
+      key: ValueKey('card_${cardColor.value}_$title'),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: shadows,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: colors.textPrimary.withOpacity(0.7),
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.0,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...children,
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+  Widget _buildPrecisionControl({
+    required SettingsProvider settings,
+    required AppColors colors,
+    required Color sliderActiveColor,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'Precision',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
+          ),
+        ),
+        SizedBox(
+          width: _sliderControlWidth,
+          child: Row(
+            children: [
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 8,
+                      elevation: 2,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 16,
+                    ),
+                    activeTrackColor: sliderActiveColor,
+                    inactiveTrackColor: colors.divider.withOpacity(0.4),
+                    thumbColor: sliderActiveColor,
+                  ),
+                  child: Slider(
+                    value: settings.precision,
+                    min: 0,
+                    max: 16,
+                    divisions: 16,
+                    onChanged: (value) => settings.setPrecision(value),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.accent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  settings.precision.toInt().toString(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _foregroundFor(colors.accent),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNumberFormatControl({
+    required SettingsProvider settings,
+    required AppColors colors,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'Number Format',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
+          ),
+        ),
+        _buildModernDropdown<NumberFormat>(
+          colors: colors,
+          value: settings.numberFormat,
+          items: NumberFormat.values,
+          labelBuilder: _getNumberFormatLabel,
+          onChanged: (value) => settings.setNumberFormat(value),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildThemeControl({
+    required SettingsProvider settings,
+    required AppColors colors,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'Theme',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
+          ),
+        ),
+        _buildModernDropdown<ThemeType>(
+          colors: colors,
+          value: settings.themeType,
+          items: ThemeType.values,
+          labelBuilder: _getThemeLabel,
+          onChanged: (value) => settings.setThemeType(value),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModernDropdown<T>({
+    required AppColors colors,
+    required T value,
+    required List<T> items,
+    required String Function(T) labelBuilder,
+    required ValueChanged<T> onChanged,
+  }) {
+    final isDark =
+        ThemeData.estimateBrightnessForColor(colors.displayBackground) ==
+            Brightness.dark;
+
+    final cardColor = _getCardColor(colors);
+
+    // Compute dropdown button background - slightly different from card
+    final dropdownBg = isDark
+        ? Color.lerp(cardColor, Colors.white, 0.05)!
+        : Color.lerp(cardColor, Colors.black, 0.03)!;
+
+    return PopupMenuButton<T>(
+      initialValue: value,
+      onSelected: onChanged,
+      offset: const Offset(0, 40),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      color: cardColor,
+      elevation: 8,
+      itemBuilder: (context) => items.map((item) {
+        final isSelected = item == value;
+        return PopupMenuItem<T>(
+          value: item,
+          height: 48,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                labelBuilder(item),
+                style: TextStyle(
+                  color: isSelected ? colors.accent : colors.textPrimary,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  fontSize: 15,
+                ),
+              ),
+              if (isSelected) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.check_rounded,
+                  color: colors.accent,
+                  size: 18,
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: dropdownBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: colors.divider.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              labelBuilder(value),
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: colors.textPrimary,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHapticControl({
+    required SettingsProvider settings,
+    required AppColors colors,
+    required Color activeColor,
+    required Color activeTrackColor,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'Haptic Feedback',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
+          ),
+        ),
+        Switch(
+          activeThumbColor: activeColor,
+          activeTrackColor: activeTrackColor,
+          inactiveThumbColor: colors.textSecondary.withOpacity(0.5),
+          inactiveTrackColor: colors.divider.withOpacity(0.3),
+          value: settings.hapticFeedback,
+          onChanged: settings.toggleHapticFeedback,
+        ),
+      ],
+    );
+  }
+
+Widget _buildInlineSegmentedControl<T>({
+  required AppColors colors,
+  required String label,
+  required T value,
+  required List<_SegmentOption<T>> options,
+  required ValueChanged<T> onChanged,
+}) {
+  final selectedTextColor = _foregroundFor(colors.accent);
+  final isDarkTheme =
+      ThemeData.estimateBrightnessForColor(colors.displayBackground) ==
+          Brightness.dark;
+
+  final trackColor = isDarkTheme
+      ? Colors.black.withOpacity(0.2)
+      : Colors.black.withOpacity(0.1);
+
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      Expanded(
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: colors.textPrimary, fontSize: 16),
+        ),
+      ),
+      RepaintBoundary(
+        child: Container(
+          key: ValueKey('toggle_${colors.accent.value}_$label'),
+          width: _toggleControlWidth,
+          height: 38,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: trackColor,
+            borderRadius: BorderRadius.circular(19),
+          ),
+          child: Stack(
+            children: [
+              AnimatedAlign(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                alignment: value == options[0].value
+                    ? Alignment.centerLeft
+                    : Alignment.centerRight,
+                child: Container(
+                  width: (_toggleControlWidth - 6) / options.length,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: colors.accent,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colors.accent.withOpacity(0.4),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Row(
+                children: options.map((option) {
+                  final isSelected = value == option.value;
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => onChanged(option.value),
+                      behavior: HitTestBehavior.opaque,
+                      child: Center(
+                        child: AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 200),
+                          style: TextStyle(
+                            color: isSelected
+                                ? selectedTextColor
+                                : colors.textPrimary.withOpacity(0.7),
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.w500,
+                            fontSize: option.fontSize,
+                          ),
+                          child: Text(option.label),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+  Color _foregroundFor(Color background) {
+    final brightness = ThemeData.estimateBrightnessForColor(background);
+    return brightness == Brightness.dark ? Colors.white : Colors.black;
+  }
+
   String _getNumberFormatLabel(NumberFormat format) {
     switch (format) {
       case NumberFormat.automatic:
@@ -249,81 +596,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // Helper to get description for number format
-  String _getNumberFormatDescription(NumberFormat format) {
-    switch (format) {
-      case NumberFormat.automatic:
-        return 'Scientific for large/small numbers';
-      case NumberFormat.scientific:
-        return 'Always use scientific notation';
-      case NumberFormat.plain:
-        return 'Use commas (e.g., 1,000,000)';
-    }
-  }
-
-  Widget _buildMultiplyOption(
-    SettingsProvider settings,
-    String value,
-    String displayText,
-    Color? activeColor,
-    Color? textColor,
-  ) {
-    final isSelected = settings.multiplicationSign == value;
-
-    return InkWell(
-      onTap: () {
-        settings.setMultiplicationSign(value);
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Radio<String>(value: value, activeColor: activeColor),
-          Text(
-            displayText,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: textColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNotationOption(
-    SettingsProvider settings,
-    bool value,
-    String displayText,
-    Color? activeColor,
-    Color? textColor,
-  ) {
-    final isSelected = settings.useScientificNotationButton == value;
-
-    return InkWell(
-      onTap: () {
-        settings.setUseScientificNotationButton(value);
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Radio<bool>(value: value, activeColor: activeColor),
-          Text(
-            displayText,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: textColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Helper to get display label for themes
   String _getThemeLabel(ThemeType theme) {
     switch (theme) {
       case ThemeType.classic:
@@ -348,4 +620,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return 'Forest Moss';
     }
   }
+}
+
+class _SegmentOption<T> {
+  final T value;
+  final String label;
+  final double fontSize;
+
+  const _SegmentOption({
+    required this.value,
+    required this.label,
+    this.fontSize = 14,
+  });
 }

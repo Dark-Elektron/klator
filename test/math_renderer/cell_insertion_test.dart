@@ -11,7 +11,7 @@ import 'package:klator/math_engine/math_engine_exact.dart';
 class CellManager {
   int count = 0;
   int activeIndex = 0;
-  
+
   Map<int, MathEditorController> mathEditorControllers = {};
   Map<int, TextEditingController> textDisplayControllers = {};
   Map<int, FocusNode> focusNodes = {};
@@ -42,17 +42,17 @@ class CellManager {
   void addDisplay({int? insertAt}) {
     // Default: insert after the active cell
     int insertIndex = insertAt ?? (activeIndex + 1);
-    
+
     // Clamp to valid range
     insertIndex = insertIndex.clamp(0, count);
-    
+
     if (insertIndex < count) {
       // Need to shift existing controllers to make room
       _shiftControllersUp(insertIndex);
     }
-    
+
     createControllers(insertIndex);
-    
+
     count += 1;
     activeIndex = insertIndex;
   }
@@ -61,7 +61,7 @@ class CellManager {
     // Work backwards from the end to avoid overwriting
     for (int i = count - 1; i >= fromIndex; i--) {
       int newIndex = i + 1;
-      
+
       // Move all controller references
       mathEditorControllers[newIndex] = mathEditorControllers[i]!;
       textDisplayControllers[newIndex] = textDisplayControllers[i]!;
@@ -74,13 +74,13 @@ class CellManager {
       currentResultPageNotifiers[newIndex] = currentResultPageNotifiers[i]!;
       resultPageProgressNotifiers[newIndex] = resultPageProgressNotifiers[i]!;
       exactResultVersionNotifiers[newIndex] = exactResultVersionNotifiers[i]!;
-      
+
       // Move plot expanded state
       if (plotExpanded.containsKey(i)) {
         plotExpanded[newIndex] = plotExpanded[i]!;
       }
     }
-    
+
     // Clear the old references at fromIndex
     mathEditorControllers.remove(fromIndex);
     textDisplayControllers.remove(fromIndex);
@@ -160,9 +160,12 @@ class CellManager {
       newExactResultNodes[newIndex] = exactResultNodes[oldKey];
       newExactResultExprs[newIndex] = exactResultExprs[oldKey];
       newCurrentResultPage[newIndex] = currentResultPage[oldKey] ?? 0;
-      newCurrentResultPageNotifiers[newIndex] = currentResultPageNotifiers[oldKey]!;
-      newResultPageProgressNotifiers[newIndex] = resultPageProgressNotifiers[oldKey]!;
-      newExactResultVersionNotifiers[newIndex] = exactResultVersionNotifiers[oldKey]!;
+      newCurrentResultPageNotifiers[newIndex] =
+          currentResultPageNotifiers[oldKey]!;
+      newResultPageProgressNotifiers[newIndex] =
+          resultPageProgressNotifiers[oldKey]!;
+      newExactResultVersionNotifiers[newIndex] =
+          exactResultVersionNotifiers[oldKey]!;
       if (plotExpanded.containsKey(oldKey)) {
         newPlotExpanded[newIndex] = plotExpanded[oldKey]!;
       }
@@ -231,14 +234,14 @@ void main() {
       expect(freshManager.activeIndex, 0);
       expect(freshManager.mathEditorControllers.containsKey(0), true);
       expect(freshManager.textDisplayControllers.containsKey(0), true);
-      
+
       freshManager.dispose();
     });
 
     test('adds cell at end when no insertAt specified (after active)', () {
       // Start with cell 0
       cellManager.textDisplayControllers[0]!.text = 'cell0';
-      
+
       // Add cell - should insert after activeIndex (0), so at index 1
       cellManager.addDisplay();
 
@@ -246,16 +249,19 @@ void main() {
       expect(cellManager.activeIndex, 1); // New cell is active
       expect(cellManager.mathEditorControllers.containsKey(0), true);
       expect(cellManager.mathEditorControllers.containsKey(1), true);
-      expect(cellManager.textDisplayControllers[0]!.text, 'cell0'); // Original preserved
+      expect(
+        cellManager.textDisplayControllers[0]!.text,
+        'cell0',
+      ); // Original preserved
     });
 
     test('adds cell at specific index and shifts others', () {
       // Set up 3 cells with content
       cellManager.textDisplayControllers[0]!.text = 'cell0';
-      
+
       cellManager.addDisplay(); // Adds cell 1
       cellManager.textDisplayControllers[1]!.text = 'cell1';
-      
+
       cellManager.addDisplay(); // Adds cell 2
       cellManager.textDisplayControllers[2]!.text = 'cell2';
 
@@ -266,18 +272,24 @@ void main() {
 
       expect(cellManager.count, 4);
       expect(cellManager.activeIndex, 1); // New cell is active
-      
+
       // Verify content shifted correctly
       expect(cellManager.textDisplayControllers[0]!.text, 'cell0'); // Unchanged
       expect(cellManager.textDisplayControllers[1]!.text, ''); // New empty cell
-      expect(cellManager.textDisplayControllers[2]!.text, 'cell1'); // Shifted from 1 to 2
-      expect(cellManager.textDisplayControllers[3]!.text, 'cell2'); // Shifted from 2 to 3
+      expect(
+        cellManager.textDisplayControllers[2]!.text,
+        'cell1',
+      ); // Shifted from 1 to 2
+      expect(
+        cellManager.textDisplayControllers[3]!.text,
+        'cell2',
+      ); // Shifted from 2 to 3
     });
 
     test('adds cell at beginning (index 0) and shifts all', () {
       // Set up 2 cells with content
       cellManager.textDisplayControllers[0]!.text = 'original0';
-      
+
       cellManager.addDisplay();
       cellManager.textDisplayControllers[1]!.text = 'original1';
 
@@ -288,11 +300,17 @@ void main() {
 
       expect(cellManager.count, 3);
       expect(cellManager.activeIndex, 0);
-      
+
       // Verify all shifted
       expect(cellManager.textDisplayControllers[0]!.text, ''); // New empty cell
-      expect(cellManager.textDisplayControllers[1]!.text, 'original0'); // Shifted
-      expect(cellManager.textDisplayControllers[2]!.text, 'original1'); // Shifted
+      expect(
+        cellManager.textDisplayControllers[1]!.text,
+        'original0',
+      ); // Shifted
+      expect(
+        cellManager.textDisplayControllers[2]!.text,
+        'original1',
+      ); // Shifted
     });
 
     test('inserts after active cell by default', () {
@@ -311,7 +329,7 @@ void main() {
 
       expect(cellManager.count, 4);
       expect(cellManager.activeIndex, 2); // Inserted after old active (1)
-      
+
       // Verify order: A, B, [new], C
       expect(cellManager.textDisplayControllers[0]!.text, 'A');
       expect(cellManager.textDisplayControllers[1]!.text, 'B');
@@ -322,7 +340,7 @@ void main() {
     test('all controller maps are shifted correctly', () {
       cellManager.addDisplay();
       cellManager.addDisplay();
-      
+
       // Mark cells so we can track them
       cellManager.currentResultPage[0] = 10;
       cellManager.currentResultPage[1] = 20;
@@ -332,7 +350,7 @@ void main() {
       cellManager.addDisplay(insertAt: 1);
 
       expect(cellManager.count, 4);
-      
+
       // Verify currentResultPage shifted correctly
       expect(cellManager.currentResultPage[0], 10); // Unchanged
       expect(cellManager.currentResultPage[1], 0); // New cell (default)
@@ -359,9 +377,14 @@ void main() {
 
       final keys = cellManager.mathEditorControllers.keys.toList()..sort();
       expect(keys, [0, 1, 2, 3]);
-      
+
       // Verify all maps have same keys
-      expect(cellManager.textDisplayControllers.keys.toList()..sort(), [0, 1, 2, 3]);
+      expect(cellManager.textDisplayControllers.keys.toList()..sort(), [
+        0,
+        1,
+        2,
+        3,
+      ]);
       expect(cellManager.focusNodes.keys.toList()..sort(), [0, 1, 2, 3]);
       expect(cellManager.scrollControllers.keys.toList()..sort(), [0, 1, 2, 3]);
     });
@@ -377,7 +400,7 @@ void main() {
       cellManager.count = 1;
       cellManager.addDisplay();
       cellManager.addDisplay();
-      
+
       cellManager.textDisplayControllers[0]!.text = 'A';
       cellManager.textDisplayControllers[1]!.text = 'B';
       cellManager.textDisplayControllers[2]!.text = 'C';
@@ -399,12 +422,12 @@ void main() {
     test('does not remove last cell', () {
       cellManager.removeDisplay(0);
       cellManager.removeDisplay(0);
-      
+
       expect(cellManager.count, 1);
-      
+
       // Try to remove last cell
       cellManager.removeDisplay(0);
-      
+
       expect(cellManager.count, 1); // Still 1
     });
 
@@ -440,37 +463,37 @@ void main() {
     test('add, insert, remove sequence maintains consistency', () {
       // Add cells: [A]
       cellManager.textDisplayControllers[0]!.text = 'A';
-      
+
       // Add B: [A, B]
       cellManager.addDisplay();
       cellManager.textDisplayControllers[1]!.text = 'B';
-      
+
       // Add C: [A, B, C]
       cellManager.addDisplay();
       cellManager.textDisplayControllers[2]!.text = 'C';
-      
+
       // Insert X at 1: [A, X, B, C]
       cellManager.addDisplay(insertAt: 1);
       cellManager.textDisplayControllers[1]!.text = 'X';
-      
+
       expect(cellManager.count, 4);
       expect(cellManager.textDisplayControllers[0]!.text, 'A');
       expect(cellManager.textDisplayControllers[1]!.text, 'X');
       expect(cellManager.textDisplayControllers[2]!.text, 'B');
       expect(cellManager.textDisplayControllers[3]!.text, 'C');
-      
+
       // Remove B (index 2): [A, X, C]
       cellManager.removeDisplay(2);
-      
+
       expect(cellManager.count, 3);
       expect(cellManager.textDisplayControllers[0]!.text, 'A');
       expect(cellManager.textDisplayControllers[1]!.text, 'X');
       expect(cellManager.textDisplayControllers[2]!.text, 'C');
-      
+
       // Insert Y at 0: [Y, A, X, C]
       cellManager.addDisplay(insertAt: 0);
       cellManager.textDisplayControllers[0]!.text = 'Y';
-      
+
       expect(cellManager.count, 4);
       expect(cellManager.textDisplayControllers[0]!.text, 'Y');
       expect(cellManager.textDisplayControllers[1]!.text, 'A');
@@ -480,15 +503,15 @@ void main() {
 
     test('rapid insertions at same index', () {
       cellManager.textDisplayControllers[0]!.text = 'original';
-      
+
       // Insert multiple times at index 0
       for (int i = 1; i <= 5; i++) {
         cellManager.addDisplay(insertAt: 0);
         cellManager.textDisplayControllers[0]!.text = 'inserted$i';
       }
-      
+
       expect(cellManager.count, 6);
-      
+
       // Most recent insertion is at 0
       expect(cellManager.textDisplayControllers[0]!.text, 'inserted5');
       expect(cellManager.textDisplayControllers[1]!.text, 'inserted4');
@@ -502,11 +525,11 @@ void main() {
       cellManager.textDisplayControllers[0]!.text = 'A';
       cellManager.addDisplay();
       cellManager.textDisplayControllers[1]!.text = 'B';
-      
+
       // Insert at end (count = 2)
       cellManager.addDisplay(insertAt: 2);
       cellManager.textDisplayControllers[2]!.text = 'C';
-      
+
       expect(cellManager.count, 3);
       expect(cellManager.textDisplayControllers[0]!.text, 'A');
       expect(cellManager.textDisplayControllers[1]!.text, 'B');

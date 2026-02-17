@@ -189,11 +189,10 @@ double? _tryParseNumericLiteral(List<MathNode> nodes) {
   String text = node.text.trim();
   if (text.isEmpty) return null;
 
-  text =
-      text
-          .replaceAll('\u2212', '-')
-          .replaceAll('\u1D07', 'E')
-          .replaceAll(',', '');
+  text = text
+      .replaceAll('\u2212', '-')
+      .replaceAll('\u1D07', 'E')
+      .replaceAll(',', '');
 
   return double.tryParse(text);
 }
@@ -271,12 +270,11 @@ List<MathNode> _stripLeadingMultiply(List<MathNode> nodes) {
 }
 
 double? _tryParseNumberString(String text) {
-  String normalized =
-      text
-          .trim()
-          .replaceAll('\u2212', '-')
-          .replaceAll('\u1D07', 'E')
-          .replaceAll(',', '');
+  String normalized = text
+      .trim()
+      .replaceAll('\u2212', '-')
+      .replaceAll('\u1D07', 'E')
+      .replaceAll(',', '');
   if (normalized.isEmpty) return null;
   return double.tryParse(normalized);
 }
