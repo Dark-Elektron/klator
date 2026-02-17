@@ -1,10 +1,11 @@
+// ignore_for_file: no_leading_underscores_for_local_identifiers
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:klator/math_engine/math_engine_exact.dart';
 import 'package:klator/math_renderer/math_editor_controller.dart';
 import 'package:klator/math_renderer/renderer.dart';
 
 void main() {
-  // ignore: no_leading_underscores_for_local_identifiers
   bool _hasPowOfVar(Expr expr, String name, int exponent) {
     bool found = false;
     void visit(Expr node) {
@@ -35,7 +36,6 @@ void main() {
     return found;
   }
 
-  // ignore: no_leading_underscores_for_local_identifiers
   bool _hasHalfFactor(Expr expr) {
     bool found = false;
     void visit(Expr node) {

@@ -16,6 +16,8 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   static const double _sliderControlWidth = 160;
   static const double _toggleControlWidth = 120;
+  static const double _maxButtonRadius = SettingsProvider.maxButtonRadius;
+  static const double _maxButtonSpacing = SettingsProvider.maxButtonSpacing;
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final colors = AppColors.of(context);
 
     final activeColor = colors.accent;
-    final activeTrackColor = colors.accent.withOpacity(0.5);
+    final activeTrackColor = colors.accent.withValues(alpha: 0.5);
     final sliderActiveColor = colors.accent;
 
     return Scaffold(
@@ -50,7 +52,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       sliderActiveColor: sliderActiveColor,
                     ),
                     const SizedBox(height: 10),
-                    Divider(color: colors.divider.withOpacity(0.5)),
+                    Divider(color: colors.divider.withValues(alpha: 0.5)),
                     const SizedBox(height: 10),
                     _buildNumberFormatControl(
                       settings: settings,
@@ -78,7 +80,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           fontSize: 18,
                         ),
                       ],
-                      onChanged: (value) => settings.setMultiplicationSign(value),
+                      onChanged:
+                          (value) => settings.setMultiplicationSign(value),
                     ),
                     const SizedBox(height: 16),
                     _buildInlineSegmentedControl<bool>(
@@ -89,8 +92,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _SegmentOption<bool>(value: false, label: '%'),
                         _SegmentOption<bool>(value: true, label: 'E'),
                       ],
-                      onChanged: (value) =>
-                          settings.setUseScientificNotationButton(value),
+                      onChanged:
+                          (value) =>
+                              settings.setUseScientificNotationButton(value),
                     ),
                   ],
                 ),
@@ -99,6 +103,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'APPEARANCE',
                   children: [
                     _buildThemeControl(settings: settings, colors: colors),
+                    const SizedBox(height: 10),
+                    Divider(color: colors.divider.withValues(alpha: 0.5)),
+                    const SizedBox(height: 10),
+                    _buildButtonRadiusControl(
+                      settings: settings,
+                      colors: colors,
+                      sliderActiveColor: sliderActiveColor,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildButtonSpacingControl(
+                      settings: settings,
+                      colors: colors,
+                      sliderActiveColor: sliderActiveColor,
+                    ),
                   ],
                 ),
                 _buildSectionCard(
@@ -161,18 +179,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final bg = colors.displayBackground;
 
     // Check if displayBackground is semi-transparent or fully black
-    final needsAdjustment = bg.opacity < 1.0 || 
-        (bg.red == 0 && bg.green == 0 && bg.blue == 0);
+    final needsAdjustment =
+        bg.a < 1.0 || (bg.r == 0 && bg.g == 0 && bg.b == 0);
 
     if (needsAdjustment) {
       // Determine if we're in a dark or light themed context
-      final isDark = ThemeData.estimateBrightnessForColor(colors.containerBackground) == 
+      final isDark =
+          ThemeData.estimateBrightnessForColor(colors.containerBackground) ==
           Brightness.dark;
 
       if (isDark) {
         // For dark themes, create a raised surface color
         // Blend displayBackground with a lighter base
-        if (bg.opacity < 1.0) {
+        if (bg.a < 1.0) {
           return Color.alphaBlend(bg, const Color(0xFF2D2D2D));
         }
         // For pure black, lighten slightly
@@ -191,63 +210,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return bg;
   }
 
-Widget _buildSectionCard({
-  required AppColors colors,
-  required String title,
-  required List<Widget> children,
-}) {
-  final isDark =
-      ThemeData.estimateBrightnessForColor(colors.displayBackground) ==
-          Brightness.dark;
+  Widget _buildSectionCard({
+    required AppColors colors,
+    required String title,
+    required List<Widget> children,
+  }) {
+    final isDark =
+        ThemeData.estimateBrightnessForColor(colors.displayBackground) ==
+        Brightness.dark;
 
-  final cardColor = _getCardColor(colors);
+    final cardColor = _getCardColor(colors);
 
-  final shadows = <BoxShadow>[
-    BoxShadow(
-      color: Colors.black.withOpacity(isDark ? 0.5 : 0.12),
-      blurRadius: 16,
-      offset: const Offset(0, 6),
-      spreadRadius: -2,
-    ),
-    BoxShadow(
-      color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
-      blurRadius: 24,
-      offset: const Offset(0, 12),
-      spreadRadius: -4,
-    ),
-  ];
-
-  return RepaintBoundary(
-    child: Container(
-      key: ValueKey('card_${cardColor.value}_$title'),
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: shadows,
+    final shadows = <BoxShadow>[
+      BoxShadow(
+        color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.12),
+        blurRadius: 16,
+        offset: const Offset(0, 6),
+        spreadRadius: -2,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                color: colors.textPrimary.withOpacity(0.7),
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.0,
+      BoxShadow(
+        color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+        blurRadius: 24,
+        offset: const Offset(0, 12),
+        spreadRadius: -4,
+      ),
+    ];
+
+    return RepaintBoundary(
+      child: Container(
+        key: ValueKey('card_${cardColor.value}_$title'),
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: shadows,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: colors.textPrimary.withValues(alpha: 0.7),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.0,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            ...children,
-          ],
+              const SizedBox(height: 12),
+              ...children,
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildPrecisionControl({
     required SettingsProvider settings,
@@ -281,7 +300,7 @@ Widget _buildSectionCard({
                       overlayRadius: 16,
                     ),
                     activeTrackColor: sliderActiveColor,
-                    inactiveTrackColor: colors.divider.withOpacity(0.4),
+                    inactiveTrackColor: colors.divider.withValues(alpha: 0.4),
                     thumbColor: sliderActiveColor,
                   ),
                   child: Slider(
@@ -370,6 +389,148 @@ Widget _buildSectionCard({
     );
   }
 
+  Widget _buildButtonRadiusControl({
+    required SettingsProvider settings,
+    required AppColors colors,
+    required Color sliderActiveColor,
+  }) {
+    final value = settings.borderRadius.clamp(0.0, _maxButtonRadius);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'Button Radius',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
+          ),
+        ),
+        SizedBox(
+          width: _sliderControlWidth,
+          child: Row(
+            children: [
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 8,
+                      elevation: 2,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 16,
+                    ),
+                    activeTrackColor: sliderActiveColor,
+                    inactiveTrackColor: colors.divider.withValues(alpha: 0.4),
+                    thumbColor: sliderActiveColor,
+                  ),
+                  child: Slider(
+                    value: value,
+                    min: 0,
+                    max: _maxButtonRadius,
+                    divisions: _maxButtonRadius.toInt(),
+                    onChanged: (next) => settings.setBorderRadius(next),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.accent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  value.round().toString(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _foregroundFor(colors.accent),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildButtonSpacingControl({
+    required SettingsProvider settings,
+    required AppColors colors,
+    required Color sliderActiveColor,
+  }) {
+    final value = settings.buttonSpacing.clamp(0.0, _maxButtonSpacing);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'Button Spacing',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
+          ),
+        ),
+        SizedBox(
+          width: _sliderControlWidth,
+          child: Row(
+            children: [
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 8,
+                      elevation: 2,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 16,
+                    ),
+                    activeTrackColor: sliderActiveColor,
+                    inactiveTrackColor: colors.divider.withValues(alpha: 0.4),
+                    thumbColor: sliderActiveColor,
+                  ),
+                  child: Slider(
+                    value: value,
+                    min: 0,
+                    max: _maxButtonSpacing,
+                    divisions: _maxButtonSpacing.toInt(),
+                    onChanged: (next) => settings.setButtonSpacing(next),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.accent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  value.round().toString(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _foregroundFor(colors.accent),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildModernDropdown<T>({
     required AppColors colors,
     required T value,
@@ -379,59 +540,62 @@ Widget _buildSectionCard({
   }) {
     final isDark =
         ThemeData.estimateBrightnessForColor(colors.displayBackground) ==
-            Brightness.dark;
+        Brightness.dark;
 
     final cardColor = _getCardColor(colors);
 
     // Compute dropdown button background - slightly different from card
-    final dropdownBg = isDark
-        ? Color.lerp(cardColor, Colors.white, 0.05)!
-        : Color.lerp(cardColor, Colors.black, 0.03)!;
+    final dropdownBg =
+        isDark
+            ? Color.lerp(cardColor, Colors.white, 0.05)!
+            : Color.lerp(cardColor, Colors.black, 0.03)!;
 
     return PopupMenuButton<T>(
       initialValue: value,
       onSelected: onChanged,
       offset: const Offset(0, 40),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       color: cardColor,
       elevation: 8,
-      itemBuilder: (context) => items.map((item) {
-        final isSelected = item == value;
-        return PopupMenuItem<T>(
-          value: item,
-          height: 48,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                labelBuilder(item),
-                style: TextStyle(
-                  color: isSelected ? colors.accent : colors.textPrimary,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                  fontSize: 15,
-                ),
-              ),
-              if (isSelected) ...[
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.check_rounded,
-                  color: colors.accent,
-                  size: 18,
-                ),
-              ],
-            ],
-          ),
-        );
-      }).toList(),
+      itemBuilder:
+          (context) =>
+              items.map((item) {
+                final isSelected = item == value;
+                return PopupMenuItem<T>(
+                  value: item,
+                  height: 48,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        labelBuilder(item),
+                        style: TextStyle(
+                          color:
+                              isSelected ? colors.accent : colors.textPrimary,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w400,
+                          fontSize: 15,
+                        ),
+                      ),
+                      if (isSelected) ...[
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.check_rounded,
+                          color: colors.accent,
+                          size: 18,
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }).toList(),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: dropdownBg,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: colors.divider.withOpacity(0.3),
+            color: colors.divider.withValues(alpha: 0.3),
             width: 1,
           ),
         ),
@@ -440,10 +604,7 @@ Widget _buildSectionCard({
           children: [
             Text(
               labelBuilder(value),
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: colors.textPrimary, fontSize: 14),
             ),
             const SizedBox(width: 6),
             Icon(
@@ -477,8 +638,8 @@ Widget _buildSectionCard({
         Switch(
           activeThumbColor: activeColor,
           activeTrackColor: activeTrackColor,
-          inactiveThumbColor: colors.textSecondary.withOpacity(0.5),
-          inactiveTrackColor: colors.divider.withOpacity(0.3),
+          inactiveThumbColor: colors.textSecondary.withValues(alpha: 0.5),
+          inactiveTrackColor: colors.divider.withValues(alpha: 0.3),
           value: settings.hapticFeedback,
           onChanged: settings.toggleHapticFeedback,
         ),
@@ -486,99 +647,107 @@ Widget _buildSectionCard({
     );
   }
 
-Widget _buildInlineSegmentedControl<T>({
-  required AppColors colors,
-  required String label,
-  required T value,
-  required List<_SegmentOption<T>> options,
-  required ValueChanged<T> onChanged,
-}) {
-  final selectedTextColor = _foregroundFor(colors.accent);
-  final isDarkTheme =
-      ThemeData.estimateBrightnessForColor(colors.displayBackground) ==
-          Brightness.dark;
+  Widget _buildInlineSegmentedControl<T>({
+    required AppColors colors,
+    required String label,
+    required T value,
+    required List<_SegmentOption<T>> options,
+    required ValueChanged<T> onChanged,
+  }) {
+    final selectedTextColor = _foregroundFor(colors.accent);
+    final isDarkTheme =
+        ThemeData.estimateBrightnessForColor(colors.displayBackground) ==
+        Brightness.dark;
 
-  final trackColor = isDarkTheme
-      ? Colors.black.withOpacity(0.2)
-      : Colors.black.withOpacity(0.1);
+    final trackColor =
+        isDarkTheme
+            ? Colors.black.withValues(alpha: 0.2)
+            : Colors.black.withValues(alpha: 0.1);
 
-  return Row(
-    crossAxisAlignment: CrossAxisAlignment.center,
-    children: [
-      Expanded(
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: colors.textPrimary, fontSize: 16),
-        ),
-      ),
-      RepaintBoundary(
-        child: Container(
-          key: ValueKey('toggle_${colors.accent.value}_$label'),
-          width: _toggleControlWidth,
-          height: 38,
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: trackColor,
-            borderRadius: BorderRadius.circular(19),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
           ),
-          child: Stack(
-            children: [
-              AnimatedAlign(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                alignment: value == options[0].value
-                    ? Alignment.centerLeft
-                    : Alignment.centerRight,
-                child: Container(
-                  width: (_toggleControlWidth - 6) / options.length,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: colors.accent,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: colors.accent.withOpacity(0.4),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+        ),
+        RepaintBoundary(
+          child: Container(
+            key: ValueKey('toggle_${colors.accent.value}_$label'),
+            width: _toggleControlWidth,
+            height: 38,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: trackColor,
+              borderRadius: BorderRadius.circular(19),
+            ),
+            child: Stack(
+              children: [
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  alignment:
+                      value == options[0].value
+                          ? Alignment.centerLeft
+                          : Alignment.centerRight,
+                  child: Container(
+                    width: (_toggleControlWidth - 6) / options.length,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: colors.accent,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: colors.accent.withValues(alpha: 0.4),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              Row(
-                children: options.map((option) {
-                  final isSelected = value == option.value;
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => onChanged(option.value),
-                      behavior: HitTestBehavior.opaque,
-                      child: Center(
-                        child: AnimatedDefaultTextStyle(
-                          duration: const Duration(milliseconds: 200),
-                          style: TextStyle(
-                            color: isSelected
-                                ? selectedTextColor
-                                : colors.textPrimary.withOpacity(0.7),
-                            fontWeight:
-                                isSelected ? FontWeight.w600 : FontWeight.w500,
-                            fontSize: option.fontSize,
+                Row(
+                  children:
+                      options.map((option) {
+                        final isSelected = value == option.value;
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () => onChanged(option.value),
+                            behavior: HitTestBehavior.opaque,
+                            child: Center(
+                              child: AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 200),
+                                style: TextStyle(
+                                  color:
+                                      isSelected
+                                          ? selectedTextColor
+                                          : colors.textPrimary.withValues(
+                                            alpha: 0.7,
+                                          ),
+                                  fontWeight:
+                                      isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                  fontSize: option.fontSize,
+                                ),
+                                child: Text(option.label),
+                              ),
+                            ),
                           ),
-                          child: Text(option.label),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
+                        );
+                      }).toList(),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    ],
-  );
-}
+      ],
+    );
+  }
 
   Color _foregroundFor(Color background) {
     final brightness = ThemeData.estimateBrightnessForColor(background);

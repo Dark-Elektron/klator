@@ -239,6 +239,16 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
     if (node is PermutationNode) return [node.n, node.r];
     if (node is CombinationNode) return [node.n, node.r];
     if (node is AnsNode) return [node.index];
+    if (node is SummationNode) {
+      return [node.variable, node.lower, node.upper, node.body];
+    }
+    if (node is ProductNode) {
+      return [node.variable, node.lower, node.upper, node.body];
+    }
+    if (node is IntegralNode) {
+      return [node.variable, node.lower, node.upper, node.body];
+    }
+    if (node is DerivativeNode) return [node.variable, node.at, node.body];
     return [];
   }
 
@@ -274,6 +284,25 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
       if (path == 'r') return parent.r;
     } else if (parent is AnsNode) {
       if (path == 'index') return parent.index;
+    } else if (parent is SummationNode) {
+      if (path == 'var' || path == 'variable') return parent.variable;
+      if (path == 'lower') return parent.lower;
+      if (path == 'upper') return parent.upper;
+      if (path == 'body') return parent.body;
+    } else if (parent is ProductNode) {
+      if (path == 'var' || path == 'variable') return parent.variable;
+      if (path == 'lower') return parent.lower;
+      if (path == 'upper') return parent.upper;
+      if (path == 'body') return parent.body;
+    } else if (parent is IntegralNode) {
+      if (path == 'var' || path == 'variable') return parent.variable;
+      if (path == 'lower') return parent.lower;
+      if (path == 'upper') return parent.upper;
+      if (path == 'body') return parent.body;
+    } else if (parent is DerivativeNode) {
+      if (path == 'var' || path == 'variable') return parent.variable;
+      if (path == 'at') return parent.at;
+      if (path == 'body') return parent.body;
     }
 
     return null;

@@ -157,6 +157,14 @@ class SelectionManager {
   bool _tryReentry(Offset position) {
     if (_selectedCompositeId == null) return false;
 
+    // Don't re-enter if position is outside the composite's visual bounds.
+    // This prevents oscillation where _tryReentry re-enters a child context
+    // and _shouldExit immediately exits it, creating an infinite loop.
+    final compositeBounds = _visualBoundsCache[_selectedCompositeId!];
+    if (compositeBounds != null && !compositeBounds.contains(position)) {
+      return false;
+    }
+
     // We allow re-entry even during dragging to permit refining selections
     // by dragging handles back into composite nodes.
 
@@ -976,6 +984,25 @@ class SelectionManager {
       if (path == 'r') return node.r;
     } else if (node is AnsNode) {
       if (path == 'index') return node.index;
+    } else if (node is SummationNode) {
+      if (path == 'var') return node.variable;
+      if (path == 'lower') return node.lower;
+      if (path == 'upper') return node.upper;
+      if (path == 'body') return node.body;
+    } else if (node is ProductNode) {
+      if (path == 'var') return node.variable;
+      if (path == 'lower') return node.lower;
+      if (path == 'upper') return node.upper;
+      if (path == 'body') return node.body;
+    } else if (node is IntegralNode) {
+      if (path == 'var') return node.variable;
+      if (path == 'lower') return node.lower;
+      if (path == 'upper') return node.upper;
+      if (path == 'body') return node.body;
+    } else if (node is DerivativeNode) {
+      if (path == 'var') return node.variable;
+      if (path == 'at') return node.at;
+      if (path == 'body') return node.body;
     }
     return null;
   }
@@ -990,6 +1017,16 @@ class SelectionManager {
     if (node is PermutationNode) return [node.n, node.r];
     if (node is CombinationNode) return [node.n, node.r];
     if (node is AnsNode) return [node.index];
+    if (node is SummationNode) {
+      return [node.variable, node.lower, node.upper, node.body];
+    }
+    if (node is ProductNode) {
+      return [node.variable, node.lower, node.upper, node.body];
+    }
+    if (node is IntegralNode) {
+      return [node.variable, node.lower, node.upper, node.body];
+    }
+    if (node is DerivativeNode) return [node.variable, node.at, node.body];
     return [];
   }
 
@@ -1019,6 +1056,25 @@ class SelectionManager {
       list.add(_ChildContext(path: 'r', nodes: node.r));
     } else if (node is AnsNode) {
       list.add(_ChildContext(path: 'index', nodes: node.index));
+    } else if (node is SummationNode) {
+      list.add(_ChildContext(path: 'var', nodes: node.variable));
+      list.add(_ChildContext(path: 'lower', nodes: node.lower));
+      list.add(_ChildContext(path: 'upper', nodes: node.upper));
+      list.add(_ChildContext(path: 'body', nodes: node.body));
+    } else if (node is ProductNode) {
+      list.add(_ChildContext(path: 'var', nodes: node.variable));
+      list.add(_ChildContext(path: 'lower', nodes: node.lower));
+      list.add(_ChildContext(path: 'upper', nodes: node.upper));
+      list.add(_ChildContext(path: 'body', nodes: node.body));
+    } else if (node is IntegralNode) {
+      list.add(_ChildContext(path: 'var', nodes: node.variable));
+      list.add(_ChildContext(path: 'lower', nodes: node.lower));
+      list.add(_ChildContext(path: 'upper', nodes: node.upper));
+      list.add(_ChildContext(path: 'body', nodes: node.body));
+    } else if (node is DerivativeNode) {
+      list.add(_ChildContext(path: 'var', nodes: node.variable));
+      list.add(_ChildContext(path: 'at', nodes: node.at));
+      list.add(_ChildContext(path: 'body', nodes: node.body));
     }
     return list;
   }
@@ -1030,6 +1086,10 @@ class SelectionManager {
     if (node is LogNode) return ['base', 'arg'];
     if (node is PermutationNode) return ['n', 'r'];
     if (node is CombinationNode) return ['n', 'r'];
+    if (node is SummationNode) return ['var', 'lower', 'upper', 'body'];
+    if (node is ProductNode) return ['var', 'lower', 'upper', 'body'];
+    if (node is IntegralNode) return ['var', 'lower', 'upper', 'body'];
+    if (node is DerivativeNode) return ['var', 'at', 'body'];
     return [];
   }
 

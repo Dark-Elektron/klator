@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:klator/math_renderer/math_editor_controller.dart';
-import 'package:klator/math_renderer/math_nodes.dart';
-import 'package:klator/math_renderer/math_editor_widgets.dart';
 import 'package:klator/math_renderer/cursor.dart';
 import 'package:klator/math_renderer/renderer.dart';
 

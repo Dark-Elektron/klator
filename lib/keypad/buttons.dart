@@ -23,7 +23,7 @@ class MyButton extends StatelessWidget {
     this.buttontapped,
     this.fontSize = 22,
     this.mirror = false,
-    this.borderRadius = 5,
+    this.borderRadius = 0,
   });
 
   @override
@@ -32,6 +32,7 @@ class MyButton extends StatelessWidget {
     final bool hapticEnabled = settings.hapticFeedback;
     final double effectiveBorderRadius =
         borderRadius == 0 ? settings.borderRadius : borderRadius;
+    final double outerPadding = settings.buttonSpacing / 2;
 
     // 2. Create the text widget separately for clarity
     Widget textWidget = Text(
@@ -48,7 +49,7 @@ class MyButton extends StatelessWidget {
       );
     }
     return Padding(
-      padding: const EdgeInsets.all(0.5),
+      padding: EdgeInsets.all(outerPadding),
       child: Container(
         decoration: BoxDecoration(
           // IMPORTANT: borderRadius here must match ClipRRect to make the shadow curved
@@ -63,7 +64,7 @@ class MyButton extends StatelessWidget {
           ],
         ),
         child: ClipRRect(
-          // borderRadius: BorderRadius.circular(effectiveBorderRadius24),
+          borderRadius: BorderRadius.circular(effectiveBorderRadius),
           child: Material(
             color: color,
             child: InkWell(

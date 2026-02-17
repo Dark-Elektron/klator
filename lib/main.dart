@@ -152,6 +152,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   SettingsProvider? _settingsProvider;
   bool _listenerAdded = false;
   Timer? _deleteTimer;
+  ThemeType? _lastThemeType;
+  double? _lastPrecision;
+  NumberFormat? _lastNumberFormat;
+  String? _lastMultiplicationSign;
 
   // Compute service for background isolate computation
   late ComputeService _computeService;
@@ -690,6 +694,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     _walkthroughService.removeListener(_onWalkthroughChanged);
     _walkthroughService.dispose();
+    if (_listenerAdded) {
+      _settingsProvider?.removeListener(_onSettingsChanged);
+    }
 
     for (MathEditorController controller in mathEditorControllers.values) {
       controller.dispose();
@@ -759,6 +766,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
     if (!_listenerAdded) {
       _settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+      _captureSettingsSnapshot(_settingsProvider!);
       _settingsProvider?.addListener(_onSettingsChanged);
       _listenerAdded = true;
     }
@@ -824,20 +832,41 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await CellPersistence.saveActiveIndex(activeIndex);
   }
 
-  // In _HomePageState
+  void _captureSettingsSnapshot(SettingsProvider settings) {
+    _lastThemeType = settings.themeType;
+    _lastPrecision = settings.precision;
+    _lastNumberFormat = settings.numberFormat;
+    _lastMultiplicationSign = settings.multiplicationSign;
+  }
+
   void _onSettingsChanged() {
-    // Clear texture cache when theme changes
-    TextureGenerator.clearCache();
-    unawaited(_prewarmCellTexture());
+    final settings = _settingsProvider;
+    if (settings == null) return;
 
-    updateMathEditor();
+    final bool themeChanged = _lastThemeType != settings.themeType;
+    final bool mathRenderChanged =
+        _lastPrecision != settings.precision ||
+        _lastNumberFormat != settings.numberFormat ||
+        _lastMultiplicationSign != settings.multiplicationSign;
 
-    for (final controller in mathEditorControllers.values) {
-      controller.refreshDisplay();
+    _captureSettingsSnapshot(settings);
+
+    if (themeChanged) {
+      // Only clear texture cache when the actual theme changes.
+      TextureGenerator.clearCache();
+      unawaited(_prewarmCellTexture());
     }
 
-    // Force rebuild to reload textures
-    setState(() {});
+    if (mathRenderChanged) {
+      updateMathEditor();
+      for (final controller in mathEditorControllers.values) {
+        controller.refreshDisplay();
+      }
+    }
+
+    if (themeChanged || mathRenderChanged) {
+      setState(() {});
+    }
   }
 
   Future<void> _prewarmCellTexture() async {

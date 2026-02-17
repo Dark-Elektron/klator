@@ -23,6 +23,9 @@ enum ThemeType {
 }
 
 class SettingsProvider extends ChangeNotifier {
+  static const double maxButtonRadius = 36.0;
+  static const double maxButtonSpacing = 12.0;
+
   double _precision = 8;
   ThemeType _themeType = ThemeType.classic;
   bool _isRadians = false;
@@ -31,7 +34,8 @@ class SettingsProvider extends ChangeNotifier {
   String _multiplicationSign = '\u00D7'; // Default: ×
   NumberFormat _numberFormat = NumberFormat.automatic; // NEW
   bool _useScientificNotationButton = false;
-  double _borderRadius = 0.0; // NEW: Global button styling
+  double _borderRadius = 5.0;
+  double _buttonSpacing = 1.0;
 
   // Getters
   double get precision => _precision;
@@ -47,7 +51,8 @@ class SettingsProvider extends ChangeNotifier {
   String get multiplicationSign => _multiplicationSign;
   NumberFormat get numberFormat => _numberFormat; // NEW
   bool get useScientificNotationButton => _useScientificNotationButton;
-  double get borderRadius => _borderRadius; // NEW
+  double get borderRadius => _borderRadius;
+  double get buttonSpacing => _buttonSpacing;
 
   // Static method to create provider with preloaded settings
   static Future<SettingsProvider> create() async {
@@ -109,7 +114,9 @@ class SettingsProvider extends ChangeNotifier {
     _useScientificNotationButton =
         prefs.getBool('useScientificNotationButton') ?? false;
     _borderRadius =
-        prefs.getDouble('borderRadius') ?? 0.0; // Match user preference
+        (prefs.getDouble('borderRadius') ?? 5.0).clamp(0.0, maxButtonRadius);
+    _buttonSpacing =
+        (prefs.getDouble('buttonSpacing') ?? 1.0).clamp(1.0, maxButtonSpacing);
 
     // Load number format
     String formatStr = prefs.getString('numberFormat') ?? 'automatic';
@@ -203,9 +210,16 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<void> setBorderRadius(double value) async {
-    _borderRadius = value;
+    _borderRadius = value.clamp(0.0, maxButtonRadius);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('borderRadius', value);
+    await prefs.setDouble('borderRadius', _borderRadius);
+    notifyListeners();
+  }
+
+  Future<void> setButtonSpacing(double value) async {
+    _buttonSpacing = value.clamp(1.0, maxButtonSpacing);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('buttonSpacing', _buttonSpacing);
     notifyListeners();
   }
 }

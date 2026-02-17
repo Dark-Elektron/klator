@@ -1,3 +1,5 @@
+// ignore_for_file: no_leading_underscores_for_local_identifiers
+
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';

@@ -429,11 +429,11 @@ void main() {
     });
 
     test('asin(√2/2) = π/4', () {
-      expectApprox(evalToDouble('asin(${sqrt2Over2})'), pi / 4);
+      expectApprox(evalToDouble('asin($sqrt2Over2)'), pi / 4);
     });
 
     test('asin(√3/2) = π/3', () {
-      expectApprox(evalToDouble('asin(${sqrt3Over2})'), pi / 3);
+      expectApprox(evalToDouble('asin($sqrt3Over2)'), pi / 3);
     });
 
     test('asin(1) = π/2', () {
@@ -455,11 +455,11 @@ void main() {
     });
 
     test('acos(√3/2) = π/6', () {
-      expectApprox(evalToDouble('acos(${sqrt3Over2})'), pi / 6);
+      expectApprox(evalToDouble('acos($sqrt3Over2)'), pi / 6);
     });
 
     test('acos(√2/2) = π/4', () {
-      expectApprox(evalToDouble('acos(${sqrt2Over2})'), pi / 4);
+      expectApprox(evalToDouble('acos($sqrt2Over2)'), pi / 4);
     });
 
     test('acos(0.5) = π/3', () {
@@ -790,7 +790,7 @@ void main() {
     test('Verify preprocessing: 135° should convert to radians correctly', () {
       // 135° = 135 * π/180 = 3π/4 ≈ 2.356 radians
       double expectedRadians = 135 * pi / 180;
-      expectApprox(evalToDouble('sin(${expectedRadians})'), sqrt2Over2);
+      expectApprox(evalToDouble('sin($expectedRadians)'), sqrt2Over2);
     });
   });
 
