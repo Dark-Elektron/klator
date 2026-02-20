@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../math_engine/math_engine.dart';
 import '../math_renderer/renderer.dart';
+import '../utils/constants.dart';
+import '../utils/texture_generator.dart';
 
 enum NumberFormat {
   automatic, // Scientific only for very large/small numbers
@@ -32,10 +34,12 @@ class SettingsProvider extends ChangeNotifier {
   bool _hapticFeedback = true;
   bool _soundEffects = false;
   String _multiplicationSign = '\u00D7'; // Default: ×
-  NumberFormat _numberFormat = NumberFormat.automatic; // NEW
+  NumberFormat _numberFormat = NumberFormat.automatic;
   bool _useScientificNotationButton = false;
   double _borderRadius = 5.0;
   double _buttonSpacing = 1.0;
+  TextureType _textureType = TextureType.smoothNoise;
+  String _fontFamily = FONTFAMILY;
 
   // Getters
   double get precision => _precision;
@@ -49,10 +53,12 @@ class SettingsProvider extends ChangeNotifier {
   bool get hapticFeedback => _hapticFeedback;
   bool get soundEffects => _soundEffects;
   String get multiplicationSign => _multiplicationSign;
-  NumberFormat get numberFormat => _numberFormat; // NEW
+  NumberFormat get numberFormat => _numberFormat;
   bool get useScientificNotationButton => _useScientificNotationButton;
   double get borderRadius => _borderRadius;
   double get buttonSpacing => _buttonSpacing;
+  TextureType get textureType => _textureType;
+  String get fontFamily => _fontFamily;
 
   // Static method to create provider with preloaded settings
   static Future<SettingsProvider> create() async {
@@ -69,10 +75,14 @@ class SettingsProvider extends ChangeNotifier {
     String multiplicationSign = '×',
     NumberFormat numberFormat = NumberFormat.automatic,
     bool useScientificNotationButton = false,
+    TextureType textureType = TextureType.smoothNoise,
+    String? fontFamily,
   }) : _themeType = themeType,
-        _multiplicationSign = multiplicationSign,
-        _numberFormat = numberFormat,
-        _useScientificNotationButton = useScientificNotationButton;
+       _multiplicationSign = multiplicationSign,
+       _numberFormat = numberFormat,
+       _useScientificNotationButton = useScientificNotationButton,
+       _textureType = textureType,
+       _fontFamily = fontFamily ?? FONTFAMILY;
 
   // Factory constructor for tests
   static SettingsProvider forTesting({
@@ -80,12 +90,16 @@ class SettingsProvider extends ChangeNotifier {
     String multiplicationSign = '×',
     NumberFormat numberFormat = NumberFormat.automatic,
     bool useScientificNotationButton = false,
+    TextureType textureType = TextureType.smoothNoise,
+    String? fontFamily,
   }) {
     return SettingsProvider._forTesting(
       themeType: themeType,
       multiplicationSign: multiplicationSign,
       numberFormat: numberFormat,
       useScientificNotationButton: useScientificNotationButton,
+      textureType: textureType,
+      fontFamily: fontFamily,
     );
   }
 
@@ -113,10 +127,14 @@ class SettingsProvider extends ChangeNotifier {
     _multiplicationSign = prefs.getString('multiplicationSign') ?? '\u00D7';
     _useScientificNotationButton =
         prefs.getBool('useScientificNotationButton') ?? false;
-    _borderRadius =
-        (prefs.getDouble('borderRadius') ?? 5.0).clamp(0.0, maxButtonRadius);
-    _buttonSpacing =
-        (prefs.getDouble('buttonSpacing') ?? 1.0).clamp(1.0, maxButtonSpacing);
+    _borderRadius = (prefs.getDouble('borderRadius') ?? 5.0).clamp(
+      0.0,
+      maxButtonRadius,
+    );
+    _buttonSpacing = (prefs.getDouble('buttonSpacing') ?? 1.0).clamp(
+      1.0,
+      maxButtonSpacing,
+    );
 
     // Load number format
     String formatStr = prefs.getString('numberFormat') ?? 'automatic';
@@ -124,6 +142,16 @@ class SettingsProvider extends ChangeNotifier {
       (e) => e.name == formatStr,
       orElse: () => NumberFormat.automatic,
     );
+
+    // Load texture type
+    String textureStr = prefs.getString('textureType') ?? 'smoothNoise';
+    _textureType = TextureType.values.firstWhere(
+      (e) => e.name == textureStr,
+      orElse: () => TextureType.smoothNoise,
+    );
+
+    // Load font family
+    _fontFamily = prefs.getString('fontFamily') ?? FONTFAMILY;
 
     // Set global precision on load
     MathSolverNew.setPrecision(_precision.toInt());
@@ -133,6 +161,9 @@ class SettingsProvider extends ChangeNotifier {
 
     // Set global multiplication sign on load
     MathTextStyle.setMultiplySign(_multiplicationSign);
+
+    // Set global font family on load
+    MathTextStyle.setFontFamily(_fontFamily);
 
     notifyListeners();
   }
@@ -191,7 +222,6 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // NEW: Set number format
   Future<void> setNumberFormat(NumberFormat value) async {
     _numberFormat = value;
     final prefs = await SharedPreferences.getInstance();
@@ -220,6 +250,23 @@ class SettingsProvider extends ChangeNotifier {
     _buttonSpacing = value.clamp(1.0, maxButtonSpacing);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('buttonSpacing', _buttonSpacing);
+    notifyListeners();
+  }
+
+  Future<void> setTextureType(TextureType value) async {
+    _textureType = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('textureType', value.name);
+    notifyListeners();
+  }
+
+  Future<void> setFontFamily(String value) async {
+    _fontFamily = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('fontFamily', value);
+
+    // Update MathTextStyle
+    MathTextStyle.setFontFamily(value);
     notifyListeners();
   }
 }

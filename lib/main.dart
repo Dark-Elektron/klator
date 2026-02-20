@@ -70,7 +70,7 @@ class MyApp extends StatelessWidget {
           theme: ThemeData(
             brightness: Brightness.light,
             primarySwatch: Colors.blueGrey,
-            fontFamily: FONTFAMILY,
+            fontFamily: settings.fontFamily,
             scaffoldBackgroundColor: Colors.white,
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.blueGrey,
@@ -85,7 +85,7 @@ class MyApp extends StatelessWidget {
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primarySwatch: Colors.blueGrey,
-            fontFamily: FONTFAMILY,
+            fontFamily: settings.fontFamily,
             scaffoldBackgroundColor: const Color(0xFF121212),
             appBarTheme: const AppBarTheme(
               backgroundColor: Color(0xFF1E1E1E),
@@ -156,6 +156,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   double? _lastPrecision;
   NumberFormat? _lastNumberFormat;
   String? _lastMultiplicationSign;
+  String? _lastFontFamily;
 
   // Compute service for background isolate computation
   late ComputeService _computeService;
@@ -447,7 +448,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     width: double.infinity,
                     // No color - let texture show through
                     child: Padding(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(5),
                       child: AnimatedOpacity(
                         curve: Curves.easeIn,
                         duration: const Duration(milliseconds: 200),
@@ -498,7 +499,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     resultKey: _resultKey,
                     calculateDecimalResultHeight: _calculateDecimalResultHeight,
                     calculateExactResultHeight: _calculateExactResultHeight,
-                    useTransparentBackground: true, // ADD THIS
+                    useTransparentBackground: true,
                   ),
                 ],
               ),
@@ -545,7 +546,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final bool isPendingRemoval = _cellsPendingRemoval.contains(token);
 
         final Widget cellBody = Padding(
-          padding: const EdgeInsets.only(top: 5),
+          padding: const EdgeInsets.only(top: 2),
           child: _buildExpressionDisplay(cellIndex, colors),
         );
 
@@ -616,11 +617,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             decimalNodes,
             FONTSIZE,
           );
-          double totalHeight = measuredHeight + 20 + 15;
-          return totalHeight.clamp(80.0, 500.0);
+          double totalHeight = measuredHeight + 20 + 10;
+          return totalHeight.clamp(65.0, 500.0);
         }
       }
-      return 80.0;
+      return 65.0;
     }
 
     // Use the same measurement logic as Exact, but handle newlines properly.
@@ -629,15 +630,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       FONTSIZE,
     );
 
-    double totalHeight = measuredHeight + 20 + 15;
-    return totalHeight.clamp(80.0, 500.0);
+    double totalHeight = measuredHeight + 20 + 10;
+    return totalHeight.clamp(65.0, 500.0);
   }
 
   double _calculateExactResultHeight(int index) {
     final exactNodes = exactResultNodes[index];
 
     if (exactNodes == null || exactNodes.isEmpty) {
-      return 80.0;
+      return 65.0;
     }
 
     // Use the precise measurement from the display widget logic
@@ -647,8 +648,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
 
     // Add identical padding and clamping as Decimal
-    double totalHeight = measuredHeight + 20 + 15;
-    return totalHeight.clamp(80.0, 500.0);
+    double totalHeight = measuredHeight + 20 + 10;
+    return totalHeight.clamp(65.0, 500.0);
   }
 
   int _estimateNodesHeight(List<MathNode> nodes) {
@@ -837,6 +838,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _lastPrecision = settings.precision;
     _lastNumberFormat = settings.numberFormat;
     _lastMultiplicationSign = settings.multiplicationSign;
+    _lastFontFamily = settings.fontFamily;
   }
 
   void _onSettingsChanged() {
@@ -847,7 +849,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final bool mathRenderChanged =
         _lastPrecision != settings.precision ||
         _lastNumberFormat != settings.numberFormat ||
-        _lastMultiplicationSign != settings.multiplicationSign;
+        _lastMultiplicationSign != settings.multiplicationSign ||
+        _lastFontFamily != settings.fontFamily;
 
     _captureSettingsSnapshot(settings);
 
@@ -1850,7 +1853,7 @@ class _ResultPageViewWidget extends StatefulWidget {
   final GlobalKey? resultKey;
   final double Function(int) calculateDecimalResultHeight;
   final double Function(int) calculateExactResultHeight;
-  final bool useTransparentBackground; // ADD THIS
+  final bool useTransparentBackground;
 
   const _ResultPageViewWidget({
     super.key,
@@ -2000,14 +2003,11 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
         Expanded(
           child: Container(
             key: widget.shouldAddKeys ? widget.resultKey : null,
-            color: _backgroundColor, // CHANGED
+            color: _backgroundColor,
             child: Align(
               alignment: Alignment.center,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                 child: AnimatedOpacity(
                   curve: Curves.easeIn,
                   duration: const Duration(milliseconds: 500),
@@ -2076,10 +2076,7 @@ class _ResultPageViewWidgetState extends State<_ResultPageViewWidget> {
             child: Align(
               alignment: Alignment.center,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 child: AnimatedOpacity(
                   curve: Curves.easeIn,
                   duration: const Duration(milliseconds: 500),

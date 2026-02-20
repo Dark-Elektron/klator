@@ -164,6 +164,26 @@ class MathRenderer extends StatelessWidget {
             (removeRightPadding && isLastNonEmpty) ? 0.0 : standardPadding;
       }
 
+      // Determine if this literal's leading operator should be treated
+      // as binary (with full spacing) because it follows another node.
+      bool forceLeadingOp = false;
+      if (node is LiteralNode && node.text.isNotEmpty && !isFirstNonEmpty) {
+        final firstChar = node.text[0];
+        // Check if first char is an operator that would be padded
+        const operatorChars = {
+          '\u002B',
+          '\u2212',
+          '-',
+          '\u00B7',
+          '\u00D7',
+          '*',
+          '=',
+        };
+        if (operatorChars.contains(firstChar)) {
+          forceLeadingOp = true;
+        }
+      }
+
       return Padding(
         padding: EdgeInsets.only(
           left: leftPad,
@@ -177,6 +197,7 @@ class MathRenderer extends StatelessWidget {
           parentId,
           path,
           fontSize,
+          forceLeadingOperatorPadding: forceLeadingOp,
         ),
       );
     }).toList();
@@ -207,8 +228,9 @@ class MathRenderer extends StatelessWidget {
     List<MathNode> siblings,
     String? parentId,
     String? path,
-    double fontSize,
-  ) {
+    double fontSize, {
+    bool forceLeadingOperatorPadding = false,
+  }) {
     // Skip rendering NewlineNode (it's handled by line splitting)
     if (node is NewlineNode) {
       return const SizedBox.shrink();
@@ -226,6 +248,7 @@ class MathRenderer extends StatelessWidget {
         controller: controller,
         structureVersion: structureVersion,
         textScaler: textScaler,
+        forceLeadingOperatorPadding: forceLeadingOperatorPadding,
       );
     }
 
@@ -2838,6 +2861,7 @@ class LiteralWidget extends StatefulWidget {
   final MathEditorController controller;
   final int structureVersion;
   final TextScaler textScaler;
+  final bool forceLeadingOperatorPadding;
 
   const LiteralWidget({
     super.key,
@@ -2850,6 +2874,7 @@ class LiteralWidget extends StatefulWidget {
     required this.controller,
     required this.structureVersion,
     required this.textScaler,
+    this.forceLeadingOperatorPadding = false,
   });
 
   @override
@@ -2914,6 +2939,7 @@ class _LiteralWidgetState extends State<LiteralWidget> {
         fontSize: widget.fontSize,
         textScaler: widget.textScaler,
         renderParagraph: renderParagraph,
+        forceLeadingOperatorPadding: widget.forceLeadingOperatorPadding,
       ),
     );
 
@@ -2943,7 +2969,10 @@ class _LiteralWidgetState extends State<LiteralWidget> {
       );
     }
 
-    final displayText = MathTextStyle.toDisplayText(text);
+    final displayText = MathTextStyle.toDisplayText(
+      text,
+      forceLeadingOperatorPadding: widget.forceLeadingOperatorPadding,
+    );
 
     return Text(
       key: _textKey,
@@ -3273,11 +3302,15 @@ class NodeLayoutInfo {
   final double fontSize;
   final TextScaler textScaler;
   final RenderParagraph? renderParagraph;
+  final bool forceLeadingOperatorPadding;
 
   // Cached display text - computed once
   String? _displayText;
   String get displayText =>
-      _displayText ??= MathTextStyle.toDisplayText(node.text);
+      _displayText ??= MathTextStyle.toDisplayText(
+        node.text,
+        forceLeadingOperatorPadding: forceLeadingOperatorPadding,
+      );
 
   NodeLayoutInfo({
     required this.rect,
@@ -3288,6 +3321,7 @@ class NodeLayoutInfo {
     required this.fontSize,
     required this.textScaler,
     this.renderParagraph,
+    this.forceLeadingOperatorPadding = false,
   });
 }
 

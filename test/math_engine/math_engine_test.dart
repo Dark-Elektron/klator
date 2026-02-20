@@ -204,7 +204,7 @@ void main() {
     });
 
     test('10! equals 3628800', () {
-      expect(MathSolverNew.solve('10!'), equals('3628800'));
+      expect(MathSolverNew.solve('10!'), equals('3.6288\u1D076'));
     });
   });
 

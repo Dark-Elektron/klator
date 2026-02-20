@@ -4,6 +4,7 @@ import '../math_engine/math_engine.dart';
 import '../math_engine/math_engine_exact.dart';
 import '../math_engine/math_expression_serializer.dart';
 import '../math_renderer/math_nodes.dart';
+import '../settings/settings_provider.dart';
 
 /// Result of a background computation for a single cell.
 class CellComputeResult {
@@ -28,11 +29,15 @@ class _ComputeInput {
   final List<MathNode> expression;
   final Map<int, String>? ansValues;
   final Map<int, Expr>? ansExpressions;
+  final NumberFormat numberFormat;
+  final int precision;
 
   _ComputeInput({
     required this.expression,
     this.ansValues,
     this.ansExpressions,
+    required this.numberFormat,
+    required this.precision,
   });
 }
 
@@ -95,6 +100,8 @@ class ComputeService {
         expression: expression,
         ansValues: ansValues,
         ansExpressions: ansExpressions,
+        numberFormat: MathSolverNew.numberFormat,
+        precision: MathSolverNew.precision,
       );
     });
   }
@@ -120,6 +127,8 @@ class ComputeService {
       expression: expression,
       ansValues: ansValues,
       ansExpressions: ansExpressions,
+      numberFormat: MathSolverNew.numberFormat,
+      precision: MathSolverNew.precision,
     );
   }
 
@@ -129,12 +138,16 @@ class ComputeService {
     required List<MathNode> expression,
     Map<int, String>? ansValues,
     Map<int, Expr>? ansExpressions,
+    required NumberFormat numberFormat,
+    required int precision,
   }) async {
     try {
       final input = _ComputeInput(
         expression: expression,
         ansValues: ansValues,
         ansExpressions: ansExpressions,
+        numberFormat: numberFormat,
+        precision: precision,
       );
 
       final output = await Isolate.run(() => _computeInIsolate(input));
@@ -199,6 +212,10 @@ class ComputeService {
 /// Top-level function that runs inside the isolate.
 /// Must be a top-level or static function (no closures).
 _ComputeOutput _computeInIsolate(_ComputeInput input) {
+  // 0. Synchronize formatting settings
+  MathSolverNew.setNumberFormat(input.numberFormat);
+  MathSolverNew.setPrecision(input.precision);
+
   // 1. Serialize expression to string (for decimal engine)
   final String exprString = MathExpressionSerializer.serialize(
     input.expression,

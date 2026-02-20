@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../utils/app_colors.dart';
+import '../utils/texture_generator.dart';
 import 'settings_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -106,6 +107,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 10),
                     Divider(color: colors.divider.withValues(alpha: 0.5)),
                     const SizedBox(height: 10),
+                    _buildTextureTypeControl(
+                      settings: settings,
+                      colors: colors,
+                    ),
+                    const SizedBox(height: 10),
+                    Divider(color: colors.divider.withValues(alpha: 0.5)),
+                    const SizedBox(height: 10),
+                    _buildFontFamilyControl(settings: settings, colors: colors),
+                    const SizedBox(height: 10),
+                    Divider(color: colors.divider.withValues(alpha: 0.5)),
+                    const SizedBox(height: 10),
                     _buildButtonRadiusControl(
                       settings: settings,
                       colors: colors,
@@ -179,8 +191,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final bg = colors.displayBackground;
 
     // Check if displayBackground is semi-transparent or fully black
-    final needsAdjustment =
-        bg.a < 1.0 || (bg.r == 0 && bg.g == 0 && bg.b == 0);
+    final needsAdjustment = bg.a < 1.0 || (bg.r == 0 && bg.g == 0 && bg.b == 0);
 
     if (needsAdjustment) {
       // Determine if we're in a dark or light themed context
@@ -384,6 +395,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           items: ThemeType.values,
           labelBuilder: _getThemeLabel,
           onChanged: (value) => settings.setThemeType(value),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextureTypeControl({
+    required SettingsProvider settings,
+    required AppColors colors,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'Background Texture',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
+          ),
+        ),
+        _buildModernDropdown<TextureType>(
+          colors: colors,
+          value: settings.textureType,
+          items: TextureType.values,
+          labelBuilder: _getTextureTypeLabel,
+          onChanged: (value) => settings.setTextureType(value),
         ),
       ],
     );
@@ -787,6 +824,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return 'Honey Mustard';
       case ThemeType.forestMoss:
         return 'Forest Moss';
+    }
+  }
+
+  String _getTextureTypeLabel(TextureType type) {
+    switch (type) {
+      case TextureType.smoothNoise:
+        return 'Smooth Noise';
+      case TextureType.paperFiber:
+        return 'Paper Grain';
+      case TextureType.none:
+        return 'None (Solid)';
+    }
+  }
+
+  static const List<String> _availableFonts = [
+    'OpenSans',
+    'Cambria',
+    'Rosemary',
+  ];
+
+  Widget _buildFontFamilyControl({
+    required SettingsProvider settings,
+    required AppColors colors,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'Font',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
+          ),
+        ),
+        _buildModernDropdown<String>(
+          colors: colors,
+          value: settings.fontFamily,
+          items: _availableFonts,
+          labelBuilder: _getFontFamilyLabel,
+          onChanged: (value) => settings.setFontFamily(value),
+        ),
+      ],
+    );
+  }
+
+  String _getFontFamilyLabel(String family) {
+    switch (family) {
+      case 'OpenSans':
+        return 'Open Sans';
+      case 'Cambria':
+        return 'Cambria';
+      case 'Rosemary':
+        return 'Rosemary';
+      default:
+        return family;
     }
   }
 }

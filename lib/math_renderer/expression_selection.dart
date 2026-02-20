@@ -359,10 +359,11 @@ class _SelectionOverlayWidgetState extends State<SelectionOverlayWidget> {
     final text = info.node.text;
     if (text.isEmpty || charIndex <= 0) return 0.0;
 
-    final displayText = MathTextStyle.toDisplayText(text);
+    final displayText = info.displayText;
     final displayIndex = MathTextStyle.logicalToDisplayIndex(
       text,
       charIndex,
+      forceLeadingOperatorPadding: info.forceLeadingOperatorPadding,
     ).clamp(0, displayText.length);
 
     if (info.renderParagraph != null) {

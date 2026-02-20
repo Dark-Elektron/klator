@@ -1179,15 +1179,17 @@ class MathSolverNew {
 
   /// Automatic format - scientific only for very large/small numbers
   static String _formatAutomatic(double num) {
-    // Use scientific notation for very large or very small numbers
-    // Thresholds: >= 1e12 (to allow c0 as integer) or <= 1e-4 (to preserve precision for small values)
-    if (num.abs() >= 1e12 || (num.abs() <= 1e-4 && num.abs() > 0)) {
+    if (num == 0) return '0';
+
+    // Automatic uses scientific notation if >= 1e6 or <= 1e-6 (absolute value)
+    final abs = num.abs();
+    if (abs >= 1e6 || abs <= 1e-6) {
       return _formatScientific(num);
     }
 
     // Check if it's effectively an integer
     if ((num - num.roundToDouble()).abs() < 1e-10) {
-      return num.round().toString();
+      return num.round().toString(); // No commas
     }
 
     String formatted = num.toStringAsFixed(precision);
@@ -1196,14 +1198,14 @@ class MathSolverNew {
       formatted = formatted.replaceAll(RegExp(r'0+$'), '');
       formatted = formatted.replaceAll(RegExp(r'\.$'), '');
     }
-    return formatted;
+    return formatted; // No commas
   }
 
   /// Plain format - with commas, never scientific notation
   static String _formatPlain(double num) {
     // Check if it's effectively an integer
     if ((num - num.roundToDouble()).abs() < 1e-10) {
-      return _addCommas(num.round().toString());
+      return addCommas(num.round().toString());
     }
 
     String formatted = num.toStringAsFixed(precision);
@@ -1215,7 +1217,7 @@ class MathSolverNew {
 
     // Split into integer and decimal parts
     List<String> parts = formatted.split('.');
-    String integerPart = _addCommas(parts[0]);
+    String integerPart = addCommas(parts[0]);
 
     if (parts.length > 1 && parts[1].isNotEmpty) {
       return '$integerPart.${parts[1]}';
@@ -1224,7 +1226,7 @@ class MathSolverNew {
   }
 
   /// Adds commas to an integer string (handles negative numbers)
-  static String _addCommas(String numStr) {
+  static String addCommas(String numStr) {
     bool isNegative = numStr.startsWith('-');
     if (isNegative) {
       numStr = numStr.substring(1);
@@ -1247,6 +1249,8 @@ class MathSolverNew {
 
   /// Formats a number in scientific notation (e.g., 1.23E6)
   static String _formatScientific(double num) {
+    if (num == 0) return '0';
+
     // Use Dart's built-in exponential formatting
     String expStr = num.toStringAsExponential(precision);
 
@@ -1264,10 +1268,8 @@ class MathSolverNew {
     if (exponent.startsWith('+')) {
       exponent = exponent.substring(1);
     }
-    // If exponent is 0, just return the mantissa
-    if (exponent == '0') {
-      return mantissa;
-    }
+    // If exponent is 0, still use scientific format as requested, but Dart's toStringAsExponential
+    // handles 0 exponent as 'e0' which we format to 'E0'.
 
     return '$mantissa\u1D07$exponent';
   }

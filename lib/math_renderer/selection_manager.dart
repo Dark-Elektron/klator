@@ -890,13 +890,14 @@ class SelectionManager {
     final relX = position.dx - info.rect.left;
 
     if (info.renderParagraph != null) {
-      final displayText = MathTextStyle.toDisplayText(text);
+      final displayText = info.displayText;
       final pos = info.renderParagraph!.getPositionForOffset(
         Offset(relX, info.fontSize / 2),
       );
       return MathTextStyle.displayToLogicalIndex(
         text,
         pos.offset.clamp(0, displayText.length),
+        forceLeadingOperatorPadding: info.forceLeadingOperatorPadding,
       );
     }
 
@@ -905,6 +906,7 @@ class SelectionManager {
       relX,
       info.fontSize,
       info.textScaler,
+      forceLeadingOperatorPadding: info.forceLeadingOperatorPadding,
     );
   }
 

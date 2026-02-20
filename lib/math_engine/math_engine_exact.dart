@@ -75,28 +75,28 @@ class ExactNumberFormatter {
     BigInt absVal = value.abs();
     bool useScientific = false;
 
-    // Rule 1: Always use scientific if > 1e15
-    if (absVal >= threshold) {
-      useScientific = true;
-    }
-    // Rule 2: If it's a standalone whole number, respect the global scientific setting
-    else if (isWholeNumber &&
-        MathSolverNew.numberFormat == NumberFormat.scientific) {
+    final format = MathSolverNew.numberFormat;
+
+    if (format == NumberFormat.scientific) {
+      // Rule: always use scientific for any non-zero number
       if (absVal > BigInt.zero) {
         useScientific = true;
       }
+    } else if (format == NumberFormat.automatic) {
+      // Rule: scientific if >= 1e6
+      if (absVal >= BigInt.from(1000000)) {
+        useScientific = true;
+      }
     }
+    // Plain rule: never use scientific (useScientific = false)
 
     if (useScientific) {
       String s = absVal.toString();
-      if (s.length <= 1) return value.toString();
-
       int p = MathSolverNew.precision;
       int len = s.length;
       int exponent = len - 1;
 
       // Rounding logic for BigInt to match precision p (decimal places)
-      // We want p+1 significant digits
       if (len > p + 1) {
         String prefix = s.substring(0, p + 1);
         int nextDigit = int.parse(s[p + 1]);
@@ -104,7 +104,6 @@ class ExactNumberFormatter {
           BigInt rounded = BigInt.parse(prefix) + BigInt.one;
           String roundedStr = rounded.toString();
           if (roundedStr.length > prefix.length) {
-            // Carry over, e.g., 999 -> 1000
             exponent += 1;
             s = roundedStr;
           } else {
@@ -123,13 +122,18 @@ class ExactNumberFormatter {
       }
 
       String result = '$mantissa$smallCapsE$exponent';
-      return value < BigInt.zero ? '−$result' : result;
+      return value < BigInt.zero ? '\u2212$result' : result;
+    }
+
+    String resultStr = absVal.toString();
+    if (format == NumberFormat.plain) {
+      resultStr = MathSolverNew.addCommas(resultStr);
     }
 
     if (value < BigInt.zero) {
-      return '\u2212${absVal.toString()}';
+      return '\u2212$resultStr';
     }
-    return absVal.toString();
+    return resultStr;
   }
 }
 

@@ -257,8 +257,9 @@ class MathEditorController extends ChangeNotifier {
         final displayIndex = MathTextStyle.logicalToDisplayIndex(
           text,
           charIndex,
+          forceLeadingOperatorPadding: info.forceLeadingOperatorPadding,
         );
-        final displayText = MathTextStyle.toDisplayText(text);
+        final displayText = info.displayText; // Use cached display text
         final offset = info.renderParagraph!.getOffsetForCaret(
           TextPosition(offset: displayIndex.clamp(0, displayText.length)),
           Rect.zero,
@@ -272,6 +273,7 @@ class MathEditorController extends ChangeNotifier {
               charIndex,
               info.fontSize,
               info.textScaler,
+              forceLeadingOperatorPadding: info.forceLeadingOperatorPadding,
             );
       }
     }
@@ -378,11 +380,16 @@ class MathEditorController extends ChangeNotifier {
 
         final displayText = info.displayText;
         final displayOffset = pos.offset.clamp(0, displayText.length);
-        charIndex = MathTextStyle.displayToLogicalIndex(text, displayOffset);
+        charIndex = MathTextStyle.displayToLogicalIndex(
+          text,
+          displayOffset,
+          forceLeadingOperatorPadding: info.forceLeadingOperatorPadding,
+        );
 
         final cursorDisplayIndex = MathTextStyle.logicalToDisplayIndex(
           text,
           charIndex,
+          forceLeadingOperatorPadding: info.forceLeadingOperatorPadding,
         );
         final offset = info.renderParagraph!.getOffsetForCaret(
           TextPosition(offset: cursorDisplayIndex.clamp(0, displayText.length)),
@@ -395,6 +402,7 @@ class MathEditorController extends ChangeNotifier {
           relativeX,
           info.fontSize,
           info.textScaler,
+          forceLeadingOperatorPadding: info.forceLeadingOperatorPadding,
         );
         cursorX =
             info.rect.left +
@@ -403,6 +411,7 @@ class MathEditorController extends ChangeNotifier {
               charIndex,
               info.fontSize,
               info.textScaler,
+              forceLeadingOperatorPadding: info.forceLeadingOperatorPadding,
             );
       }
     }
@@ -494,8 +503,10 @@ class MathEditorController extends ChangeNotifier {
         final displayIndex = MathTextStyle.logicalToDisplayIndex(
           text,
           charIndex,
+          forceLeadingOperatorPadding:
+              rightmostInfo.forceLeadingOperatorPadding,
         );
-        final displayText = MathTextStyle.toDisplayText(text);
+        final displayText = rightmostInfo.displayText;
         final offset = rightmostInfo.renderParagraph!.getOffsetForCaret(
           TextPosition(offset: displayIndex.clamp(0, displayText.length)),
           Rect.zero,
@@ -509,6 +520,8 @@ class MathEditorController extends ChangeNotifier {
               charIndex,
               rightmostInfo.fontSize,
               rightmostInfo.textScaler,
+              forceLeadingOperatorPadding:
+                  rightmostInfo.forceLeadingOperatorPadding,
             );
       }
     }
