@@ -41,7 +41,6 @@ class _TexturedContainerState extends State<TexturedContainer>
   late Animation<double> _fadeAnimation;
   bool _hasAnimatedIn = false;
 
-  // Track the last settings to detect changes
   TextureType? _lastTextureType;
   int? _lastColorValue;
 
@@ -49,7 +48,6 @@ class _TexturedContainerState extends State<TexturedContainer>
   void initState() {
     super.initState();
 
-    // Fade controller for smooth texture appearance
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 150),
       vsync: this,
@@ -89,7 +87,6 @@ class _TexturedContainerState extends State<TexturedContainer>
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     final currentColorValue = widget.baseColor.toARGB32();
 
-    // Check if settings have changed
     final settingsChanged = _lastTextureType != settings.textureType ||
         _lastColorValue != currentColorValue;
 
@@ -109,7 +106,8 @@ class _TexturedContainerState extends State<TexturedContainer>
   }
 
   String _getCacheKey(Color color, TextureType type) {
-    return '${color.toARGB32()}_${type.name}';
+    final colors = AppColors.of(context, listen: false);
+    return '${color.toARGB32()}_${type.name}_${colors.textureIntensity}_${colors.textureScale}';
   }
 
   void _primeTextureFromCache() {
@@ -117,6 +115,7 @@ class _TexturedContainerState extends State<TexturedContainer>
 
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     final textureType = settings.textureType;
+    final colors = AppColors.of(context, listen: false);
 
     if (textureType == TextureType.none) {
       _textureImage = null;
@@ -126,6 +125,8 @@ class _TexturedContainerState extends State<TexturedContainer>
     final cached = TextureGenerator.peekCachedTexture(
       widget.baseColor,
       type: textureType,
+      intensity: colors.textureIntensity,
+      scale: colors.textureScale,
     );
 
     if (cached == null) return;
@@ -135,7 +136,6 @@ class _TexturedContainerState extends State<TexturedContainer>
     _textureImage = cached;
     _loadedCacheKey = cacheKey;
 
-    // If we got it from cache, show immediately
     if (!_hasAnimatedIn) {
       _fadeController.value = 1.0;
       _hasAnimatedIn = true;
@@ -148,7 +148,6 @@ class _TexturedContainerState extends State<TexturedContainer>
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     final textureType = settings.textureType;
 
-    // No texture needed
     if (textureType == TextureType.none) {
       if (_textureImage != null && mounted) {
         setState(() {
@@ -161,12 +160,10 @@ class _TexturedContainerState extends State<TexturedContainer>
     final colorToLoad = widget.baseColor;
     final cacheKey = _getCacheKey(colorToLoad, textureType);
 
-    // Already have this texture
     if (_textureImage != null && _loadedCacheKey == cacheKey) {
       return;
     }
 
-    // Already loading this texture
     if (_isLoading && _loadedCacheKey == cacheKey) {
       return;
     }
@@ -176,13 +173,11 @@ class _TexturedContainerState extends State<TexturedContainer>
 
     try {
       final colors = AppColors.of(context, listen: false);
-      const textureSize = Size(400, 300);
 
       final image = await TextureGenerator.getTexture(
         colorToLoad,
-        textureSize,
+        TextureGenerator.textureSize,
         type: textureType,
-        // Smooth noise parameters
         intensity: colors.textureIntensity,
         scale: colors.textureScale,
         softness: colors.textureSoftness,
@@ -193,7 +188,6 @@ class _TexturedContainerState extends State<TexturedContainer>
         return;
       }
 
-      // Verify the cache key still matches
       final currentCacheKey = _getCacheKey(
         widget.baseColor,
         settings.textureType,
@@ -205,14 +199,12 @@ class _TexturedContainerState extends State<TexturedContainer>
           _isLoading = false;
         });
 
-        // Animate in the texture smoothly
         if (!_hasAnimatedIn && mounted) {
           _fadeController.forward();
           _hasAnimatedIn = true;
         }
       } else {
         _isLoading = false;
-        // Settings changed during load, reload with new settings
         if (cacheKey != currentCacheKey && mounted) {
           _loadTexture();
         }
@@ -237,17 +229,14 @@ class _TexturedContainerState extends State<TexturedContainer>
 
   @override
   Widget build(BuildContext context) {
-    // Listen to settings changes to trigger rebuild
     final settings = Provider.of<SettingsProvider>(context);
     final textureType = settings.textureType;
 
-    // Check if we need to reload due to settings change
     final currentColorValue = widget.baseColor.toARGB32();
     final needsReload = _lastTextureType != textureType ||
         _lastColorValue != currentColorValue;
 
     if (needsReload) {
-      // Schedule the check for after build
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _checkAndLoadTexture();
@@ -257,7 +246,7 @@ class _TexturedContainerState extends State<TexturedContainer>
 
     BoxDecoration baseDecoration = widget.decoration ?? const BoxDecoration();
 
-    // If texture type is none, just return a simple container
+    // No texture - simple container
     if (textureType == TextureType.none) {
       return Container(
         width: widget.width,
@@ -272,30 +261,39 @@ class _TexturedContainerState extends State<TexturedContainer>
     return AnimatedBuilder(
       animation: _fadeAnimation,
       builder: (context, child) {
+        final showBaseColor = _textureImage == null || _fadeAnimation.value < 1.0;
+
         return Container(
           width: widget.width,
           height: widget.height,
-          padding: widget.padding,
           margin: widget.margin,
-          decoration: baseDecoration.copyWith(color: widget.baseColor),
-          child: ClipRect(
+          decoration: baseDecoration.copyWith(
+            color: showBaseColor ? widget.baseColor : Colors.transparent,
+          ),
+          child: ClipRRect(
+            borderRadius: baseDecoration.borderRadius?.resolve(TextDirection.ltr) 
+                ?? BorderRadius.zero,
             child: Stack(
               fit: StackFit.passthrough,
               children: [
-                // Texture layer with fade
+                // Tiled texture layer
                 if (_textureImage != null)
                   Positioned.fill(
                     child: Opacity(
                       opacity: _fadeAnimation.value,
                       child: RawImage(
                         image: _textureImage,
-                        fit: BoxFit.cover,
+                        fit: BoxFit.none, // Don't scale, just tile
+                        repeat: ImageRepeat.repeat, // Tile the texture!
                         filterQuality: FilterQuality.medium,
                       ),
                     ),
                   ),
-                // Content
-                widget.child,
+                // Content with padding
+                Padding(
+                  padding: widget.padding ?? EdgeInsets.zero,
+                  child: widget.child,
+                ),
               ],
             ),
           ),

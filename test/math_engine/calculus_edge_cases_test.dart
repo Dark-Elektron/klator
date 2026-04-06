@@ -4,7 +4,7 @@ import 'package:klator/math_renderer/math_nodes.dart';
 
 void main() {
   group('Calculus Edge Cases - Summation', () {
-    test('Summation with empty variable defaults to x', () {
+    test('Summation with empty variable returns empty result', () {
       final nodes = [
         SummationNode(
           variable: [LiteralNode(text: '')],
@@ -14,7 +14,7 @@ void main() {
         ),
       ];
       final result = ExactMathEngine.evaluate(nodes);
-      expect(result.numerical, equals(6.0)); // 1 + 2 + 3
+      expect(result.isEmpty, isTrue);
     });
 
     test('Summation with upper < lower returns 0', () {
@@ -78,7 +78,7 @@ void main() {
   });
 
   group('Calculus Edge Cases - Product', () {
-    test('Product with empty variable defaults to x', () {
+    test('Product with empty variable returns empty result', () {
       final nodes = [
         ProductNode(
           variable: [LiteralNode(text: '')],
@@ -88,7 +88,7 @@ void main() {
         ),
       ];
       final result = ExactMathEngine.evaluate(nodes);
-      expect(result.numerical, equals(6.0)); // 1 * 2 * 3
+      expect(result.isEmpty, isTrue);
     });
 
     test('Product with upper < lower returns 1', () {

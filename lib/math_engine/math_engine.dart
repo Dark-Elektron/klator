@@ -736,26 +736,44 @@ class MathSolverNew {
   }
 
   static String _processDerivative(String expr) {
-    while (expr.contains('diff(')) {
-      int startIndex = expr.indexOf('diff(');
+    int searchOffset = 0;
+    while (true) {
+      int startIndex = expr.indexOf('diff(', searchOffset);
       if (startIndex == -1) break;
 
       int openParen = startIndex + 'diff'.length;
       int closeParen = _findMatchingParen(expr, openParen);
-      if (closeParen == -1) break;
+      if (closeParen == -1) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       String content = expr.substring(openParen + 1, closeParen);
       List<String>? parts = _splitTopLevelArgs(content, 3);
-      if (parts == null) break;
+      if (parts == null) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       String varStr = parts[0].trim();
       String atStr = parts[1].trim();
       String bodyStr = parts[2].trim();
 
-      if (varStr.isEmpty || atStr.isEmpty || bodyStr.isEmpty) break;
+      if (varStr.isEmpty || bodyStr.isEmpty) {
+        throw Exception('Incomplete derivative arguments');
+      }
+
+      // Numerical solver requires 'at' value
+      if (atStr.isEmpty) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       double? atVal = _evaluateSimpleExpression(atStr);
-      if (atVal == null) break;
+      if (atVal == null) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       double h = 1e-6 * max(1.0, atVal.abs());
       String plusExpr = _replaceVariable(
@@ -784,23 +802,31 @@ class MathSolverNew {
           expr.substring(0, startIndex) +
           resultStr +
           expr.substring(closeParen + 1);
+      searchOffset = startIndex + resultStr.length;
     }
 
     return expr;
   }
 
   static String _processIntegral(String expr) {
-    while (expr.contains('int(')) {
-      int startIndex = expr.indexOf('int(');
+    int searchOffset = 0;
+    while (true) {
+      int startIndex = expr.indexOf('int(', searchOffset);
       if (startIndex == -1) break;
 
       int openParen = startIndex + 'int'.length;
       int closeParen = _findMatchingParen(expr, openParen);
-      if (closeParen == -1) break;
+      if (closeParen == -1) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       String content = expr.substring(openParen + 1, closeParen);
       List<String>? parts = _splitTopLevelArgs(content, 4);
-      if (parts == null) break;
+      if (parts == null) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       String varStr = parts[0].trim();
       String lowerStr = parts[1].trim();
@@ -811,12 +837,15 @@ class MathSolverNew {
           lowerStr.isEmpty ||
           upperStr.isEmpty ||
           bodyStr.isEmpty) {
-        break;
+        throw Exception('Incomplete integral arguments');
       }
 
       double? lowerVal = _evaluateSimpleExpression(lowerStr);
       double? upperVal = _evaluateSimpleExpression(upperStr);
-      if (lowerVal == null || upperVal == null) break;
+      if (lowerVal == null || upperVal == null) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       double a = lowerVal;
       double b = upperVal;
@@ -859,6 +888,7 @@ class MathSolverNew {
           expr.substring(0, startIndex) +
           resultStr +
           expr.substring(closeParen + 1);
+      searchOffset = startIndex + resultStr.length;
     }
 
     return expr;
@@ -869,27 +899,41 @@ class MathSolverNew {
     String funcName,
     bool isPermutation,
   ) {
-    while (expr.contains('$funcName(')) {
-      int startIndex = expr.indexOf('$funcName(');
+    int searchOffset = 0;
+    while (true) {
+      int startIndex = expr.indexOf('$funcName(', searchOffset);
       if (startIndex == -1) break;
 
       int openParen = startIndex + funcName.length;
 
       int closeParen = _findMatchingParen(expr, openParen);
-      if (closeParen == -1) break;
+      if (closeParen == -1) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       String content = expr.substring(openParen + 1, closeParen);
 
       int commaIndex = _findSeparatingComma(content);
-      if (commaIndex == -1) break;
+      if (commaIndex == -1) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       String nExpr = content.substring(0, commaIndex).trim();
       String rExpr = content.substring(commaIndex + 1).trim();
 
+      if (nExpr.isEmpty || rExpr.isEmpty) {
+        throw Exception('Incomplete $funcName arguments');
+      }
+
       double? nValue = _evaluateSimpleExpression(nExpr);
       double? rValue = _evaluateSimpleExpression(rExpr);
 
-      if (nValue == null || rValue == null) break;
+      if (nValue == null || rValue == null) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       int n = nValue.toInt();
       int r = rValue.toInt();
@@ -908,6 +952,7 @@ class MathSolverNew {
           expr.substring(0, startIndex) +
           resultStr +
           expr.substring(closeParen + 1);
+      searchOffset = startIndex + resultStr.length;
     }
 
     return expr;
@@ -964,28 +1009,43 @@ class MathSolverNew {
   }
 
   static String _processSumProd(String expr, String funcName, bool isProduct) {
-    while (expr.contains('$funcName(')) {
-      int startIndex = expr.indexOf('$funcName(');
+    int searchOffset = 0;
+    while (true) {
+      int startIndex = expr.indexOf('$funcName(', searchOffset);
       if (startIndex == -1) break;
 
       int openParen = startIndex + funcName.length;
       int closeParen = _findMatchingParen(expr, openParen);
-      if (closeParen == -1) break;
+      if (closeParen == -1) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       String content = expr.substring(openParen + 1, closeParen);
       List<String>? parts = _splitTopLevelArgs(content, 4);
-      if (parts == null) break;
+      if (parts == null) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       String varStr = parts[0].trim();
       String lowerStr = parts[1].trim();
       String upperStr = parts[2].trim();
       String bodyStr = parts[3].trim();
 
-      if (varStr.isEmpty) break;
+      if (varStr.isEmpty ||
+          lowerStr.isEmpty ||
+          upperStr.isEmpty ||
+          bodyStr.isEmpty) {
+        throw Exception('Incomplete $funcName arguments');
+      }
 
       double? lowerVal = _evaluateSimpleExpression(lowerStr);
       double? upperVal = _evaluateSimpleExpression(upperStr);
-      if (lowerVal == null || upperVal == null) break;
+      if (lowerVal == null || upperVal == null) {
+        searchOffset = startIndex + 1;
+        continue;
+      }
 
       int lower = lowerVal.round();
       int upper = upperVal.round();
@@ -996,6 +1056,7 @@ class MathSolverNew {
             expr.substring(0, startIndex) +
             emptyResult +
             expr.substring(closeParen + 1);
+        searchOffset = startIndex + emptyResult.length;
         continue;
       }
 
@@ -1022,6 +1083,7 @@ class MathSolverNew {
           expr.substring(0, startIndex) +
           resultStr +
           expr.substring(closeParen + 1);
+      searchOffset = startIndex + resultStr.length;
     }
 
     return expr;

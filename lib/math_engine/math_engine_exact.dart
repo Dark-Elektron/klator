@@ -6187,6 +6187,68 @@ class ExactMathEngine {
             _hasEmptyRequiredFields(node.r)) {
           return true;
         }
+      } else if (node is SummationNode) {
+        if (_isNodeListEmpty(node.variable) ||
+            _isNodeListEmpty(node.lower) ||
+            _isNodeListEmpty(node.upper) ||
+            _isNodeListEmpty(node.body)) {
+          return true;
+        }
+        if (_hasInvalidContent(node.variable) ||
+            _hasInvalidContent(node.lower) ||
+            _hasInvalidContent(node.upper) ||
+            _hasInvalidContent(node.body)) {
+          return true;
+        }
+        if (_hasEmptyRequiredFields(node.variable) ||
+            _hasEmptyRequiredFields(node.lower) ||
+            _hasEmptyRequiredFields(node.upper) ||
+            _hasEmptyRequiredFields(node.body)) {
+          return true;
+        }
+      } else if (node is ProductNode) {
+        if (_isNodeListEmpty(node.variable) ||
+            _isNodeListEmpty(node.lower) ||
+            _isNodeListEmpty(node.upper) ||
+            _isNodeListEmpty(node.body)) {
+          return true;
+        }
+        if (_hasInvalidContent(node.variable) ||
+            _hasInvalidContent(node.lower) ||
+            _hasInvalidContent(node.upper) ||
+            _hasInvalidContent(node.body)) {
+          return true;
+        }
+        if (_hasEmptyRequiredFields(node.variable) ||
+            _hasEmptyRequiredFields(node.lower) ||
+            _hasEmptyRequiredFields(node.upper) ||
+            _hasEmptyRequiredFields(node.body)) {
+          return true;
+        }
+      } else if (node is DerivativeNode) {
+        if (_isNodeListEmpty(node.variable) || _isNodeListEmpty(node.body)) {
+          return true;
+        }
+        if (_hasInvalidContent(node.variable) ||
+            _hasInvalidContent(node.body)) {
+          return true;
+        }
+        if (_hasEmptyRequiredFields(node.variable) ||
+            _hasEmptyRequiredFields(node.body)) {
+          return true;
+        }
+      } else if (node is IntegralNode) {
+        if (_isNodeListEmpty(node.variable) || _isNodeListEmpty(node.body)) {
+          return true;
+        }
+        if (_hasInvalidContent(node.variable) ||
+            _hasInvalidContent(node.body)) {
+          return true;
+        }
+        if (_hasEmptyRequiredFields(node.variable) ||
+            _hasEmptyRequiredFields(node.body)) {
+          return true;
+        }
       }
     }
     return false;

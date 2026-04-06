@@ -7,58 +7,69 @@ import 'dart:ui' as ui;
 import 'dart:typed_data';
 
 enum TextureType {
-  smoothNoise, // Original texture
-  paperFiber, // Handmade paper look
-  none, // No texture (solid color)
+  smoothNoise,
+  paperFiber,
+  none,
 }
 
 class TextureGenerator {
-  // Fixed values for paper fiber texture
-  static const double _defaultGrainIntensity = 0.15;
-  static const double _defaultFiberDensity = 0.0;
+  static const int textureWidth = 256;
+  static const int textureHeight = 256;
+  static const Size textureSize = Size(256, 256);
 
   static final Map<String, ui.Image?> _cache = {};
   static final Map<String, Completer<ui.Image?>> _pendingRequests = {};
 
-  static String _getCacheKey(Color color, TextureType type) {
-    return '${color.toARGB32()}_${type.name}';
+  static String _getCacheKey(
+    Color color,
+    TextureType type, {
+    double intensity = 0.15,
+    double scale = 1.65,
+  }) {
+    return '${color.toARGB32()}_${type.name}_${intensity}_$scale';
   }
 
   static ui.Image? peekCachedTexture(
     Color baseColor, {
     TextureType type = TextureType.smoothNoise,
+    double intensity = 0.15,
+    double scale = 1.65,
   }) {
-    return _cache[_getCacheKey(baseColor, type)];
+    return _cache[_getCacheKey(
+      baseColor,
+      type,
+      intensity: intensity,
+      scale: scale,
+    )];
   }
 
-  /// Get or generate a texture for the given color
   static Future<ui.Image?> getTexture(
     Color baseColor,
     Size size, {
     TextureType type = TextureType.smoothNoise,
-    // Smooth noise parameters
-    double intensity = 0.15,
+    double intensity = 0.25,
     double scale = 1.65,
     double softness = 1.0,
   }) async {
-    // No texture needed
     if (type == TextureType.none) {
       return null;
     }
 
-    final cacheKey = _getCacheKey(baseColor, type);
+    final cacheKey = _getCacheKey(
+      baseColor,
+      type,
+      intensity: intensity,
+      scale: scale,
+    );
 
-    // Return cached image if available
     if (_cache.containsKey(cacheKey)) {
       return _cache[cacheKey];
     }
 
-    // If already generating this color/type, wait for it
     if (_pendingRequests.containsKey(cacheKey)) {
       return _pendingRequests[cacheKey]!.future;
     }
 
-    // Start generating
     final completer = Completer<ui.Image?>();
     _pendingRequests[cacheKey] = completer;
 
@@ -67,18 +78,16 @@ class TextureGenerator {
 
       switch (type) {
         case TextureType.smoothNoise:
-          image = await _generateSmoothNoiseTexture(
+          image = await _generateSeamlessSmoothNoiseTexture(
             baseColor,
-            size,
             intensity: intensity,
             scale: scale,
-            softness: softness,
           );
           break;
         case TextureType.paperFiber:
-          image = await _generatePaperFiberTexture(
+          image = await _generateSeamlessPaperTexture(
             baseColor,
-            size,
+            grainIntensity: intensity,
           );
           break;
         case TextureType.none:
@@ -89,6 +98,7 @@ class TextureGenerator {
       _cache[cacheKey] = image;
       completer.complete(image);
     } catch (e) {
+      debugPrint('Error generating texture: $e');
       completer.complete(null);
     } finally {
       _pendingRequests.remove(cacheKey);
@@ -97,44 +107,42 @@ class TextureGenerator {
     return completer.future;
   }
 
-  /// Clear cached textures (call when theme changes)
   static void clearCache() {
     final imagesToDispose = _cache.values.whereType<ui.Image>().toList();
     _cache.clear();
     _pendingRequests.clear();
 
-    // Dispose after clearing references
     for (final image in imagesToDispose) {
       image.dispose();
     }
   }
 
   // ============================================
-  // SMOOTH NOISE TEXTURE (Original)
+  // SEAMLESS SMOOTH NOISE (Toroidal Sampling)
   // ============================================
 
-  static Future<ui.Image?> _generateSmoothNoiseTexture(
-    Color baseColor,
-    Size size, {
+  static Future<ui.Image?> _generateSeamlessSmoothNoiseTexture(
+    Color baseColor, {
     required double intensity,
     required double scale,
-    required double softness,
   }) async {
-    final genScale = 0.3 + (softness * 0.2);
-    final width = (size.width * genScale).toInt().clamp(50, 600);
-    final height = (size.height * genScale).toInt().clamp(50, 600);
+    const width = textureWidth;
+    const height = textureHeight;
 
-    final pixels = _generateSmoothNoisePixels(
-      baseColor,
-      width,
-      height,
-      intensity: intensity,
-      scale: scale,
-    );
+    final pixels = await Future.microtask(() {
+      return _generateSeamlessNoisePixels(
+        baseColor,
+        width,
+        height,
+        intensity: intensity,
+        scale: scale,
+      );
+    });
+
     return _createImageFromPixels(pixels, width, height);
   }
 
-  static Uint8List _generateSmoothNoisePixels(
+  static Uint8List _generateSeamlessNoisePixels(
     Color baseColor,
     int width,
     int height, {
@@ -144,63 +152,100 @@ class TextureGenerator {
     final pixels = Uint8List(width * height * 4);
     final random = math.Random(42);
 
-    const gridSize = 32;
-    final grid = List.generate(gridSize * gridSize, (_) => random.nextDouble());
+    // Permutation table for noise (must be at least 512 for proper wrapping)
+    final perm = List<int>.generate(256, (i) => i)..shuffle(random);
+    final p = [...perm, ...perm]; // Double for overflow handling
 
-    double getValue(int gx, int gy) {
-      return grid[(gy % gridSize) * gridSize + (gx % gridSize)];
+    // Gradient vectors
+    final gradients = [
+      [1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0],
+      [1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0],
+    ];
+
+    double fade(double t) => t * t * t * (t * (t * 6 - 15) + 10);
+
+    double lerp(double a, double b, double t) => a + t * (b - a);
+
+    double grad(int hash, double x, double y) {
+      final g = gradients[hash & 7];
+      return g[0] * x + g[1] * y;
     }
 
-    double smoothNoise(double x, double y) {
-      final scaleX = x * scale * 0.02;
-      final scaleY = y * scale * 0.02;
+    // Perlin noise that tiles at period boundaries
+    double tiledPerlin(double x, double y, int periodX, int periodY) {
+      // Integer coordinates (wrapped)
+      final xi = x.floor() % periodX;
+      final yi = y.floor() % periodY;
+      final xi1 = (xi + 1) % periodX;
+      final yi1 = (yi + 1) % periodY;
 
-      final x0 = scaleX.floor();
-      final y0 = scaleY.floor();
-      final x1 = x0 + 1;
-      final y1 = y0 + 1;
+      // Fractional coordinates
+      final xf = x - x.floor();
+      final yf = y - y.floor();
 
-      final sx = scaleX - x0;
-      final sy = scaleY - y0;
+      // Fade curves
+      final u = fade(xf);
+      final v = fade(yf);
 
-      final tx = sx * sx * (3 - 2 * sx);
-      final ty = sy * sy * (3 - 2 * sy);
+      // Hash coordinates (using permutation table)
+      final aa = p[p[xi] + yi];
+      final ab = p[p[xi] + yi1];
+      final ba = p[p[xi1] + yi];
+      final bb = p[p[xi1] + yi1];
 
-      final n00 = getValue(x0, y0);
-      final n10 = getValue(x1, y0);
-      final n01 = getValue(x0, y1);
-      final n11 = getValue(x1, y1);
+      // Gradient dot products
+      final g00 = grad(aa, xf, yf);
+      final g10 = grad(ba, xf - 1, yf);
+      final g01 = grad(ab, xf, yf - 1);
+      final g11 = grad(bb, xf - 1, yf - 1);
 
-      final nx0 = n00 + tx * (n10 - n00);
-      final nx1 = n01 + tx * (n11 - n01);
+      // Bilinear interpolation
+      final x1 = lerp(g00, g10, u);
+      final x2 = lerp(g01, g11, u);
 
-      return nx0 + ty * (nx1 - nx0);
+      return lerp(x1, x2, v);
     }
 
-    double layeredNoise(double x, double y) {
+    // Layered noise with seamless tiling
+    double seamlessLayeredNoise(double normX, double normY, double baseScale) {
       double value = 0;
-      double amp = 1;
-      double freq = 1;
-      double maxAmp = 0;
+      double amplitude = 1;
+      double maxAmplitude = 0;
 
-      for (int i = 0; i < 5; i++) {
-        value += smoothNoise(x * freq, y * freq) * amp;
-        maxAmp += amp;
-        amp *= 0.5;
-        freq *= 2;
+      // Each octave must tile at texture boundaries
+      // Period doubles each octave to maintain seamless tiling
+      int period = (4 * baseScale).round().clamp(2, 64);
+
+      for (int octave = 0; octave < 4; octave++) {
+        final freq = period.toDouble();
+        final x = normX * freq;
+        final y = normY * freq;
+
+        value += tiledPerlin(x, y, period, period) * amplitude;
+        maxAmplitude += amplitude;
+
+        amplitude *= 0.5;
+        period *= 2; // Double period for next octave
       }
 
-      return value / maxAmp;
+      return (value / maxAmplitude + 1) * 0.5; // Normalize to 0-1
     }
+
+    final baseR = baseColor.red;
+    final baseG = baseColor.green;
+    final baseB = baseColor.blue;
 
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
-        final noise = layeredNoise(x.toDouble(), y.toDouble());
+        final normX = x / width;
+        final normY = y / height;
+
+        final noise = seamlessLayeredNoise(normX, normY, scale);
         final variation = (noise - 0.5) * 2 * intensity;
 
-        final r = ((baseColor.r * 255 * (1 + variation))).round().clamp(0, 255);
-        final g = ((baseColor.g * 255 * (1 + variation))).round().clamp(0, 255);
-        final b = ((baseColor.b * 255 * (1 + variation))).round().clamp(0, 255);
+        final r = ((baseR * (1 + variation))).round().clamp(0, 255);
+        final g = ((baseG * (1 + variation))).round().clamp(0, 255);
+        final b = ((baseB * (1 + variation))).round().clamp(0, 255);
 
         final idx = (y * width + x) * 4;
         pixels[idx] = r;
@@ -214,90 +259,82 @@ class TextureGenerator {
   }
 
   // ============================================
-  // PAPER FIBER TEXTURE (Using Canvas)
+  // SEAMLESS PAPER GRAIN TEXTURE
   // ============================================
 
-  static Future<ui.Image?> _generatePaperFiberTexture(
-    Color baseColor,
-    Size size,
-  ) async {
-    // Use a reasonable size for the texture
-    final width = size.width.clamp(100, 600).toDouble();
-    final height = size.height.clamp(100, 600).toDouble();
-    final textureSize = Size(width, height);
+  static Future<ui.Image?> _generateSeamlessPaperTexture(
+    Color baseColor, {
+    required double grainIntensity,
+  }) async {
+    const width = textureWidth;
+    const height = textureHeight;
 
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
+    final pixels = await Future.microtask(() {
+      return _generateSeamlessPaperPixels(
+        baseColor,
+        width,
+        height,
+        grainIntensity: grainIntensity,
+      );
+    });
 
-    _paintPaperTexture(
-      canvas,
-      textureSize,
-      baseColor: baseColor,
-    );
-
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(width.toInt(), height.toInt());
-    picture.dispose();
-
-    return image;
+    return _createImageFromPixels(pixels, width, height);
   }
 
-  /// Paint paper texture to canvas
-  static void _paintPaperTexture(
-    Canvas canvas,
-    Size size, {
-    required Color baseColor,
+  static Uint8List _generateSeamlessPaperPixels(
+    Color baseColor,
+    int width,
+    int height, {
+    required double grainIntensity,
   }) {
-    final paint = Paint()..color = baseColor;
+    final pixels = Uint8List(width * height * 4);
     final random = math.Random(42);
 
-    // 1. Draw Background Base
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+    final baseR = baseColor.red;
+    final baseG = baseColor.green;
+    final baseB = baseColor.blue;
 
-    // 2. Draw Grain (Micro-noise)
-    // High density of tiny dots to simulate paper pulp
-    final grainCount = (size.width * size.height * 0.5).toInt();
+    // Fill with base color
+    for (int i = 0; i < width * height; i++) {
+      final idx = i * 4;
+      pixels[idx] = baseR;
+      pixels[idx + 1] = baseG;
+      pixels[idx + 2] = baseB;
+      pixels[idx + 3] = 255;
+    }
+
+    // Add grain
+    final grainCount = (width * height * 0.5).toInt();
+
     for (int i = 0; i < grainCount; i++) {
-      final x = random.nextDouble() * size.width;
-      final y = random.nextDouble() * size.height;
+      final x = random.nextInt(width);
+      final y = random.nextInt(height);
 
-      // Randomly choose between a white speck or a dark speck
       final isLight = random.nextBool();
-      paint.color = (isLight ? Colors.white : Colors.black)
-          .withOpacity(random.nextDouble() * _defaultGrainIntensity);
-      paint.style = PaintingStyle.fill;
+      final grainOpacity = random.nextDouble() * grainIntensity;
 
-      canvas.drawRect(Rect.fromLTWH(x, y, 1, 1), paint);
+      final idx = (y * width + x) * 4;
+
+      final currentR = pixels[idx];
+      final currentG = pixels[idx + 1];
+      final currentB = pixels[idx + 2];
+
+      final grainColor = isLight ? 255 : 0;
+
+      pixels[idx] = _blend(currentR, grainColor, grainOpacity);
+      pixels[idx + 1] = _blend(currentG, grainColor, grainOpacity);
+      pixels[idx + 2] = _blend(currentB, grainColor, grainOpacity);
     }
 
-    // 3. Draw Fibers (only if fiber density > 0)
-    if (_defaultFiberDensity > 0) {
-      final int fiberCount =
-          (size.width * size.height * _defaultFiberDensity * 5.0).toInt();
+    return pixels;
+  }
 
-      for (int i = 0; i < fiberCount; i++) {
-        final x = random.nextDouble() * size.width;
-        final y = random.nextDouble() * size.height;
-
-        paint.color = Colors.black.withOpacity(0.15);
-        paint.strokeWidth = 0.6;
-        paint.style = PaintingStyle.stroke;
-
-        final path = Path();
-        path.moveTo(x, y);
-        path.quadraticBezierTo(
-          x + random.nextDouble() * 4,
-          y + random.nextDouble() * 4,
-          x + random.nextDouble() * 8 - 4,
-          y + random.nextDouble() * 8 - 4,
-        );
-        canvas.drawPath(path, paint);
-      }
-    }
+  static int _blend(int base, int overlay, double opacity) {
+    return (base + (overlay - base) * opacity).round().clamp(0, 255);
   }
 
   // ============================================
-  // SHARED UTILITIES
+  // UTILITIES
   // ============================================
 
   static Future<ui.Image> _createImageFromPixels(
