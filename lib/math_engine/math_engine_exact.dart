@@ -4121,6 +4121,9 @@ class VarExpr extends Expr {
 
 /// Converts a MathNode tree to an Expr tree for symbolic computation
 class MathNodeToExpr {
+  /// Maximum iterations for summation/product to prevent freezing
+  static final BigInt _maxSumProdIterations = BigInt.from(10000);
+
   /// Reserved function names that should not be treated as variables
   static const Set<String> _reservedNames = {
     'sin',
@@ -4446,11 +4449,17 @@ class MathNodeToExpr {
       BigInt? lowerInt = _tryGetIntValue(lowerExpr);
       BigInt? upperInt = _tryGetIntValue(upperExpr);
       if (lowerInt == null || upperInt == null) {
-        return [_Token.fromExpr(IntExpr.zero)];
+        // Non-integer bounds — cannot iterate; return empty (no result shown)
+        return [];
       }
 
       if (lowerInt > upperInt) {
         return [_Token.fromExpr(isSum ? IntExpr.zero : IntExpr.one)];
+      }
+
+      // Cap iteration count to prevent freezing on large ranges
+      if (upperInt - lowerInt + BigInt.one > _maxSumProdIterations) {
+        return [];
       }
 
       Expr acc = isSum ? IntExpr.zero : IntExpr.one;
@@ -4552,6 +4561,10 @@ class MathNodeToExpr {
       }
 
       double result = (fPlus - fMinus) / (2 * h);
+      if (result.isNaN || result.isInfinite) {
+        // Non-differentiable or singular at this point — fall back to symbolic
+        return [_Token.fromExpr(DerivativeExpr(body, varName))];
+      }
       return [_Token.fromExpr(_doubleToExpr(result).simplify())];
     }
 
@@ -4632,6 +4645,20 @@ class MathNodeToExpr {
           return [_Token.fromExpr(IntExpr.zero)];
         }
 
+        if (fx.isNaN || fx.isInfinite) {
+          // Singularity or undefined value in integrand — return symbolic
+          Expr body = convert(
+            node.body,
+            ansExpressions: ansExpressions,
+            varBindings: varBindings,
+          );
+          return [
+            _Token.fromExpr(
+              IntegralExpr(body, varName, lower: lowerExpr, upper: upperExpr),
+            ),
+          ];
+        }
+
         if (i == 0 || i == n) {
           sum += fx;
         } else if (i % 2 == 0) {
@@ -4642,6 +4669,18 @@ class MathNodeToExpr {
       }
 
       double result = sign * (sum * h / 3.0);
+      if (result.isNaN || result.isInfinite) {
+        Expr body = convert(
+          node.body,
+          ansExpressions: ansExpressions,
+          varBindings: varBindings,
+        );
+        return [
+          _Token.fromExpr(
+            IntegralExpr(body, varName, lower: lowerExpr, upper: upperExpr),
+          ),
+        ];
+      }
       return [_Token.fromExpr(_doubleToExpr(result).simplify())];
     }
 

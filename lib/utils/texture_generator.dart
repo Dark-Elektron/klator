@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:typed_data';
@@ -129,9 +130,13 @@ class TextureGenerator {
     const width = textureWidth;
     const height = textureHeight;
 
-    final pixels = await Future.microtask(() {
+    final baseR = baseColor.red;
+    final baseG = baseColor.green;
+    final baseB = baseColor.blue;
+
+    final pixels = await Isolate.run(() {
       return _generateSeamlessNoisePixels(
-        baseColor,
+        Color.fromARGB(255, baseR, baseG, baseB),
         width,
         height,
         intensity: intensity,
@@ -269,9 +274,13 @@ class TextureGenerator {
     const width = textureWidth;
     const height = textureHeight;
 
-    final pixels = await Future.microtask(() {
+    final baseR = baseColor.red;
+    final baseG = baseColor.green;
+    final baseB = baseColor.blue;
+
+    final pixels = await Isolate.run(() {
       return _generateSeamlessPaperPixels(
-        baseColor,
+        Color.fromARGB(255, baseR, baseG, baseB),
         width,
         height,
         grainIntensity: grainIntensity,

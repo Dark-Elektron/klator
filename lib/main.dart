@@ -765,10 +765,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    if (!_listenerAdded) {
-      _settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    final newProvider = Provider.of<SettingsProvider>(context, listen: false);
+    if (_settingsProvider != newProvider) {
+      if (_listenerAdded && _settingsProvider != null) {
+        _settingsProvider!.removeListener(_onSettingsChanged);
+      }
+      _settingsProvider = newProvider;
       _captureSettingsSnapshot(_settingsProvider!);
-      _settingsProvider?.addListener(_onSettingsChanged);
+      _settingsProvider!.addListener(_onSettingsChanged);
       _listenerAdded = true;
     }
   }

@@ -3958,7 +3958,22 @@ class MathEditorController extends ChangeNotifier {
       }
     } else if (prevNode is ConstantNode || prevNode is UnitVectorNode) {
       siblings.removeAt(cursor.index - 1);
-      cursor = cursor.copyWith(index: cursor.index - 1);
+      final newIndex = cursor.index - 1;
+      cursor = cursor.copyWith(index: newIndex);
+
+      // After removing a constant, clean up adjacent empty LiteralNode spacers.
+      // When constants are adjacent (e.g. π e), empty literals sit between them.
+      // Deleting the constant can leave consecutive empty literals — merge them.
+      if (newIndex > 0 &&
+          newIndex < siblings.length &&
+          siblings[newIndex] is LiteralNode &&
+          (siblings[newIndex] as LiteralNode).text.isEmpty &&
+          siblings[newIndex - 1] is LiteralNode &&
+          (siblings[newIndex - 1] as LiteralNode).text.isEmpty) {
+        siblings.removeAt(newIndex - 1);
+        cursor = cursor.copyWith(index: newIndex - 1);
+      }
+
       _notifyStructureChanged();
     } else if (prevNode is NewlineNode) {
       _removeNewline(prevNode);

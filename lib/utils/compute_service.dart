@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:isolate';
+import 'package:flutter/foundation.dart';
 import '../math_engine/math_engine.dart';
 import '../math_engine/math_engine_exact.dart';
 import '../math_engine/math_expression_serializer.dart';
@@ -170,6 +171,8 @@ class ComputeService {
     } catch (e) {
       // Check staleness even on error
       if (_versions[cellIndex] != version) return;
+
+      debugPrint('ComputeService: error in cell $cellIndex: $e');
 
       onResult?.call(
         CellComputeResult(
