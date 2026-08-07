@@ -60,7 +60,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _useScientificNotationButton = false;
   double _borderRadius = 5.0;
   double _buttonSpacing = 1.0;
-  TextureType _textureType = TextureType.smoothNoise;
+  TextureType _textureType = TextureType.none;
   String _fontFamily = FONTFAMILY;
   KeypadColorMode _keypadColorMode = KeypadColorMode.themeBased;
   Handedness _handedness = Handedness.rightHanded;
@@ -170,10 +170,10 @@ class SettingsProvider extends ChangeNotifier {
     );
 
     // Load texture type
-    String textureStr = prefs.getString('textureType') ?? 'smoothNoise';
+    String textureStr = prefs.getString('textureType') ?? 'none';
     _textureType = TextureType.values.firstWhere(
       (e) => e.name == textureStr,
-      orElse: () => TextureType.smoothNoise,
+      orElse: () => TextureType.none,
     );
 
     // Load font family
