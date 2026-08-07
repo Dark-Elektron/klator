@@ -1893,12 +1893,14 @@ class MathRenderer extends StatelessWidget {
               padding: EdgeInsets.only(top: parenTopPadding),
               child: parenWidget,
             ),
-            // Eval bar - starts at top, spans full height
-            SizedBox(width: fontSize * 0.1),
-            Padding(
-              padding: EdgeInsets.only(top: evalBarTopPadding),
-              child: evalBarWidget,
-            ),
+            // Eval bar - only for a definite (evaluated-at-a-point) derivative
+            if (node.isDefinite) ...[
+              SizedBox(width: fontSize * 0.1),
+              Padding(
+                padding: EdgeInsets.only(top: evalBarTopPadding),
+                child: evalBarWidget,
+              ),
+            ],
           ],
         ),
       );
@@ -2082,10 +2084,30 @@ class MathRenderer extends StatelessWidget {
       final upperMetrics = _getListMetrics(upper, boundSize);
       final double upperHeight = math.max(upperMetrics.$1, boundSize * 0.7);
       final double symbolHeight = fontSize * 1.4;
+      // Actual rendered height of the ∫ glyph. The nominal fontSize*1.4 under-
+      // measures the text box, so for an indefinite integral (which shows only
+      // the lone ∫) it must be measured to keep the symbol centered on the body.
+      final TextPainter intSymbolPainter =
+          TextPainter(
+            text: TextSpan(
+              text: '∫',
+              style: MathTextStyle.getStyle(symbolHeight),
+            ),
+            textDirection: TextDirection.ltr,
+            textScaler: textScaler,
+          )..layout();
+      final double intSymbolHeight = intSymbolPainter.height;
       final lowerMetrics = _getListMetrics(lower, boundSize);
       final double lowerHeight = math.max(lowerMetrics.$1, boundSize * 0.7);
+      // Indefinite integrals show only the ∫ symbol (no bounds).
       final double totalSymbolHeight =
-          upperHeight + fontSize * 0.05 + symbolHeight + lowerGap + lowerHeight;
+          node.isDefinite
+              ? upperHeight +
+                  fontSize * 0.05 +
+                  symbolHeight +
+                  lowerGap +
+                  lowerHeight
+              : intSymbolHeight;
 
       // Body section measurements
       final double vPadding = fontSize * 0.1;
@@ -2115,6 +2137,47 @@ class MathRenderer extends StatelessWidget {
         ],
       );
 
+      final Widget integralSymbol = Text(
+        '∫',
+        style: MathTextStyle.getStyle(
+          fontSize * 1.4,
+        ).copyWith(color: Colors.white),
+        textScaler: textScaler,
+      );
+
+      final Widget parenBodyWidget = IntrinsicHeight(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ScalableParenthesis(
+              isOpening: true,
+              fontSize: fontSize,
+              color: Colors.white,
+              textScaler: textScaler,
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: fontSize * 0.15,
+                vertical: vPadding,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [bodyWidget],
+              ),
+            ),
+            ScalableParenthesis(
+              isOpening: false,
+              fontSize: fontSize,
+              color: Colors.white,
+              textScaler: textScaler,
+            ),
+          ],
+        ),
+      );
+
       return _wrapComposite(
         node: node,
         index: index,
@@ -2130,17 +2193,25 @@ class MathRenderer extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  upperWidget,
-                  SizedBox(height: fontSize * 0.05),
-                  Text(
-                    '\u222B',
-                    style: MathTextStyle.getStyle(
-                      fontSize * 1.4,
-                    ).copyWith(color: Colors.white),
-                    textScaler: textScaler,
-                  ),
-                  SizedBox(height: lowerGap),
-                  lowerWidget,
+                  if (node.isDefinite) ...[
+                    upperWidget,
+                    SizedBox(height: fontSize * 0.05),
+                  ],
+                  // A lone indefinite ∫ reads slightly low once box-centered,
+                  // so nudge its paint position up to visually center it on the
+                  // body. Paint-only, so the layout height (and the caret
+                  // alignment) is unaffected.
+                  if (node.isDefinite)
+                    integralSymbol
+                  else
+                    Transform.translate(
+                      offset: Offset(0, -symbolHeight * 0.07),
+                      child: integralSymbol,
+                    ),
+                  if (node.isDefinite) ...[
+                    SizedBox(height: lowerGap),
+                    lowerWidget,
+                  ],
                 ],
               ),
             ),
@@ -2148,38 +2219,7 @@ class MathRenderer extends StatelessWidget {
             // Parentheses with body
             Padding(
               padding: EdgeInsets.only(top: bodyTopPadding),
-              child: IntrinsicHeight(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    ScalableParenthesis(
-                      isOpening: true,
-                      fontSize: fontSize,
-                      color: Colors.white,
-                      textScaler: textScaler,
-                    ),
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: fontSize * 0.15,
-                        vertical: vPadding,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [bodyWidget],
-                      ),
-                    ),
-                    ScalableParenthesis(
-                      isOpening: false,
-                      fontSize: fontSize,
-                      color: Colors.white,
-                      textScaler: textScaler,
-                    ),
-                  ],
-                ),
-              ),
+              child: parenBodyWidget,
             ),
             SizedBox(width: fontSize * 0.1),
             // dx widget — BASELINE ALIGNED with body reference
@@ -2779,9 +2819,28 @@ class MathRenderer extends StatelessWidget {
       final double upperHeight = math.max(upperMetrics.$1, boundSize * 0.7);
       final double lowerHeight = math.max(lowerMetrics.$1, boundSize * 0.7);
 
-      // Symbol column height
+      // Symbol column height. Must mirror the render layout: an indefinite
+      // integral shows only the ∫ glyph (measured), a definite one adds the
+      // upper/lower bounds. If this diverges from the render, adjacent nodes
+      // (and their caret) align to the wrong reference axis.
+      final double intSymbolHeight =
+          (TextPainter(
+                text: TextSpan(
+                  text: '∫',
+                  style: MathTextStyle.getStyle(symbolHeight),
+                ),
+                textDirection: TextDirection.ltr,
+                textScaler: textScaler,
+              )..layout())
+              .height;
       final double symbolColumnHeight =
-          upperHeight + fontSize * 0.05 + symbolHeight + lowerGap + lowerHeight;
+          node.isDefinite
+              ? upperHeight +
+                  fontSize * 0.05 +
+                  symbolHeight +
+                  lowerGap +
+                  lowerHeight
+              : intSymbolHeight;
 
       // Body section measurements
       final double vPadding = fontSize * 0.1;

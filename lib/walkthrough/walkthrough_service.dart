@@ -196,7 +196,14 @@ class WalkthroughService extends ChangeNotifier {
     }
   }
 
-  WalkthroughStep get currentStepData => steps[_currentStep];
+  WalkthroughStep get currentStepData {
+    // `steps` length depends on device mode, which can change (e.g. rotation)
+    // before `_currentStep` is re-clamped. Clamp defensively so switching to a
+    // shorter step list never throws a RangeError.
+    final list = steps;
+    final index = _currentStep.clamp(0, list.length - 1);
+    return list[index];
+  }
 
   void onUserAction(WalkthroughAction action) {
     if (!_isActive) return;

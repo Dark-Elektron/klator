@@ -19,6 +19,15 @@ class SelectionManager {
   String? _selectedCompositeId;
   bool _isBlockMode = false;
 
+  // The context a drag started in, and whether it started as a whole-composite
+  // (block) selection. Used to stop an outward drag from a nested sub-context
+  // (e.g. the argument of log_10(6)) from re-entering a *sibling* sub-context
+  // and collapsing the selection. Drags that start in block mode keep full
+  // re-entry so dragging a handle back into a composite still refines it.
+  String? _originContextParentId;
+  String? _originContextPath;
+  bool _startedInBlockMode = false;
+
   // Bounds cache - separate content bounds from visual bounds
   final Map<String, Rect> _contentBoundsCache = {}; // Just the content
   final Map<String, Rect> _visualBoundsCache = {}; // Including visual elements
@@ -49,6 +58,11 @@ class SelectionManager {
     _selectedCompositeId = _getSingleSelectedCompositeId(selection);
     _isBlockMode = _selectedCompositeId != null;
 
+    // Remember where this drag started so re-entry can be constrained.
+    _originContextParentId = _contextParentId;
+    _originContextPath = _contextPath;
+    _startedInBlockMode = _isBlockMode;
+
     _rebuildBoundsCache();
   }
 
@@ -58,6 +72,9 @@ class SelectionManager {
     _fixedAnchor = null;
     _selectedCompositeId = null;
     _isBlockMode = false;
+    _originContextParentId = null;
+    _originContextPath = null;
+    _startedInBlockMode = false;
   }
 
   /// Adjust position to compensate for handle being below the selection
@@ -175,6 +192,17 @@ class SelectionManager {
     // Get the content bounds of sub-contexts
     final contexts = _getChildContexts(node);
     for (final ctx in contexts) {
+      // If this drag started inside a sub-context (not as a whole-composite
+      // block selection), only allow re-entry back into that same origin
+      // sub-context. Otherwise an outward drag toward a sibling sub-context
+      // (e.g. from the argument toward the base of a log) would re-enter the
+      // sibling and collapse/deselect the selection.
+      if (!_startedInBlockMode &&
+          !(_selectedCompositeId == _originContextParentId &&
+              ctx.path == _originContextPath)) {
+        continue;
+      }
+
       final ctxBounds =
           _contentBoundsCache['$_selectedCompositeId:${ctx.path}'];
       if (ctxBounds == null) continue;
@@ -1070,12 +1098,16 @@ class SelectionManager {
       list.add(_ChildContext(path: 'body', nodes: node.body));
     } else if (node is IntegralNode) {
       list.add(_ChildContext(path: 'var', nodes: node.variable));
-      list.add(_ChildContext(path: 'lower', nodes: node.lower));
-      list.add(_ChildContext(path: 'upper', nodes: node.upper));
+      if (node.isDefinite) {
+        list.add(_ChildContext(path: 'lower', nodes: node.lower));
+        list.add(_ChildContext(path: 'upper', nodes: node.upper));
+      }
       list.add(_ChildContext(path: 'body', nodes: node.body));
     } else if (node is DerivativeNode) {
       list.add(_ChildContext(path: 'var', nodes: node.variable));
-      list.add(_ChildContext(path: 'at', nodes: node.at));
+      if (node.isDefinite) {
+        list.add(_ChildContext(path: 'at', nodes: node.at));
+      }
       list.add(_ChildContext(path: 'body', nodes: node.body));
     }
     return list;
@@ -1090,8 +1122,14 @@ class SelectionManager {
     if (node is CombinationNode) return ['n', 'r'];
     if (node is SummationNode) return ['var', 'lower', 'upper', 'body'];
     if (node is ProductNode) return ['var', 'lower', 'upper', 'body'];
-    if (node is IntegralNode) return ['var', 'lower', 'upper', 'body'];
-    if (node is DerivativeNode) return ['var', 'at', 'body'];
+    if (node is IntegralNode) {
+      return node.isDefinite
+          ? ['var', 'lower', 'upper', 'body']
+          : ['var', 'body'];
+    }
+    if (node is DerivativeNode) {
+      return node.isDefinite ? ['var', 'at', 'body'] : ['var', 'body'];
+    }
     return [];
   }
 

@@ -143,7 +143,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   String _globalClearId = DateTime.now().toIso8601String();
   bool _isLoading = true;
   List<String> answers = [];
-  final bool _isKeypadVisible = true;
   final Map<int, bool> _plotExpanded = {};
   final Map<int, bool> _cellVisibilityByToken = {};
   final Set<int> _cellsPendingEntry = <int>{};
@@ -151,12 +150,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   SettingsProvider? _settingsProvider;
   bool _listenerAdded = false;
-  Timer? _deleteTimer;
+  Timer? _saveDebounce;
+  static const Duration _saveDebounceDuration = Duration(milliseconds: 500);
   ThemeType? _lastThemeType;
   double? _lastPrecision;
   NumberFormat? _lastNumberFormat;
   String? _lastMultiplicationSign;
   String? _lastFontFamily;
+  KeypadColorMode? _lastKeypadColorMode;
+  Handedness? _lastHandedness;
 
   // Compute service for background isolate computation
   late ComputeService _computeService;
@@ -395,14 +397,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         exactResultExprs[index] = null;
       }
 
-      // Notify that exact result changed (triggers animation)
-      final notifier = exactResultVersionNotifiers[index];
-      if (notifier != null) {
-        notifier.value = notifier.value + 1;
-      }
-
-      // Only cascade if the result actually changed
+      // Bump the version (which drives the result fade/scale animation) only
+      // when the result content actually changed. Bumping it on every keystroke
+      // of the active cell replayed a 500ms animation on each keystroke.
       if (hasChanged) {
+        final notifier = exactResultVersionNotifiers[index];
+        if (notifier != null) {
+          notifier.value = notifier.value + 1;
+        }
+
+        // Only cascade if the result actually changed
         _cascadeToDependents(index);
       }
 
@@ -410,12 +414,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  Widget _buildExpressionDisplay(
-    int index,
-    AppColors colors, {
-    double? maxPlotHeight,
-    bool forcePlotExpanded = false,
-  }) {
+  Widget _buildExpressionDisplay(int index, AppColors colors) {
     final mathEditorController = mathEditorControllers[index];
     final mathEditorKey = mathEditorKeys[index];
     final scrollController = scrollControllers[index];
@@ -652,42 +651,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return totalHeight.clamp(65.0, 500.0);
   }
 
-  int _estimateNodesHeight(List<MathNode> nodes) {
-    int maxDepth = 0;
-    for (var node in nodes) {
-      int depth = _estimateNodeDepth(node);
-      if (depth > maxDepth) maxDepth = depth;
-    }
-    return maxDepth;
-  }
-
-  int _estimateNodeDepth(MathNode node) {
-    if (node is FractionNode) {
-      int numDepth = _estimateNodesHeight(node.numerator);
-      int denDepth = _estimateNodesHeight(node.denominator);
-      return 1 + (numDepth > denDepth ? numDepth : denDepth);
-    } else if (node is RootNode) {
-      return 1 + _estimateNodesHeight(node.radicand);
-    } else if (node is TrigNode) {
-      return _estimateNodesHeight(
-        node.argument,
-      ); // Sin(x) doesn't add much height unless arg is complex
-    } else if (node is ParenthesisNode) {
-      return _estimateNodesHeight(node.content);
-    } else if (node is ExponentNode) {
-      // Exponents add a bit of height but less than a full fraction level
-      return 1 + _estimateNodesHeight(node.power);
-    } else if (node is LogNode) {
-      int argDepth = _estimateNodesHeight(node.argument);
-      int baseDepth = _estimateNodesHeight(node.base);
-      return 1 + (argDepth > baseDepth ? argDepth : baseDepth);
-    }
-    return 0;
-  }
-
   @override
   void dispose() {
-    _deleteTimer?.cancel();
+    _saveDebounce?.cancel();
     _cancelCellAnimationState();
     _computeService.dispose();
     WidgetsBinding.instance.removeObserver(this);
@@ -833,8 +799,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
     }
 
-    await CellPersistence.saveCells(expressions, answers);
-    await CellPersistence.saveActiveIndex(activeIndex);
+    // Single atomic write so cells and active index can't be persisted
+    // out of sync if the process is killed mid-save.
+    await CellPersistence.saveAll(expressions, answers, activeIndex);
   }
 
   void _captureSettingsSnapshot(SettingsProvider settings) {
@@ -843,6 +810,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _lastNumberFormat = settings.numberFormat;
     _lastMultiplicationSign = settings.multiplicationSign;
     _lastFontFamily = settings.fontFamily;
+    _lastKeypadColorMode = settings.keypadColorMode;
+    _lastHandedness = settings.handedness;
   }
 
   void _onSettingsChanged() {
@@ -855,6 +824,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _lastNumberFormat != settings.numberFormat ||
         _lastMultiplicationSign != settings.multiplicationSign ||
         _lastFontFamily != settings.fontFamily;
+    final bool keypadColorChanged =
+        _lastKeypadColorMode != settings.keypadColorMode;
+    final bool handednessChanged = _lastHandedness != settings.handedness;
 
     _captureSettingsSnapshot(settings);
 
@@ -871,7 +843,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
     }
 
-    if (themeChanged || mathRenderChanged) {
+    if (themeChanged ||
+        mathRenderChanged ||
+        keypadColorChanged ||
+        handednessChanged) {
       setState(() {});
     }
   }
@@ -904,7 +879,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (key > changedIndex) {
         String expr = mathEditorControllers[key]?.expr ?? '';
 
-        if (expr.contains('ans$changedIndex') || expr.contains('ans')) {
+        // Any cell that references an answer may depend on the changed cell.
+        if (expr.contains('ans')) {
           final controller = mathEditorControllers[key];
           if (controller == null) continue;
 
@@ -1419,18 +1395,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             SafeArea(
               child: Column(
                 children: <Widget>[
-                  Expanded(
-                    child:
-                        _isKeypadVisible
-                            ? _buildAnimatedCellList(colors)
-                            : _buildActiveCellFullscreen(colors),
-                  ),
+                  Expanded(child: _buildAnimatedCellList(colors)),
                   AnimatedSize(
                     duration: const Duration(milliseconds: 250),
                     curve: Curves.easeInOut,
-                    child:
-                        _isKeypadVisible
-                            ? Builder(
+                    child: Builder(
                               builder: (context) {
                                 final mediaQuery = MediaQuery.of(context);
                                 double screenWidth = mediaQuery.size.width;
@@ -1472,8 +1441,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                   settingsButtonKey: _settingsButtonKey,
                                 );
                               },
-                            )
-                            : const SizedBox.shrink(),
+                            ),
                   ),
                 ],
               ),
@@ -1527,40 +1495,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _isUpdating = false;
     }
 
-    _saveCells();
+    // Persistence is debounced: typing only triggers a disk write after a
+    // short pause, instead of serializing every cell to JSON on the UI thread
+    // on each keystroke. Reliable saves still happen synchronously on app
+    // pause/detach and in dispose.
+    _scheduleSave();
   }
 
-  int _getFullscreenIndex() {
-    if (_plotExpanded[activeIndex] ?? false) return activeIndex;
-    for (final entry in _plotExpanded.entries) {
-      if (entry.value) return entry.key;
-    }
-    return activeIndex;
-  }
-
-  Widget _buildActiveCellFullscreen(AppColors colors) {
-    final index = _getFullscreenIndex();
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final page = currentResultPage[index] ?? 0;
-        final resultHeight =
-            page == 0
-                ? _calculateDecimalResultHeight(index)
-                : _calculateExactResultHeight(index);
-        final expressionHeight = (FONTSIZE * 1.5) + 20;
-        final available = (constraints.maxHeight -
-                expressionHeight -
-                resultHeight)
-            .clamp(120.0, constraints.maxHeight);
-
-        return _buildExpressionDisplay(
-          index,
-          colors,
-          maxPlotHeight: available,
-          forcePlotExpanded: true,
-        );
-      },
-    );
+  void _scheduleSave() {
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(_saveDebounceDuration, () {
+      if (mounted) _saveCells();
+    });
   }
 
   bool isOperator(String x) {

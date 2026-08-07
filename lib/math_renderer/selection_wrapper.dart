@@ -86,12 +86,14 @@ class SelectionWrapper {
         lower: _deepCopyNodes(node.lower),
         upper: _deepCopyNodes(node.upper),
         body: _deepCopyNodes(node.body),
+        isDefinite: node.isDefinite,
       );
     } else if (node is DerivativeNode) {
       return DerivativeNode(
         variable: _deepCopyNodes(node.variable),
         at: _deepCopyNodes(node.at),
         body: _deepCopyNodes(node.body),
+        isDefinite: node.isDefinite,
       );
     }
     return LiteralNode(text: '');
@@ -899,7 +901,7 @@ class SelectionWrapper {
   }
 
   /// Wrap selection in derivative (selection becomes body)
-  bool wrapInDerivative() {
+  bool wrapInDerivative({bool definite = false}) {
     if (!hasValidSelection) return false;
 
     final content = _getSelectionContent();
@@ -915,6 +917,7 @@ class SelectionWrapper {
       variable: [LiteralNode(text: 'x')],
       at: [LiteralNode(text: '')],
       body: nodesToWrap,
+      isDefinite: definite,
     );
 
     _insertNodeAtPoint(insertionPoint, diffNode);
@@ -933,7 +936,7 @@ class SelectionWrapper {
   }
 
   /// Wrap selection in integral (selection becomes body)
-  bool wrapInIntegral() {
+  bool wrapInIntegral({bool definite = false}) {
     if (!hasValidSelection) return false;
 
     final content = _getSelectionContent();
@@ -950,6 +953,7 @@ class SelectionWrapper {
       lower: [LiteralNode(text: '')],
       upper: [LiteralNode(text: '')],
       body: nodesToWrap,
+      isDefinite: definite,
     );
 
     _insertNodeAtPoint(insertionPoint, intNode);

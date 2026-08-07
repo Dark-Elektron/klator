@@ -24,11 +24,33 @@ enum ThemeType {
   forestMoss,
 }
 
+/// How the keypad buttons are coloured.
+enum KeypadColorMode {
+  /// Always light: white buttons with dark text.
+  light,
+
+  /// Always dark: dark buttons with light text.
+  dark,
+
+  /// Follow the selected theme's keypad colours.
+  themeBased,
+}
+
+/// Which hand the keypad layout favours. Left-handed mirrors the keypads so the
+/// keys fall under the dominant thumb.
+enum Handedness {
+  /// Numbers on the right (default).
+  rightHanded,
+
+  /// Numbers on the left.
+  leftHanded,
+}
+
 class SettingsProvider extends ChangeNotifier {
   static const double maxButtonRadius = 36.0;
   static const double maxButtonSpacing = 12.0;
 
-  double _precision = 8;
+  double _precision = PRECISION.toDouble();
   ThemeType _themeType = ThemeType.classic;
   bool _isRadians = false;
   bool _hapticFeedback = true;
@@ -40,6 +62,8 @@ class SettingsProvider extends ChangeNotifier {
   double _buttonSpacing = 1.0;
   TextureType _textureType = TextureType.smoothNoise;
   String _fontFamily = FONTFAMILY;
+  KeypadColorMode _keypadColorMode = KeypadColorMode.themeBased;
+  Handedness _handedness = Handedness.rightHanded;
 
   // Getters
   double get precision => _precision;
@@ -59,6 +83,8 @@ class SettingsProvider extends ChangeNotifier {
   double get buttonSpacing => _buttonSpacing;
   TextureType get textureType => _textureType;
   String get fontFamily => _fontFamily;
+  KeypadColorMode get keypadColorMode => _keypadColorMode;
+  Handedness get handedness => _handedness;
 
   // Static method to create provider with preloaded settings
   static Future<SettingsProvider> create() async {
@@ -106,7 +132,7 @@ class SettingsProvider extends ChangeNotifier {
   // Load all settings from SharedPreferences
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _precision = prefs.getDouble('precision') ?? 6;
+    _precision = prefs.getDouble('precision') ?? PRECISION.toDouble();
 
     // Load theme
     String? themeStr = prefs.getString('themeType');
@@ -152,6 +178,22 @@ class SettingsProvider extends ChangeNotifier {
 
     // Load font family
     _fontFamily = prefs.getString('fontFamily') ?? FONTFAMILY;
+
+    // Load keypad color mode
+    String keypadColorStr =
+        prefs.getString('keypadColorMode') ?? 'themeBased';
+    _keypadColorMode = KeypadColorMode.values.firstWhere(
+      (e) => e.name == keypadColorStr,
+      orElse: () => KeypadColorMode.themeBased,
+    );
+
+    // Load handedness
+    String handednessStr =
+        prefs.getString('handedness') ?? 'rightHanded';
+    _handedness = Handedness.values.firstWhere(
+      (e) => e.name == handednessStr,
+      orElse: () => Handedness.rightHanded,
+    );
 
     // Set global precision on load
     MathSolverNew.setPrecision(_precision.toInt());
@@ -267,6 +309,20 @@ class SettingsProvider extends ChangeNotifier {
 
     // Update MathTextStyle
     MathTextStyle.setFontFamily(value);
+    notifyListeners();
+  }
+
+  Future<void> setKeypadColorMode(KeypadColorMode value) async {
+    _keypadColorMode = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('keypadColorMode', value.name);
+    notifyListeners();
+  }
+
+  Future<void> setHandedness(Handedness value) async {
+    _handedness = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('handedness', value.name);
     notifyListeners();
   }
 }

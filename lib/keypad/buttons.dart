@@ -28,11 +28,16 @@ class MyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = Provider.of<SettingsProvider>(context);
-    final bool hapticEnabled = settings.hapticFeedback;
+    // Only depend on the three settings this button actually uses, so
+    // unrelated settings changes (precision, theme, font, ...) don't rebuild
+    // every keypad button.
+    final (bool hapticEnabled, double settingsBorderRadius, double buttonSpacing) =
+        context.select<SettingsProvider, (bool, double, double)>(
+      (s) => (s.hapticFeedback, s.borderRadius, s.buttonSpacing),
+    );
     final double effectiveBorderRadius =
-        borderRadius == 0 ? settings.borderRadius : borderRadius;
-    final double outerPadding = settings.buttonSpacing / 2;
+        borderRadius == 0 ? settingsBorderRadius : borderRadius;
+    final double outerPadding = buttonSpacing / 2;
 
     // 2. Create the text widget separately for clarity
     Widget textWidget = Text(

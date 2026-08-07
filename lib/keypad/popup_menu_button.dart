@@ -239,17 +239,23 @@ class _PopupMenuCalcButtonState extends State<PopupMenuCalcButton> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = Provider.of<SettingsProvider>(context);
-    final effectiveBorderRadius = _effectiveBorderRadius(settings);
+    // Only depend on the settings this button actually uses so unrelated
+    // settings changes don't rebuild every popup button.
+    final (bool haptic, double sBorderRadius, double buttonSpacing) =
+        context.select<SettingsProvider, (bool, double, double)>(
+      (s) => (s.hapticFeedback, s.borderRadius, s.buttonSpacing),
+    );
+    final effectiveBorderRadius =
+        widget.borderRadius == 0 ? sBorderRadius : widget.borderRadius;
 
     return Padding(
-      padding: EdgeInsets.all(settings.buttonSpacing / 2),
+      padding: EdgeInsets.all(buttonSpacing / 2),
       child: GestureDetector(
         onTapDown: (_) => setState(() => _isPressed = true),
         onTapUp: (_) {
           setState(() => _isPressed = false);
           widget.onTap?.call();
-          if (settings.hapticFeedback) {
+          if (haptic) {
             HapticFeedback.lightImpact();
           }
         },
@@ -269,7 +275,7 @@ class _PopupMenuCalcButtonState extends State<PopupMenuCalcButton> {
           _removeOverlay();
           if (index != null) {
             widget.menuItems[index].onTap();
-            if (settings.hapticFeedback) {
+            if (haptic) {
               HapticFeedback.heavyImpact();
             }
           }

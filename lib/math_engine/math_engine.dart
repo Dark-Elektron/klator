@@ -149,7 +149,16 @@ class MathSolverNew {
     });
 
     // Replace standalone e (Euler's number), but not e⁻ (elementary charge)
-    // Also don't replace if it's part of 'exp' or already replaced
+    // Also don't replace if it's part of 'exp' or already replaced.
+    // First, protect lowercase-'e' scientific notation (e.g. 2e3, 1.5e-10) so
+    // the Euler replacement does not corrupt it: a scientific 'e' is preceded
+    // by a digit/decimal point and followed by an optional sign and a digit —
+    // the same shape the number parser recognises. It is restored just after.
+    final sciSentinel = String.fromCharCode(1);
+    expr = expr.replaceAllMapped(
+      RegExp(r'(?<=[\d.])e(?=[+\-]?\d)'),
+      (_) => sciSentinel,
+    );
     expr = expr.replaceAllMapped(
       RegExp(r'([\d\)\u2080])?(?<![a-zA-Z\$])e(?![a-zA-Z\u207b])'),
       (match) {
@@ -160,6 +169,9 @@ class MathSolverNew {
         return '($e)';
       },
     );
+
+    // Restore protected scientific-notation exponents.
+    expr = expr.replaceAll(sciSentinel, 'e');
 
     // Default mode is radians; explicit "rad" unit suffix is a no-op.
     expr = expr.replaceAll(
@@ -1210,11 +1222,13 @@ class MathSolverNew {
     });
   }
 
-  static int _factorial(int n) {
-    if (n <= 1) return 1;
-    int result = 1;
+  /// Exact factorial. Uses [BigInt] so values `n >= 21` (which overflow a
+  /// 64-bit `int`, e.g. `21! == 51090942171709440000`) are computed correctly.
+  static BigInt _factorial(int n) {
+    if (n <= 1) return BigInt.one;
+    BigInt result = BigInt.one;
     for (int i = 2; i <= n; i++) {
-      result *= i;
+      result *= BigInt.from(i);
     }
     return result;
   }
@@ -1396,13 +1410,13 @@ class _ExpressionParser {
   }
 
   dynamic _parseMultiplyDivide() {
-    dynamic left = _parsePower();
+    dynamic left = _parseUnary();
 
     while (_pos < expression.length) {
       String op = _currentChar();
       if (op != '*' && op != '/') break;
       _pos++;
-      dynamic right = _parsePower();
+      dynamic right = _parseUnary();
 
       left = _unwrapPercent(left);
       right = _unwrapPercent(right);
@@ -1434,10 +1448,39 @@ class _ExpressionParser {
     return _simplifyResult(left);
   }
 
-  dynamic _parsePower() {
-    dynamic base = _parseUnary();
+  /// Factorial of a value reached by the parser (e.g. `(19+2)!`). Defined for
+  /// non-negative integers only; anything else yields NaN. Uses BigInt for
+  /// precision, then converts to double for the numeric pipeline.
+  dynamic _applyFactorial(dynamic value) {
+    if (value is Complex && value.imag.abs() > 1e-12) return double.nan;
+    final double d = _toDouble(value);
+    if (d.isNaN || d.isInfinite || d < 0) return double.nan;
+    if ((d - d.roundToDouble()).abs() > 1e-9) return double.nan;
+    final int n = d.round();
+    BigInt result = BigInt.one;
+    for (int i = 2; i <= n; i++) {
+      result *= BigInt.from(i);
+    }
+    return result.toDouble();
+  }
 
-    while (_pos < expression.length && _currentChar() == '^') {
+  dynamic _parsePower() {
+    dynamic base = _parsePrimary();
+
+    // Postfix factorial. Plain `n!` is handled earlier by _processFactorials,
+    // but factorials of parenthesised/other primaries (e.g. `(19+2)!`) reach
+    // the parser and are applied here. Binds tighter than `^`.
+    while (_pos < expression.length && _currentChar() == '!') {
+      _pos++;
+      base = _applyFactorial(_unwrapPercent(base));
+    }
+
+    // Exponentiation is right-associative and binds tighter than unary minus
+    // on the base but looser on the exponent, so `-2^2 == -4` and
+    // `2^3^2 == 2^(3^2) == 512` and `2^-3 == 0.125`. The exponent is parsed
+    // via `_parseUnary` (which recurses back into `_parsePower`), giving both
+    // right-associativity and support for a signed exponent.
+    if (_pos < expression.length && _currentChar() == '^') {
       _pos++;
       dynamic exponent = _parseUnary();
       base = _unwrapPercent(base);
@@ -1468,11 +1511,34 @@ class _ExpressionParser {
         // Real power
         double b = _toDouble(base);
         double exp = _toDouble(exponent);
-        base = pow(b, exp).toDouble();
+        base = _realPow(b, exp);
       }
     }
 
     return _simplifyResult(base);
+  }
+
+  /// Real-valued power that also returns the real root of a negative base
+  /// when the exponent is a rational p/q with an odd denominator (e.g. an
+  /// nth root such as `(-8)^(1/3) == -2`). `dart:math`'s `pow` returns `NaN`
+  /// for a negative base with a fractional exponent, so those cases are
+  /// handled explicitly here. Genuinely complex cases (e.g. `(-1)^(1/2)`)
+  /// still return `NaN` and are handled by the complex path elsewhere.
+  double _realPow(double b, double exp) {
+    if (b >= 0 || exp == exp.roundToDouble()) {
+      return pow(b, exp).toDouble();
+    }
+    // Look for a small odd denominator q such that exp ≈ p/q.
+    for (int q = 3; q <= 99; q += 2) {
+      final double pDouble = exp * q;
+      final double pRounded = pDouble.roundToDouble();
+      if ((pDouble - pRounded).abs() < 1e-9) {
+        final double magnitude = pow(b.abs(), exp).toDouble();
+        // Sign is (-1)^p: negative only when the numerator is odd.
+        return (pRounded.toInt().abs() % 2 == 1) ? -magnitude : magnitude;
+      }
+    }
+    return pow(b, exp).toDouble();
   }
 
   dynamic _parseUnary() {
@@ -1497,7 +1563,7 @@ class _ExpressionParser {
         return val;
       }
     }
-    return _parsePrimary();
+    return _parsePower();
   }
 
   dynamic _parsePrimary() {

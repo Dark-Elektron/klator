@@ -121,6 +121,7 @@ class CalculatorKeypad extends StatefulWidget {
 
 class _CalculatorKeypadState extends State<CalculatorKeypad> {
   int? _lastPagesPerView;
+  bool? _lastLeftHanded;
   bool _isBasicKeypadExpanded = false;
   final double _collapsedHeight = 21.0;
 
@@ -343,7 +344,10 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
   }
 
   void _initializeKeypadController(int pagesPerView) {
-    final initialPage = pagesPerView >= 2 ? 0 : 1;
+    // With reversed pages, a left-hander opens on page 1 in both layouts: the
+    // number pad (phone) or the [number | scientific] pair (tablet).
+    final initialPage =
+        _leftHanded ? 1 : (pagesPerView >= 2 ? 0 : 1);
     _currentKeypadIndex = initialPage;
 
     _keypadController?.dispose();
@@ -355,6 +359,49 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
 
   MathEditorController? get _activeController =>
       widget.mathEditorControllers[widget.activeIndex];
+
+  // Effective keypad button colors, honoring the KeypadColorMode setting
+  // (always light, always dark, or follow the current theme).
+  static const Color _darkKeypadButton = Color(0xFF2C2C2C);
+
+  Color get _kpButton {
+    switch (widget.settingsProvider.keypadColorMode) {
+      case KeypadColorMode.light:
+        return Colors.white;
+      case KeypadColorMode.dark:
+        return _darkKeypadButton;
+      case KeypadColorMode.themeBased:
+        return widget.colors.keypadButton;
+    }
+  }
+
+  Color get _kpButtonText {
+    switch (widget.settingsProvider.keypadColorMode) {
+      case KeypadColorMode.light:
+        return Colors.black;
+      case KeypadColorMode.dark:
+        return Colors.white;
+      case KeypadColorMode.themeBased:
+        return widget.colors.keypadButtonText;
+    }
+  }
+
+  bool get _leftHanded =>
+      widget.settingsProvider.handedness == Handedness.leftHanded;
+
+  /// Maps a grid slot [position] to the button index it should show. For a
+  /// left-hander every row is reflected across the vertical axis, so the keys
+  /// move to the opposite thumb while keeping their relative reach. Partial
+  /// rows (fewer than [columns] items) are mirrored within their own width.
+  int _handedIndex(int position, int columns, int itemCount) {
+    if (!_leftHanded) return position;
+    final int rowStart = (position ~/ columns) * columns;
+    final int rowEnd =
+        (rowStart + columns) < itemCount ? (rowStart + columns) : itemCount;
+    final int rowWidth = rowEnd - rowStart;
+    final int col = position - rowStart;
+    return rowStart + (rowWidth - 1 - col);
+  }
 
   bool isOperator(String text) {
     const operators = [
@@ -500,7 +547,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       });
     }
 
-    if (_lastPagesPerView != pagesPerView) {
+    if (_lastPagesPerView != pagesPerView || _lastLeftHanded != _leftHanded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _initializeKeypadController(pagesPerView);
@@ -513,6 +560,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
       }
 
       _lastPagesPerView = pagesPerView;
+      _lastLeftHanded = _leftHanded;
     }
 
     const double landscapeChildAspectRatio = 1.5;
@@ -607,26 +655,32 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                   ? ListenableBuilder(
                     listenable: widget.walkthroughService,
                     builder: (context, _) {
+                      // Page order runs scientific | number | extras for a
+                      // right-hander. A left-hander gets the mirror image, so
+                      // the order (and the swipe that reveals extras) flips to
+                      // extras | number | scientific.
+                      final List<Widget> pages = <Widget>[
+                        SizedBox.expand(
+                          key: widget.scientificKeypadKey,
+                          child: _buildScientificGrid(widget.isLandscape),
+                        ),
+                        SizedBox.expand(
+                          key: widget.numberKeypadKey,
+                          child: _buildNumberGrid(widget.isLandscape),
+                        ),
+                        SizedBox.expand(
+                          key: widget.extrasKeypadKey,
+                          child: _buildExtrasGrid(widget.isLandscape),
+                        ),
+                      ];
                       return EasySnapPageView(
                         controller: _keypadController!,
                         onPageChanged: _onKeypadPageChanged,
                         padEnds: false,
                         enableTransitions:
                             !isTablet, // Disable transitions on tablet
-                        children: [
-                          SizedBox.expand(
-                            key: widget.scientificKeypadKey,
-                            child: _buildScientificGrid(widget.isLandscape),
-                          ),
-                          SizedBox.expand(
-                            key: widget.numberKeypadKey,
-                            child: _buildNumberGrid(widget.isLandscape),
-                          ),
-                          SizedBox.expand(
-                            key: widget.extrasKeypadKey,
-                            child: _buildExtrasGrid(widget.isLandscape),
-                          ),
-                        ],
+                        children:
+                            _leftHanded ? pages.reversed.toList() : pages,
                       );
                     },
                   )
@@ -650,7 +704,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         crossAxisCount: crossAxisCount,
         childAspectRatio: isLandscape ? 1.5 : 1.0,
       ),
-      itemBuilder: (context, index) {
+      itemBuilder: (context, position) {
+        final int index = _handedIndex(position, crossAxisCount, buttons.length);
         String buttonText = buttons[index];
 
         if (buttonText == '+') {
@@ -660,8 +715,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u002B',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (buttonText == '-') {
           return MyButton(
@@ -670,8 +725,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u2212',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (buttonText == 'x') {
           return MyButton(
@@ -682,8 +737,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u00D7',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (buttonText == '/') {
           return MyButton(
@@ -695,15 +750,15 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: '\u00F7',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (buttonText == '\u2318') {
           return MyButton(
             buttontapped: _handleEnter,
             buttonText: '\u2318',
             color: Colors.blueGrey,
-            textColor: Colors.black,
+            textColor: _kpButtonText,
           );
         } else if (buttonText == '\u232B') {
           return GestureDetector(
@@ -714,7 +769,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               buttontapped: _handleSingleBackspace,
               buttonText: '\u232B',
               color: const Color.fromARGB(255, 226, 104, 104),
-              textColor: Colors.black,
+              textColor: _kpButtonText,
             ),
           );
         } else if (buttonText == 'CE') {
@@ -728,8 +783,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onSetState();
             },
             buttonText: 'CE',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (buttonText == '()') {
           return MyButton(
@@ -742,8 +797,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: '()',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (buttonText == '\u1D07') {
           return MyButton(
@@ -752,8 +807,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u1D07',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else {
           return MyButton(
@@ -762,8 +817,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: buttonText,
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
       },
@@ -779,7 +834,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         childAspectRatio: isLandscape ? 1.5 : 1.0,
       ),
       itemCount: _buttonsSci.length,
-      itemBuilder: (context, index) {
+      itemBuilder: (context, position) {
+        final int index = _handedIndex(position, 5, _buttonsSci.length);
         // x^2 button
         if (index == 1) {
           return MyButton(
@@ -791,8 +847,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: 'x\u00B2',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
         // x^n button
@@ -806,8 +862,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: 'x\u207F',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
         // Square root button
@@ -822,8 +878,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: '\u221A',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
         // Nth root button
@@ -837,14 +893,16 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: '\u207F\u221A',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
         // sin button with popup for sinh
         else if (index == 7) {
           return PopupMenuCalcButton(
             buttonText: _buttonsSci[index],
+            color: _kpButton,
+            textColor: _kpButtonText,
             onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
@@ -868,6 +926,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         else if (index == 8) {
           return PopupMenuCalcButton(
             buttonText: _buttonsSci[index],
+            color: _kpButton,
+            textColor: _kpButtonText,
             onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
@@ -891,6 +951,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         else if (index == 9) {
           return PopupMenuCalcButton(
             buttonText: _buttonsSci[index],
+            color: _kpButton,
+            textColor: _kpButtonText,
             onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
@@ -914,6 +976,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         else if (index == 12) {
           return PopupMenuCalcButton(
             buttonText: _buttonsSci[index],
+            color: _kpButton,
+            textColor: _kpButtonText,
             onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
@@ -938,6 +1002,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         else if (index == 13) {
           return PopupMenuCalcButton(
             buttonText: _buttonsSci[index],
+            color: _kpButton,
+            textColor: _kpButtonText,
             onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
@@ -962,6 +1028,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         else if (index == 14) {
           return PopupMenuCalcButton(
             buttonText: _buttonsSci[index],
+            color: _kpButton,
+            textColor: _kpButtonText,
             onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
@@ -994,8 +1062,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
         // log button
@@ -1009,8 +1077,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
         // logn button
@@ -1024,8 +1092,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: 'log\u1D63',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 0) {
           return MyButton(
@@ -1034,15 +1102,15 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '=',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 6) {
           // π button with popup menu for constants
           return PopupMenuCalcButton(
             buttonText: '\u03C0',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
 
@@ -1086,8 +1154,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           // sin
           return PopupMenuCalcButton(
             buttonText: 'sin',
-            color: widget.colors.keypadButton,
-            textColor: widget.colors.keypadButtonText,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
 
@@ -1110,8 +1178,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           // cos
           return PopupMenuCalcButton(
             buttonText: 'cos',
-            color: widget.colors.keypadButton,
-            textColor: widget.colors.keypadButtonText,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
 
@@ -1134,8 +1202,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           // tan
           return PopupMenuCalcButton(
             buttonText: 'tan',
-            color: widget.colors.keypadButton,
-            textColor: widget.colors.keypadButtonText,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
 
@@ -1161,15 +1229,15 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u00B0',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 12) {
           // asin
           return PopupMenuCalcButton(
             buttonText: 'asin',
-            color: widget.colors.keypadButton,
-            textColor: widget.colors.keypadButtonText,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
 
@@ -1192,8 +1260,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           // acos
           return PopupMenuCalcButton(
             buttonText: 'acos',
-            color: widget.colors.keypadButton,
-            textColor: widget.colors.keypadButtonText,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
 
@@ -1216,8 +1284,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           // atan
           return PopupMenuCalcButton(
             buttonText: 'atan',
-            color: widget.colors.keypadButton,
-            textColor: widget.colors.keypadButtonText,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
 
@@ -1243,8 +1311,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: _buttonsSci[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
       },
@@ -1260,7 +1328,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         crossAxisCount: 5,
         childAspectRatio: isLandscape ? 1.5 : 1.0,
       ),
-      itemBuilder: (context, index) {
+      itemBuilder: (context, position) {
+        final int index = _handedIndex(position, 5, _buttons.length);
         if (index == 3) {
           return MyButton(
             buttontapped: () {
@@ -1273,8 +1342,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: '\u0028\u0029',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 4) {
           return GestureDetector(
@@ -1285,7 +1354,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               buttontapped: _handleSingleBackspace,
               buttonText: '\u232B',
               color: const Color.fromARGB(255, 226, 104, 104),
-              textColor: Colors.black,
+              textColor: _kpButtonText,
             ),
           );
         } else if (index == 8) {
@@ -1295,8 +1364,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u002B',
-            color: const Color.fromARGB(234, 255, 255, 255),
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 9) {
           return MyButton(
@@ -1305,8 +1374,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u2212',
-            color: const Color.fromARGB(234, 255, 255, 255),
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 13) {
           return MyButton(
@@ -1317,8 +1386,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: '\u00D7',
-            color: const Color.fromARGB(234, 255, 255, 255),
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } // Division button (index 14)
         else if (index == 14) {
@@ -1332,8 +1401,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: '\u00F7',
-            color: const Color.fromARGB(234, 255, 255, 255),
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 17) {
           final useScientific =
@@ -1354,8 +1423,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: buttonLabel,
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 18) {
           return MyButton(
@@ -1365,8 +1434,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onSetState();
             },
             buttonText: _buttons[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 19) {
           return Container(
@@ -1375,7 +1444,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               buttontapped: _handleEnter,
               buttonText: '\u2318',
               color: Colors.blueGrey,
-              textColor: Colors.black,
+              textColor: _kpButtonText,
             ),
           );
         } else {
@@ -1385,8 +1454,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: _buttons[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
       },
@@ -1402,7 +1471,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         crossAxisCount: 5,
         childAspectRatio: isLandscape ? 1.5 : 1.0,
       ),
-      itemBuilder: (context, index) {
+      itemBuilder: (context, position) {
+        final int index = _handedIndex(position, 5, _buttonsR.length);
         if (index == 16) {
           return PopupMenuCalcButton(
             buttonText: _buttonsR[index],
@@ -1426,8 +1496,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 },
               ),
             ],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
             indicatorColor: widget.colors.textSecondary,
@@ -1450,8 +1520,11 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               }
             },
             buttonText: _buttonsR[index],
-            color: canUndo ? Colors.white : Colors.grey[300]!,
-            textColor: canUndo ? Colors.black : Colors.grey,
+            color: _kpButton,
+            textColor:
+                canUndo
+                    ? _kpButtonText
+                    : _kpButtonText.withValues(alpha: 0.3),
           );
         }
         if (index == 2) {
@@ -1471,8 +1544,11 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               }
             },
             buttonText: _buttonsR[index],
-            color: canRedo ? Colors.white : Colors.grey[300]!,
-            textColor: canRedo ? Colors.black : Colors.grey,
+            color: _kpButton,
+            textColor:
+                canRedo
+                    ? _kpButtonText
+                    : _kpButtonText.withValues(alpha: 0.3),
             mirror: true,
           );
         }
@@ -1480,8 +1556,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           return MyButton(
             buttontapped: widget.onClearAllDisplays,
             buttonText: _buttonsR[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
         if (index == 1) {
@@ -1491,8 +1567,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: _buttonsR[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
         if (index == 0) {
@@ -1520,8 +1596,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 },
               ),
             ],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
             indicatorColor: widget.colors.textSecondary,
@@ -1552,8 +1628,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 },
               ),
             ],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
             indicatorColor: widget.colors.textSecondary,
@@ -1562,8 +1638,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
         if (index == 7) {
           return PopupMenuCalcButton(
             buttonText: '\u2211',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
             onTap: () {
@@ -1590,8 +1666,13 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           );
         }
         if (index == 12) {
-          return MyButton(
-            buttontapped: () {
+          // Base: indefinite derivative. Long-press: definite (evaluated at a).
+          return PopupMenuCalcButton(
+            buttonText: 'd/dx',
+            fontSize: 18,
+            color: _kpButton,
+            textColor: _kpButtonText,
+            onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
                     () =>
@@ -1599,25 +1680,55 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 normalAction: () => _activeController?.insertDerivative(),
               );
             },
-            buttonText: 'd/dx',
-            fontSize: 18,
-            color: Colors.white,
-            textColor: Colors.black,
+            menuItems: [
+              CalcMenuItem(
+                label: 'd/dx|\u2090',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () => _activeController!.selectionWrapper
+                            .wrapInDerivative(definite: true),
+                    normalAction:
+                        () => _activeController?.insertDerivative(
+                          definite: true,
+                        ),
+                  );
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         }
         if (index == 17) {
-          return MyButton(
-            buttontapped: () {
+          // Base: indefinite integral. Long-press: definite (with bounds).
+          return PopupMenuCalcButton(
+            buttonText: '\u222B',
+            fontSize: 28,
+            color: _kpButton,
+            textColor: _kpButtonText,
+            onTap: () {
               _handleButtonWithSelection(
                 wrapAction:
                     () => _activeController!.selectionWrapper.wrapInIntegral(),
                 normalAction: () => _activeController?.insertIntegral(),
               );
             },
-            buttonText: '\u222B',
-            fontSize: 28,
-            color: Colors.white,
-            textColor: Colors.black,
+            menuItems: [
+              CalcMenuItem(
+                label: '\u222B\u2090\u1D47',
+                onTap: () {
+                  _handleButtonWithSelection(
+                    wrapAction:
+                        () => _activeController!.selectionWrapper
+                            .wrapInIntegral(definite: true),
+                    normalAction:
+                        () =>
+                            _activeController?.insertIntegral(definite: true),
+                  );
+                },
+              ),
+            ],
+            indicatorColor: widget.colors.textSecondary,
           );
         }
         if (index == 8) {
@@ -1627,8 +1738,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: _buttonsR[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } // nPr button
         else if (index == 13) {
@@ -1642,8 +1753,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: '\u207FP\u1D63',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
         // nCr button
@@ -1658,8 +1769,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               );
             },
             buttonText: '\u207FC\u1D63',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 9) {
           return MyButton(
@@ -1668,7 +1779,7 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
               widget.onUpdateMathEditor();
             },
             buttonText: _buttonsR[index],
-            color: Colors.white,
+            color: _kpButton,
             textColor: Colors.orangeAccent,
           );
         } else if (index == 14) {
@@ -1678,8 +1789,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
             },
             buttonText: _buttonsR[index],
             fontSize: 28,
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         } else if (index == 10) {
           // sin with popup for cos/tan/sinh/cosh/tanh
@@ -1729,8 +1840,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 },
               ),
             ],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
             indicatorColor: widget.colors.textSecondary,
@@ -1796,8 +1907,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 },
               ),
             ],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
             indicatorColor: widget.colors.textSecondary,
@@ -1851,8 +1962,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 },
               ),
             ],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
             indicatorColor: widget.colors.textSecondary,
@@ -1861,8 +1972,8 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
           // π button with popup for constants
           return PopupMenuCalcButton(
             buttonText: '\u03C0',
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
             menuBackgroundColor: Colors.white,
             separatorColor: Colors.black12,
             onTap: () {
@@ -1919,15 +2030,15 @@ class _CalculatorKeypadState extends State<CalculatorKeypad> {
                 );
               },
               buttonText: '\u2630',
-              color: Colors.white,
-              textColor: Colors.black,
+              color: _kpButton,
+              textColor: _kpButtonText,
             ),
           );
         } else {
           return MyButton(
             buttonText: _buttonsR[index],
-            color: Colors.white,
-            textColor: Colors.black,
+            color: _kpButton,
+            textColor: _kpButtonText,
           );
         }
       },

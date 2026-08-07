@@ -156,6 +156,7 @@ class MathClipboard {
         variable: deepCopyNodes(node.variable),
         at: deepCopyNodes(node.at),
         body: deepCopyNodes(node.body),
+        isDefinite: node.isDefinite,
       );
     } else if (node is IntegralNode) {
       return IntegralNode(
@@ -163,6 +164,7 @@ class MathClipboard {
         lower: deepCopyNodes(node.lower),
         upper: deepCopyNodes(node.upper),
         body: deepCopyNodes(node.body),
+        isDefinite: node.isDefinite,
       );
     } else if (node is NewlineNode) {
       return NewlineNode();

@@ -130,9 +130,9 @@ class TextureGenerator {
     const width = textureWidth;
     const height = textureHeight;
 
-    final baseR = baseColor.red;
-    final baseG = baseColor.green;
-    final baseB = baseColor.blue;
+    final baseR = (baseColor.r * 255.0).round() & 0xff;
+    final baseG = (baseColor.g * 255.0).round() & 0xff;
+    final baseB = (baseColor.b * 255.0).round() & 0xff;
 
     final pixels = await Isolate.run(() {
       return _generateSeamlessNoisePixels(
@@ -236,9 +236,9 @@ class TextureGenerator {
       return (value / maxAmplitude + 1) * 0.5; // Normalize to 0-1
     }
 
-    final baseR = baseColor.red;
-    final baseG = baseColor.green;
-    final baseB = baseColor.blue;
+    final baseR = (baseColor.r * 255.0).round() & 0xff;
+    final baseG = (baseColor.g * 255.0).round() & 0xff;
+    final baseB = (baseColor.b * 255.0).round() & 0xff;
 
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
@@ -274,9 +274,9 @@ class TextureGenerator {
     const width = textureWidth;
     const height = textureHeight;
 
-    final baseR = baseColor.red;
-    final baseG = baseColor.green;
-    final baseB = baseColor.blue;
+    final baseR = (baseColor.r * 255.0).round() & 0xff;
+    final baseG = (baseColor.g * 255.0).round() & 0xff;
+    final baseB = (baseColor.b * 255.0).round() & 0xff;
 
     final pixels = await Isolate.run(() {
       return _generateSeamlessPaperPixels(
@@ -299,9 +299,9 @@ class TextureGenerator {
     final pixels = Uint8List(width * height * 4);
     final random = math.Random(42);
 
-    final baseR = baseColor.red;
-    final baseG = baseColor.green;
-    final baseB = baseColor.blue;
+    final baseR = (baseColor.r * 255.0).round() & 0xff;
+    final baseG = (baseColor.g * 255.0).round() & 0xff;
+    final baseB = (baseColor.b * 255.0).round() & 0xff;
 
     // Fill with base color
     for (int i = 0; i < width * height; i++) {

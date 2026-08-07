@@ -114,6 +114,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 10),
                     Divider(color: colors.divider.withValues(alpha: 0.5)),
                     const SizedBox(height: 10),
+                    _buildKeypadColorControl(
+                      settings: settings,
+                      colors: colors,
+                    ),
+                    const SizedBox(height: 10),
+                    Divider(color: colors.divider.withValues(alpha: 0.5)),
+                    const SizedBox(height: 10),
+                    _buildHandednessControl(
+                      settings: settings,
+                      colors: colors,
+                    ),
+                    const SizedBox(height: 10),
+                    Divider(color: colors.divider.withValues(alpha: 0.5)),
+                    const SizedBox(height: 10),
                     _buildFontFamilyControl(settings: settings, colors: colors),
                     const SizedBox(height: 10),
                     Divider(color: colors.divider.withValues(alpha: 0.5)),
@@ -249,7 +263,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return RepaintBoundary(
       child: Container(
-        key: ValueKey('card_${cardColor.value}_$title'),
+        key: ValueKey('card_${cardColor.toARGB32()}_$title'),
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
           color: cardColor,
@@ -421,6 +435,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
           items: TextureType.values,
           labelBuilder: _getTextureTypeLabel,
           onChanged: (value) => settings.setTextureType(value),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKeypadColorControl({
+    required SettingsProvider settings,
+    required AppColors colors,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'Keypad Color',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
+          ),
+        ),
+        _buildModernDropdown<KeypadColorMode>(
+          colors: colors,
+          value: settings.keypadColorMode,
+          items: KeypadColorMode.values,
+          labelBuilder: _getKeypadColorModeLabel,
+          onChanged: (value) => settings.setKeypadColorMode(value),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHandednessControl({
+    required SettingsProvider settings,
+    required AppColors colors,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'Handedness',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textPrimary, fontSize: 16),
+          ),
+        ),
+        _buildModernDropdown<Handedness>(
+          colors: colors,
+          value: settings.handedness,
+          items: Handedness.values,
+          labelBuilder: _getHandednessLabel,
+          onChanged: (value) => settings.setHandedness(value),
         ),
       ],
     );
@@ -714,7 +780,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         RepaintBoundary(
           child: Container(
-            key: ValueKey('toggle_${colors.accent.value}_$label'),
+            key: ValueKey('toggle_${colors.accent.toARGB32()}_$label'),
             width: _toggleControlWidth,
             height: 38,
             padding: const EdgeInsets.all(3),
@@ -799,6 +865,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return 'Scientific';
       case NumberFormat.plain:
         return 'Plain (commas)';
+    }
+  }
+
+  String _getKeypadColorModeLabel(KeypadColorMode mode) {
+    switch (mode) {
+      case KeypadColorMode.light:
+        return 'Light';
+      case KeypadColorMode.dark:
+        return 'Dark';
+      case KeypadColorMode.themeBased:
+        return 'Theme';
+    }
+  }
+
+  String _getHandednessLabel(Handedness mode) {
+    switch (mode) {
+      case Handedness.rightHanded:
+        return 'Right';
+      case Handedness.leftHanded:
+        return 'Left';
     }
   }
 

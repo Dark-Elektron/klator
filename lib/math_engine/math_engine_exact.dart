@@ -6,6 +6,27 @@ import 'package:klator/settings/settings_provider.dart';
 import 'package:klator/math_engine/math_engine.dart';
 part 'symbolic_calculus.dart';
 
+/// Real-valued power that also returns the real root of a negative base when
+/// the exponent is a rational p/q with an odd denominator (e.g. an nth root
+/// such as `(-8)^(1/3) == -2`). `dart:math`'s `pow` returns `NaN` for a
+/// negative base with a fractional exponent, so those cases are handled here.
+/// Genuinely complex cases (e.g. `(-1)^(1/2)`) still return `NaN`.
+double realPow(double b, double exp) {
+  if (b >= 0 || exp == exp.roundToDouble()) {
+    return math.pow(b, exp).toDouble();
+  }
+  for (int q = 3; q <= 99; q += 2) {
+    final double pDouble = exp * q;
+    final double pRounded = pDouble.roundToDouble();
+    if ((pDouble - pRounded).abs() < 1e-9) {
+      final double magnitude = math.pow(b.abs(), exp).toDouble();
+      // Sign is (-1)^p: negative only when the numerator is odd.
+      return (pRounded.toInt().abs() % 2 == 1) ? -magnitude : magnitude;
+    }
+  }
+  return math.pow(b, exp).toDouble();
+}
+
 // ============================================================
 // SECTION 1: EXPRESSION BASE CLASS
 // ============================================================
@@ -2005,8 +2026,7 @@ class PowExpr extends Expr {
   bool get hasImaginary => base.hasImaginary || exponent.hasImaginary;
 
   @override
-  double toDouble() =>
-      math.pow(base.toDouble(), exponent.toDouble()).toDouble();
+  double toDouble() => realPow(base.toDouble(), exponent.toDouble());
 
   @override
   bool structurallyEquals(Expr other) {
@@ -2229,7 +2249,9 @@ class RootExpr extends Expr {
     double r = radicand.toDouble();
     double n = index.toDouble();
     if (n == 2) return math.sqrt(r);
-    return math.pow(r, 1 / n).toDouble();
+    // realPow returns the real odd root of a negative radicand (e.g. ∛(-8) == -2)
+    // instead of the NaN that math.pow gives for a negative base.
+    return realPow(r, 1 / n);
   }
 
   @override
@@ -2732,6 +2754,12 @@ class TrigExpr extends Expr {
   Expr? _sinExact(int num, int den) {
     // Reduce to first quadrant and track sign
     int sign = 1;
+
+    // Normalize to [0, 2π): sin(x + 2π) = sin(x). Without this, arguments
+    // outside [0, 2π] (e.g. sin(13π/6)) fall through and return null even
+    // though an exact value exists. Matches the reduction in _cosExact.
+    num = num % (2 * den);
+    if (num < 0) num += 2 * den;
 
     // sin is positive in [0, π], negative in [π, 2π]
     if (num > den) {
@@ -4827,13 +4855,14 @@ class MathNodeToExpr {
         continue;
       }
 
-      // Operators
+      // Operators (including postfix '!' for factorial)
       if (char == '+' ||
           char == '-' ||
           char == '*' ||
           char == '/' ||
           char == '^' ||
-          char == '%') {
+          char == '%' ||
+          char == '!') {
         tokens.add(_Token(_TokenType.operator, char));
         i++;
         continue;
@@ -5083,7 +5112,7 @@ class _TokenParser {
   }
 
   _ParsedExpr _parseMulDiv() {
-    _ParsedExpr left = _parsePower();
+    _ParsedExpr left = _parseUnary();
 
     while (pos < tokens.length) {
       _Token token = tokens[pos];
@@ -5092,7 +5121,7 @@ class _TokenParser {
       if (token.type == _TokenType.operator &&
           (token.value == '*' || token.value == '/')) {
         pos++;
-        _ParsedExpr right = _parsePower();
+        _ParsedExpr right = _parseUnary();
         Expr leftExpr = _unwrapPercent(left);
         Expr rightExpr = _unwrapPercent(right);
         if (token.value == '*') {
@@ -5103,7 +5132,7 @@ class _TokenParser {
       }
       // Implicit multiplication (e.g., 2i, 2(3), (2)3)
       else if (_isNextPrimary()) {
-        _ParsedExpr right = _parsePower();
+        _ParsedExpr right = _parseUnary();
         Expr leftExpr = _unwrapPercent(left);
         Expr rightExpr = _unwrapPercent(right);
         left = _ParsedExpr(ProdExpr([leftExpr, rightExpr]));
@@ -5149,17 +5178,42 @@ class _TokenParser {
   }
 
   _ParsedExpr _parsePower() {
-    _ParsedExpr base = _parseUnary();
+    _ParsedExpr base = _parsePrimary();
 
-    while (pos < tokens.length) {
-      _Token token = tokens[pos];
-      if (token.type != _TokenType.operator || token.value != '^') break;
-
+    // Postfix factorial (e.g. `(19+2)!`). Only defined for a non-negative
+    // integer; anything else throws so the exact result is dropped and the
+    // decimal engine handles it. Computed exactly with BigInt.
+    while (pos < tokens.length &&
+        tokens[pos].type == _TokenType.operator &&
+        tokens[pos].value == '!') {
       pos++;
-      _ParsedExpr exponent = _parseUnary();
-      Expr baseExpr = _unwrapPercent(base);
-      Expr expExpr = _unwrapPercent(exponent);
-      base = _ParsedExpr(PowExpr(baseExpr, expExpr));
+      final Expr simplified = _unwrapPercent(base).simplify();
+      if (simplified is IntExpr && simplified.value >= BigInt.zero) {
+        BigInt r = BigInt.one;
+        for (BigInt k = BigInt.two; k <= simplified.value; k += BigInt.one) {
+          r *= k;
+        }
+        base = _ParsedExpr(IntExpr(r));
+      } else {
+        throw const FormatException(
+          'factorial requires a non-negative integer',
+        );
+      }
+    }
+
+    // Exponentiation is right-associative and binds tighter than unary minus
+    // on the base (so `-2^2 == -4`), while the exponent is parsed via
+    // `_parseUnary` (which recurses back into `_parsePower`), giving both
+    // right-associativity (`2^3^2 == 2^(3^2)`) and a signed exponent.
+    if (pos < tokens.length) {
+      _Token token = tokens[pos];
+      if (token.type == _TokenType.operator && token.value == '^') {
+        pos++;
+        _ParsedExpr exponent = _parseUnary();
+        Expr baseExpr = _unwrapPercent(base);
+        Expr expExpr = _unwrapPercent(exponent);
+        base = _ParsedExpr(PowExpr(baseExpr, expExpr));
+      }
     }
 
     return base;
@@ -5182,7 +5236,7 @@ class _TokenParser {
       }
     }
 
-    return _parsePrimary();
+    return _parsePower();
   }
 
   _ParsedExpr _parsePrimary() {

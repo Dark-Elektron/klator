@@ -486,6 +486,7 @@ class MathExpressionSerializer {
         'variable': node.variable.map((n) => _nodeToJson(n)).toList(),
         'at': node.at.map((n) => _nodeToJson(n)).toList(),
         'body': node.body.map((n) => _nodeToJson(n)).toList(),
+        'isDefinite': node.isDefinite,
       };
     }
     if (node is IntegralNode) {
@@ -495,6 +496,7 @@ class MathExpressionSerializer {
         'lower': node.lower.map((n) => _nodeToJson(n)).toList(),
         'upper': node.upper.map((n) => _nodeToJson(n)).toList(),
         'body': node.body.map((n) => _nodeToJson(n)).toList(),
+        'isDefinite': node.isDefinite,
       };
     }
     if (node is ProductNode) {
@@ -596,6 +598,7 @@ class MathExpressionSerializer {
           variable: _jsonToNodeList(json['variable']),
           at: _jsonToNodeList(json['at']),
           body: _jsonToNodeList(json['body']),
+          isDefinite: json['isDefinite'] as bool? ?? true,
         );
       case 'integral':
         return IntegralNode(
@@ -603,6 +606,7 @@ class MathExpressionSerializer {
           lower: _jsonToNodeList(json['lower']),
           upper: _jsonToNodeList(json['upper']),
           body: _jsonToNodeList(json['body']),
+          isDefinite: json['isDefinite'] as bool? ?? true,
         );
       case 'product':
         return ProductNode(

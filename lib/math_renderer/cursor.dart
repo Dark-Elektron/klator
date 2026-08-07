@@ -119,6 +119,7 @@ class EditorState {
         variable: _deepCopyNodes(node.variable, idMap),
         at: _deepCopyNodes(node.at, idMap),
         body: _deepCopyNodes(node.body, idMap),
+        isDefinite: node.isDefinite,
       );
     } else if (node is IntegralNode) {
       copy = IntegralNode(
@@ -126,6 +127,7 @@ class EditorState {
         lower: _deepCopyNodes(node.lower, idMap),
         upper: _deepCopyNodes(node.upper, idMap),
         body: _deepCopyNodes(node.body, idMap),
+        isDefinite: node.isDefinite,
       );
     } else if (node is AnsNode) {
       copy = AnsNode(index: _deepCopyNodes(node.index, idMap));
@@ -149,11 +151,22 @@ class EditorState {
   factory EditorState.capture(List<MathNode> expression, EditorCursor cursor) {
     final Map<String, String> idMap = {};
     final List<MathNode> copiedExpression = _deepCopyNodes(expression, idMap);
-    final String? mappedParentId =
-        cursor.parentId == null ? null : idMap[cursor.parentId] ?? cursor.parentId;
-    return EditorState(
-      expression: copiedExpression,
-      cursor: cursor.copyWith(parentId: mappedParentId),
-    );
+
+    // Every node in the tree is registered in idMap, so a null mapping means
+    // the cursor's parent is no longer in the tree (a stale reference). In that
+    // case clamp to a safe root position instead of keeping a dangling id that
+    // would silently mislocate the caret to root after undo/redo.
+    final EditorCursor mappedCursor;
+    if (cursor.parentId == null) {
+      mappedCursor = cursor;
+    } else {
+      final String? mapped = idMap[cursor.parentId];
+      mappedCursor =
+          mapped != null
+              ? cursor.copyWith(parentId: mapped)
+              : const EditorCursor(index: 0, subIndex: 0);
+    }
+
+    return EditorState(expression: copiedExpression, cursor: mappedCursor);
   }
 }
